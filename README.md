@@ -88,19 +88,29 @@ stored in this repo or in the signed `.shortcut` file:
 | Earliest hour this may run | number | 0–23, inclusive |
 | Hour this stops running | number | 0–23, **exclusive** |
 
-### Sign-in cannot be automated
+### Sign-in is two steps and needs a 2FA code
 
-`POST /api/v1/sessions/` does **not** return a session token for correct
-credentials. It answers `403` with `"Please start over … we'll send a new code"`,
-because Brightwheel login requires a verification code. A *wrong* password
-answers `401 E2053` instead, which is how the two were distinguished — the 403 is
-2FA, not a bad password and not bot protection.
+Verified against a full login capture on 2026-08-19.
 
-A shortcut cannot receive an SMS, so **there is no auto-login and email/password
-are not used at all**. The token is captured by hand and used until it stops
-working, at which point every request returns `E1200` and the notification says
-to capture a fresh one and re-import. These tokens appear to be long-lived; the
-one from the original capture was still valid hours later.
+| Step | Request | Response |
+|---|---|---|
+| 1 | `POST /api/v1/sessions/start` with `{"user":{"email","password"}}` | `{"2fa_required": true, "2fa_code_sent_to": [...]}` |
+| 2 | `POST /api/v1/sessions` with `{"user":{"email","password"}, "2fa_code":"123456"}` | `{"token": "…", "user": {…}, "csrf": "…"}` |
+
+The token arrives as a **top-level `token`** key, 20 characters — not
+`session_token`. Calling `/api/v1/sessions` on its own, without having called
+`/start` and without a `2fa_code`, answers `403 "Please start over … we'll send a
+new code"`, while a wrong password answers `401 E2053`.
+
+Sign-in is a two-step flow and the token field is `token`. A shortcut cannot read a 6-digit code out
+of email unattended, so **there is no auto-login**: the token is captured by hand
+and used until it stops working, at which point requests return `E1200` and the
+notification says to capture a fresh one and re-import.
+
+Tokens appear long-lived; the one from the original capture was still valid hours
+later. Note that first-attempt code delivery proved unreliable — the code only
+arrived after using "resend", which is what `/sessions/start` being called twice
+in the capture represents.
 
 ## Recovering the school secret
 
