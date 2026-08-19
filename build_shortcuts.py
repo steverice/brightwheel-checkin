@@ -34,6 +34,8 @@ ENV_KEYS = {
     "code": "BRIGHTWHEEL_CHECKIN_CODE",
     "secret": "BRIGHTWHEEL_SCHOOL_SECRET",
     "token": "BRIGHTWHEEL_SESSION_TOKEN",
+    "email": "BRIGHTWHEEL_EMAIL",
+    "password": "BRIGHTWHEEL_PASSWORD",
     "start": "BRIGHTWHEEL_START_HOUR",
     "end": "BRIGHTWHEEL_END_HOUR",
 }
@@ -157,13 +159,17 @@ WINDOW = {"in": (8, 13), "out": (13, 18)}
 # one, and it is what gets used if a question is skipped, so for the secrets it
 # is a marker that fails loudly rather than looking like a real value.
 SETUP = [
+    ("token", "text", "Brightwheel session token",
+     "The X-Parse-Session-Token for your account. Leave as 'not set' to sign in "
+     "on the first run instead.", "not set", ""),
+    ("email", "text", "Brightwheel account email",
+     "Used to sign in again when the session token stops working.",
+     "not set", ""),
+    ("password", "text", "Brightwheel account password",
+     "Used together with the email, only when signing in again.",
+     "not set", ""),
     ("code", "text", "Brightwheel check-in code",
      "Your 4-digit guardian check-in code.", "not set", ""),
-    ("token", "text", "Brightwheel session token",
-     "The X-Parse-Session-Token value for your account. These last a long "
-     "time. When one stops working this shortcut says so, and a new one has to "
-     "be captured and pasted in here — Brightwheel sign-in needs a verification "
-     "code, so no shortcut can renew it by itself.", "not set", ""),
     ("secret", "text", "Brightwheel school QR secret",
      "The 'secret' value from your school's check-in QR code. It looks like "
      "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Run the Brightwheel Scan Code "
@@ -191,7 +197,8 @@ def build(direction, env=None):
     color = 4292093695 if checking_in else 4251333119  # green / orange
 
     i = iter(uuids(180))
-    U = {k: next(i) for k in ("code", "secret", "token", "start", "end")}
+    U = {k: next(i) for k in ("code", "secret", "token", "email", "password",
+                              "start", "end")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
     U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
     G0, G0A, G0B, G0C = next(i), next(i), next(i), next(i)
@@ -204,20 +211,25 @@ def build(direction, env=None):
     A = []
     questions = []
 
-    def gate(src, name):
+    def gate(src, name, pattern=r"\S"):
         """Append Text -> Match Text -> Count for a value, returning the Count
         action's UUID for use as a numeric If input.
 
         Two Shortcuts behaviors force this. A Dictionary Value compared
         directly in an If reads as blank and the branch never fires, and an
         empty string still satisfies "has any value", so presence has to be
-        measured rather than tested. Counting non-space characters handles both.
+        measured rather than tested. Counting matches handles both, and a
+        pattern turns the same helper into "does this response say X".
+
+        This is also why nothing here parses JSON with Detect Dictionary and Get
+        Dictionary Value. That pair does not produce a working
+        branch. Matching the raw response text is the primitive that works.
         """
         t, m, c = next(i), next(i), next(i)
         A.append(act("is.workflow.actions.gettext", UUID=t,
                      WFTextActionText=ts(out(src, name))))
         A.append(act("is.workflow.actions.text.match", UUID=m,
-                     WFMatchTextPattern=r"\S", text=ts(out(t, "Text"))))
+                     WFMatchTextPattern=pattern, text=ts(out(t, "Text"))))
         A.append(act("is.workflow.actions.count", UUID=c, WFCountType="Items",
                      WFInput=attach(out(m, "Matches")),
                      Input=attach(out(m, "Matches"))))
@@ -264,7 +276,8 @@ def build(direction, env=None):
         "one later, edit the matching Text action, or re-import the shortcut."
     ))
     names = {"code": "Check-In Code", "secret": "School Secret",
-             "token": "Session Token",
+             "token": "Saved Token", "email": "Account Email",
+             "password": "Account Password",
              "start": "Start Hour", "end": "End Hour"}
     for key, kind, prompt, blurb, default, prompt_default in SETUP:
         if kind == "number":
@@ -425,36 +438,174 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G0B, WFControlFlowMode=2))
 
-    # ---- session token ----
+    # ---- session token, with interactive sign-in on failure ----
     #
-    # There is deliberately no automatic sign-in here.
-    # POST /api/v1/sessions/ with a correct email and password does not return a
-    # token: it answers 403 with "we'll send a new code", because Brightwheel
-    # login requires a verification code. A wrong password answers 401 instead,
-    # which is how the two were told apart. A shortcut cannot receive an SMS, so
-    # the token is supplied by hand and simply used until it stops working.
+    # Sign-in is two steps and needs a 6-digit code (see README). A background
+    # automation cannot answer the prompt, but this branch only runs when the
+    # token has already expired, so that run was failing regardless. Running the
+    # shortcut by hand afterwards completes it.
+    U_GT, U_PROBE = next(i), next(i)
+    U_START, U_CODE, U_SESS = next(i), next(i), next(i)
+    U_TMATCH, U_TGRP, U_ZERO = next(i), next(i), next(i)
+    G_HAVE, G_LOOP, G_SIGNIN, G_GOT, G_FAIL = (next(i) for _ in range(5))
+
     A.append(comment(
         "--- SESSION ---\n"
-        "The session token entered at import is used as-is. Brightwheel sign-in "
-        "sends a verification code, so nothing here can refresh it "
-        "automatically.\n\n"
-        "These tokens last a long time. If one expires, every request below "
-        "fails with 'Your session has expired' and the notification says so; "
-        "capture a fresh token and re-import."
+        "Use the saved token if there is one, otherwise the one entered at "
+        "import. If it has expired, sign in again below."
     ))
+    A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GT,
+                 WFStoredContentKey="BrightwheelSessionToken",
+                 WFStoredContentGlobalValue=False))
+    C_HAVE = gate(U_GT, "Stored Content")
+    A.append(comment(
+        "Prefer a token saved by an earlier sign-in.\n"
+        "- Condition counts whether anything has been saved on this device yet\n"
+        "- Otherwise branch falls back to the token entered at import"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_HAVE, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_HAVE, "Count"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
-                 WFInput=attach(out(U["token"], "Session Token"))))
+                 WFInput=attach(out(U_GT, "Stored Content"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_HAVE, WFControlFlowMode=1))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
+                 WFInput=attach(out(U["token"], "Saved Token"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_HAVE, WFControlFlowMode=2))
+
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_PROBE,
+                 Advanced=True, ShowHeaders=False,
+                 WFURL=f"{BASE}/users/me", WFHTTPMethod="GET",
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Parse-Session-Token", ts(var("Session Token"))),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ])))
+    # E1200 is what an expired or absent token returns.
+    C_BAD = gate(U_PROBE, "Contents of URL", "E1200")
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Needs Sign In",
+                 WFInput=attach(out(C_BAD, "Count"))))
+
+    A.append(comment(
+        "Sign in again, up to three times.\n"
+        "- Each pass asks Brightwheel to send a fresh code, then asks you for it\n"
+        "- Cancelling the code prompt stops the whole shortcut\n"
+        "- A pass that gets a token clears Needs Sign In, so later passes do "
+        "nothing"
+    ))
+    A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
+                 GroupingIdentifier=G_LOOP, WFControlFlowMode=0,
+                 WFRepeatCount=3))
+    A.append(comment(
+        "Only act while the session is still not usable.\n"
+        "- Condition checks whether an earlier pass already signed in"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_SIGNIN, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(var("Needs Sign In"))))
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_START,
+                 Advanced=True, ShowHeaders=False,
+                 WFURL=f"{BASE}/sessions/start", WFHTTPMethod="POST",
+                 WFHTTPBodyType="JSON",
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ]),
+                 WFJSONValues=dict_field([
+                     kv_dict("user", [
+                         kv("email", ts(out(U["email"], "Account Email"))),
+                         kv("password", ts(out(U["password"], "Account Password"))),
+                     ]),
+                 ])))
+    A.append(act("is.workflow.actions.ask", UUID=U_CODE,
+                 WFAskActionPrompt="Brightwheel emailed a 6-digit code. Enter it "
+                                   "here, or cancel to stop.",
+                 WFInputType="Text"))
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_SESS,
+                 Advanced=True, ShowHeaders=False,
+                 WFURL=f"{BASE}/sessions", WFHTTPMethod="POST",
+                 WFHTTPBodyType="JSON",
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ]),
+                 WFJSONValues=dict_field([
+                     kv_dict("user", [
+                         kv("email", ts(out(U["email"], "Account Email"))),
+                         kv("password", ts(out(U["password"], "Account Password"))),
+                     ]),
+                     kv("2fa_code", ts(out(U_CODE, "Provided Input"))),
+                 ])))
+    # The token comes back as a top-level "token", not "session_token".
+    A.append(act("is.workflow.actions.gettext", UUID=U_TMATCH,
+                 WFTextActionText=ts(out(U_SESS, "Contents of URL"))))
+    U_TM2 = next(i)
+    A.append(act("is.workflow.actions.text.match", UUID=U_TM2,
+                 WFMatchTextPattern=r'"token"\s*:\s*"([^"]+)"',
+                 text=ts(out(U_TMATCH, "Text"))))
+    A.append(act("is.workflow.actions.text.match.getgroup", UUID=U_TGRP,
+                 WFGroupIndex="1", matches=attach(out(U_TM2, "Matches"))))
+    C_GOT = gate(U_TGRP, "Matched Text Group")
+    A.append(comment(
+        "Keep the new token when the code was accepted.\n"
+        "- Condition counts whether a token came back\n"
+        "- A wrong or expired code returns none, and the next pass asks again"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_GOT, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_GOT, "Count"))))
+    A.append(act("is.workflow.actions.setstoredcontent",
+                 WFStoredContentKey="BrightwheelSessionToken",
+                 WFStoredContentGlobalValue=False,
+                 WFInput=ts(out(U_TGRP, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
+                 WFInput=attach(out(U_TGRP, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.number", UUID=U_ZERO,
+                 WFNumberActionNumber="0"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Needs Sign In",
+                 WFInput=attach(out(U_ZERO, "Number"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_GOT, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_SIGNIN, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
+                 GroupingIdentifier=G_LOOP, WFControlFlowMode=2))
+
+    A.append(comment(
+        "Give up after three attempts.\n"
+        "- Condition checks whether the session is still unusable\n"
+        "- Nothing has been sent to Brightwheel about the children yet"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_FAIL, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(var("Needs Sign In"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
+                 WFNotificationActionBody=ts(
+                     "Could not sign in, so nothing was sent. Run this shortcut "
+                     "by hand to enter a fresh code.")))
+    A.append(act("is.workflow.actions.exit"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_FAIL, WFControlFlowMode=2))
 
     # ---- per child: read state, skip if already there, otherwise send ----
     for cname, target in CHILDREN:
         p = kid[cname]
-        state_var = f"{cname} State"
-        c_ok = gate(p["chk"], "Dictionary Value")
         A.append(comment(
             f"--- {title_word.upper()}: {cname.upper()} ---\n"
-            f"Read {cname}'s most recent check-in event first, so that running "
-            "this twice in one morning does not record a second arrival. "
-            "Brightwheel reports 1 for checked in and 2 for checked out."
+            f"Read {cname}'s most recent check-in event first, so running this "
+            "twice in one morning does not record a second arrival. Brightwheel "
+            "reports 1 for checked in and 2 for checked out, and the reply for a "
+            "single event carries exactly one of them."
         ))
         A.append(act("is.workflow.actions.downloadurl", UUID=p["act"],
                      Advanced=True, ShowHeaders=False, WFHTTPMethod="GET",
@@ -466,27 +617,19 @@ def build(direction, env=None):
                          kv("X-Client-Name", ts(CLIENT_NAME)),
                          kv("X-Client-Version", ts(CLIENT_VERSION)),
                      ])))
-        A.append(act("is.workflow.actions.detect.dictionary", UUID=p["adict"],
-                     WFInput=ts(out(p["act"], "Contents of URL"))))
-        A.append(act("is.workflow.actions.getvalueforkey", UUID=p["state"],
-                     WFDictionaryKey="activities.1.state",
-                     WFGetDictionaryValueType="Value",
-                     WFInput=ts(out(p["adict"], "Dictionary"))))
-        A.append(act("is.workflow.actions.gettext", UUID=p["stext"],
-                     WFTextActionText=ts(out(p["state"], "Dictionary Value"))))
-        A.append(act("is.workflow.actions.setvariable", WFVariableName=state_var,
-                     WFInput=attach(out(p["stext"], "Text"))))
+        C_SKIP = gate(p["act"], "Contents of URL",
+                      '"state"\\s*:\\s*"%s"' % already)
         A.append(comment(
             f"Skip {cname} if nothing needs to change.\n"
-            f"- Condition compares {cname}'s latest state with the one this "
+            f"- Condition counts whether {cname} is already in the state this "
             "shortcut would produce\n"
-            f"- Otherwise branch sends the request and reports the result\n"
+            "- Otherwise branch sends the request and reports the result\n"
             "- If the state cannot be read, the request is sent anyway"
         ))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gskip"], WFControlFlowMode=0,
-                     WFCondition=4, WFConditionalActionString=already,
-                     WFInput=cond_input(var(state_var))))
+                     WFCondition=2, WFNumberValue="0",
+                     WFInput=cond_input(out(C_SKIP, "Count"))))
         A.append(act("is.workflow.actions.notification",
                      WFNotificationActionTitle=ts("Brightwheel"),
                      WFNotificationActionBody=ts(
@@ -521,22 +664,18 @@ def build(direction, env=None):
                          kv("X-Client-Name", ts(CLIENT_NAME)),
                          kv("X-Client-Version", ts(CLIENT_VERSION)),
                      ])))
-        A.append(act("is.workflow.actions.detect.dictionary", UUID=p["rdict"],
-                     WFInput=ts(out(p["resp"], "Contents of URL"))))
-        A.append(act("is.workflow.actions.getvalueforkey", UUID=p["chk"],
-                     WFDictionaryKey="checkins", WFGetDictionaryValueType="Value",
-                     WFInput=ts(out(p["rdict"], "Dictionary"))))
         A.append(act("is.workflow.actions.gettext", UUID=p["rtext"],
                      WFTextActionText=ts(out(p["resp"], "Contents of URL"))))
+        C_OK = gate(p["resp"], "Contents of URL", r'"checkins"\s*:')
         A.append(comment(
             f"Report the result for {cname}.\n"
-            "- Condition checks whether Brightwheel echoed the check-in back\n"
+            "- Condition counts whether Brightwheel echoed the check-in back\n"
             "- Otherwise branch shows Brightwheel's own error text"
         ))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gres"], WFControlFlowMode=0,
                      WFCondition=2, WFNumberValue="0",
-                     WFInput=cond_input(out(c_ok, "Count"))))
+                     WFInput=cond_input(out(C_OK, "Count"))))
         A.append(act("is.workflow.actions.notification",
                      WFNotificationActionTitle=ts("Brightwheel"),
                      WFNotificationActionBody=ts(f"✅ {cname} {verb}")))
@@ -546,8 +685,8 @@ def build(direction, env=None):
                      WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
                      WFNotificationActionBody=ts(
                          out(p["rtext"], "Text"),
-                         "\n\nIf this says the session expired, capture a fresh "
-                         "session token and re-import.")))
+                         "\n\nIf this says the session expired, run this "
+                         "shortcut by hand to sign in again.")))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gres"], WFControlFlowMode=2))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),

@@ -77,16 +77,22 @@ So review the `.xml` diff, not the `.shortcut` diff.
 
 ## Setup values
 
-Both shortcuts ask for five values **at import time**, so no credential is
+Both shortcuts ask for seven values **at import time**, so no credential is
 stored in this repo or in the signed `.shortcut` file:
 
 | Prompt | Field | Notes |
 |---|---|---|
-| Brightwheel session token | text | The `X-Parse-Session-Token` for your account |
+| Brightwheel session token | text | Seeds the first run; leave as `not set` to sign in instead |
+| Brightwheel account email | text | Only used to sign in again when the token expires |
+| Brightwheel account password | text | Same |
 | Check-in code | text | 4-digit guardian code; authenticates as you |
 | School QR secret | text | The `secret` value from the school's check-in QR |
 | Earliest hour this may run | number | 0–23, inclusive |
 | Hour this stops running | number | 0–23, **exclusive** |
+
+A refreshed token is saved to this shortcut's own on-device storage
+(`WFStoredContentGlobalValue = false`, so not synced to iCloud) and preferred
+over the imported one on later runs.
 
 ### Sign-in is two steps and needs a 2FA code
 
@@ -186,6 +192,25 @@ Because the bounds are runtime values, the hour test cannot be a regex built at
 build time; it is `Hour − Start < 0` and `End − Hour < 1` via two Math actions,
 each compared against a literal. Only the *upper* bound of an `is between`
 condition may hold a variable, so that condition is unusable here.
+
+### Responses are matched as text, not parsed as JSON
+
+Nothing here uses **Detect Dictionary** or **Get Dictionary Value**. They were
+used originally and never once produced a working branch — the `/users/me` probe
+read its own 401 as "no error" and signed in never, which is what produced every
+`token length 0` report. Presence is instead measured with **Match Text +
+Count + a numeric If**, the primitive the weekday and hour checks already proved
+out:
+
+| Pattern | Means |
+|---|---|
+| `E1200` | token expired or absent |
+| `"token"\s*:\s*"([^"]+)"` | sign-in succeeded (top-level `token`) |
+| `"state"\s*:\s*"1"` / `"2"` | child is already checked in / out |
+| `"checkins"\s*:` | the check-in was accepted |
+
+The activities reply for a single event carries exactly one `state` field, so
+that match is unambiguous.
 
 ### Gray input fields are normal
 
