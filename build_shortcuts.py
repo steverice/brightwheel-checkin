@@ -31,10 +31,9 @@ CHILDREN = [("First Child", CHILD_A), ("Second Child", CHILD_B)]
 
 
 ENV_KEYS = {
-    "email": "BRIGHTWHEEL_EMAIL",
-    "password": "BRIGHTWHEEL_PASSWORD",
     "code": "BRIGHTWHEEL_CHECKIN_CODE",
     "secret": "BRIGHTWHEEL_SCHOOL_SECRET",
+    "token": "BRIGHTWHEEL_SESSION_TOKEN",
     "start": "BRIGHTWHEEL_START_HOUR",
     "end": "BRIGHTWHEEL_END_HOUR",
 }
@@ -158,12 +157,13 @@ WINDOW = {"in": (8, 13), "out": (13, 18)}
 # one, and it is what gets used if a question is skipped, so for the secrets it
 # is a marker that fails loudly rather than looking like a real value.
 SETUP = [
-    ("email", "text", "Brightwheel account email",
-     "Email address you sign in to Brightwheel with.", "not set", ""),
-    ("password", "text", "Brightwheel account password",
-     "Used only to refresh an expired session token.", "not set", ""),
     ("code", "text", "Brightwheel check-in code",
      "Your 4-digit guardian check-in code.", "not set", ""),
+    ("token", "text", "Brightwheel session token",
+     "The X-Parse-Session-Token value for your account. These last a long "
+     "time. When one stops working this shortcut says so, and a new one has to "
+     "be captured and pasted in here — Brightwheel sign-in needs a verification "
+     "code, so no shortcut can renew it by itself.", "not set", ""),
     ("secret", "text", "Brightwheel school QR secret",
      "The 'secret' value from your school's check-in QR code. It looks like "
      "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Run the Brightwheel Scan Code "
@@ -191,15 +191,10 @@ def build(direction, env=None):
     color = 4292093695 if checking_in else 4251333119  # green / orange
 
     i = iter(uuids(180))
-    U = {k: next(i) for k in ("email", "password", "code", "secret",
-                              "start", "end")}
+    U = {k: next(i) for k in ("code", "secret", "token", "start", "end")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
     U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
     G0, G0A, G0B, G0C = next(i), next(i), next(i), next(i)
-    U_GT = next(i)
-    U_PROBE, U_PDICT, U_PERR = next(i), next(i), next(i)
-    U_LOGIN, U_LTXT, U_MATCH, U_GRP = next(i), next(i), next(i), next(i)
-    U_APR, U_APC, U_TLEN = next(i), next(i), next(i)
     G2, G3 = next(i), next(i)
     kid = {c: {k: next(i) for k in
                ("act", "adict", "state", "stext", "gskip", "body", "resp",
@@ -268,8 +263,8 @@ def build(direction, env=None):
         "These four values are requested when the shortcut is imported. To change "
         "one later, edit the matching Text action, or re-import the shortcut."
     ))
-    names = {"email": "Account Email", "password": "Account Password",
-             "code": "Check-In Code", "secret": "School Secret",
+    names = {"code": "Check-In Code", "secret": "School Secret",
+             "token": "Session Token",
              "start": "Start Hour", "end": "End Hour"}
     for key, kind, prompt, blurb, default, prompt_default in SETUP:
         if kind == "number":
@@ -431,112 +426,24 @@ def build(direction, env=None):
                  GroupingIdentifier=G0B, WFControlFlowMode=2))
 
     # ---- session token ----
+    #
+    # There is deliberately no automatic sign-in here.
+    # POST /api/v1/sessions/ with a correct email and password does not return a
+    # token: it answers 403 with "we'll send a new code", because Brightwheel
+    # login requires a verification code. A wrong password answers 401 instead,
+    # which is how the two were told apart. A shortcut cannot receive an SMS, so
+    # the token is supplied by hand and simply used until it stops working.
     A.append(comment(
-        "--- VERIFY SESSION TOKEN ---\n"
-        "Ask Brightwheel who the saved token belongs to. A valid token returns your "
-        "account details; an expired one returns an error, which is what triggers "
-        "the automatic sign-in below."
+        "--- SESSION ---\n"
+        "The session token entered at import is used as-is. Brightwheel sign-in "
+        "sends a verification code, so nothing here can refresh it "
+        "automatically.\n\n"
+        "These tokens last a long time. If one expires, every request below "
+        "fails with 'Your session has expired' and the notification says so; "
+        "capture a fresh token and re-import."
     ))
-    A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GT,
-                 WFStoredContentKey="BrightwheelSessionToken",
-                 WFStoredContentGlobalValue=False))
-    A.append(act("is.workflow.actions.downloadurl", UUID=U_PROBE,
-                 Advanced=True, ShowHeaders=False,
-                 WFURL=f"{BASE}/users/me", WFHTTPMethod="GET",
-                 WFHTTPHeaders=dict_field([
-                     kv("Accept", ts("application/json")),
-                     kv("X-Parse-Session-Token", ts(out(U_GT, "Stored Content"))),
-                     kv("X-Client-Name", ts(CLIENT_NAME)),
-                     kv("X-Client-Version", ts(CLIENT_VERSION)),
-                 ])))
-    A.append(act("is.workflow.actions.detect.dictionary", UUID=U_PDICT,
-                 WFInput=ts(out(U_PROBE, "Contents of URL"))))
-    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_PERR,
-                 WFDictionaryKey="error", WFGetDictionaryValueType="Value",
-                 WFInput=ts(out(U_PDICT, "Dictionary"))))
-    C_ERR = gate(U_PERR, "Dictionary Value")
-    A.append(comment(
-        "Sign in again only when the saved token has expired.\n"
-        "- Condition checks whether the account lookup came back with an error\n"
-        "- Get Contents of URL signs in with the email and password from Setup\n"
-        "- Match Text pulls the new session token out of the reply\n"
-        "- Session Token carries either the refreshed or the still-valid token"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G2, WFControlFlowMode=0,
-                 WFCondition=2, WFNumberValue="0",
-                 WFInput=cond_input(out(C_ERR, "Count"))))
-    A.append(act("is.workflow.actions.downloadurl", UUID=U_LOGIN,
-                 Advanced=True, ShowHeaders=False,
-                 WFURL=f"{BASE}/sessions/", WFHTTPMethod="POST",
-                 WFHTTPBodyType="JSON",
-                 WFHTTPHeaders=dict_field([
-                     kv("Accept", ts("application/json")),
-                     kv("X-Client-Name", ts(CLIENT_NAME)),
-                     kv("X-Client-Version", ts(CLIENT_VERSION)),
-                 ]),
-                 WFJSONValues=dict_field([
-                     kv_dict("user", [
-                         kv("email", ts(out(U["email"], "Account Email"))),
-                         kv("password", ts(out(U["password"], "Account Password"))),
-                     ]),
-                 ])))
-    A.append(act("is.workflow.actions.gettext", UUID=U_LTXT,
-                 WFTextActionText=ts(out(U_LOGIN, "Contents of URL"))))
-    A.append(act("is.workflow.actions.text.match", UUID=U_MATCH,
-                 WFMatchTextPattern=r'"[sS]ession_?[tT]oken"\s*:\s*"([^"]+)"',
-                 text=ts(out(U_LTXT, "Text"))))
-    A.append(act("is.workflow.actions.text.match.getgroup", UUID=U_GRP,
-                 WFGroupIndex="1", matches=attach(out(U_MATCH, "Matches"))))
-    C_TOK = gate(U_GRP, "Matched Text Group")
-    A.append(comment(
-        "Save the refreshed token, or report why signing in did not work.\n"
-        "- Condition checks whether a token was found in the sign-in reply\n"
-        "- Store Content saves it on this device for next time\n"
-        "- Notification repeats Brightwheel's own wording, so it is readable "
-        "later even when the automation ran with the phone in a pocket"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G3, WFControlFlowMode=0,
-                 WFCondition=2, WFNumberValue="0",
-                 WFInput=cond_input(out(C_TOK, "Count"))))
-    A.append(act("is.workflow.actions.setstoredcontent",
-                 WFStoredContentKey="BrightwheelSessionToken",
-                 WFStoredContentGlobalValue=False,
-                 WFInput=ts(out(U_GRP, "Matched Text Group"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
-                 WFInput=attach(out(U_GRP, "Matched Text Group"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_APR,
-                 WFTextActionText="signed in again"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Auth Path",
-                 WFInput=attach(out(U_APR, "Text"))))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G3, WFControlFlowMode=1))
-    A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel sign-in failed"),
-                 WFNotificationActionBody=ts(
-                     "Nobody was checked ", "in" if checking_in else "out",
-                     ". Brightwheel said: ", out(U_LTXT, "Text"))))
-    A.append(act("is.workflow.actions.exit"))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G3, WFControlFlowMode=2))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G2, WFControlFlowMode=1))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
-                 WFInput=attach(out(U_GT, "Stored Content"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_APC,
-                 WFTextActionText="reused the saved token"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Auth Path",
-                 WFInput=attach(out(U_APC, "Text"))))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G2, WFControlFlowMode=2))
-
-    # Length only, never the token itself: enough to tell an empty token from a
-    # plausible one when a request comes back rejected.
-    A.append(act("is.workflow.actions.count", UUID=U_TLEN,
-                 WFCountType="Characters",
-                 WFInput=attach(var("Session Token")),
-                 Input=attach(var("Session Token"))))
+                 WFInput=attach(out(U["token"], "Session Token"))))
 
     # ---- per child: read state, skip if already there, otherwise send ----
     for cname, target in CHILDREN:
@@ -639,8 +546,8 @@ def build(direction, env=None):
                      WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
                      WFNotificationActionBody=ts(
                          out(p["rtext"], "Text"),
-                         "\n\n(", var("Auth Path"), ", token length ",
-                         out(U_TLEN, "Count"), ")")))
+                         "\n\nIf this says the session expired, capture a fresh "
+                         "session token and re-import.")))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gres"], WFControlFlowMode=2))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),

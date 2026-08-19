@@ -77,21 +77,30 @@ So review the `.xml` diff, not the `.shortcut` diff.
 
 ## Setup values
 
-Both shortcuts ask for six values **at import time**, so no credential is
+Both shortcuts ask for five values **at import time**, so no credential is
 stored in this repo or in the signed `.shortcut` file:
 
 | Prompt | Field | Notes |
 |---|---|---|
-| Brightwheel account email | text | Used only to refresh an expired session token |
-| Brightwheel account password | text | Same |
+| Brightwheel session token | text | The `X-Parse-Session-Token` for your account |
 | Check-in code | text | 4-digit guardian code; authenticates as you |
 | School QR secret | text | The `secret` value from the school's check-in QR |
 | Earliest hour this may run | number | 0–23, inclusive |
 | Hour this stops running | number | 0–23, **exclusive** |
 
-The session token is never entered by hand. It is fetched on first run, saved to
-this shortcut's own on-device storage (`WFStoredContentGlobalValue = false`, so
-not synced to iCloud), and refreshed automatically when it expires.
+### Sign-in cannot be automated
+
+`POST /api/v1/sessions/` does **not** return a session token for correct
+credentials. It answers `403` with `"Please start over … we'll send a new code"`,
+because Brightwheel login requires a verification code. A *wrong* password
+answers `401 E2053` instead, which is how the two were distinguished — the 403 is
+2FA, not a bad password and not bot protection.
+
+A shortcut cannot receive an SMS, so **there is no auto-login and email/password
+are not used at all**. The token is captured by hand and used until it stops
+working, at which point every request returns `E1200` and the notification says
+to capture a fresh one and re-import. These tokens appear to be long-lived; the
+one from the original capture was still valid hours later.
 
 ## Recovering the school secret
 
