@@ -33,7 +33,6 @@ CHILDREN = [("First Child", CHILD_A), ("Second Child", CHILD_B)]
 ENV_KEYS = {
     "code": "BRIGHTWHEEL_CHECKIN_CODE",
     "secret": "BRIGHTWHEEL_SCHOOL_SECRET",
-    "token": "BRIGHTWHEEL_SESSION_TOKEN",
     "email": "BRIGHTWHEEL_EMAIL",
     "password": "BRIGHTWHEEL_PASSWORD",
     "start": "BRIGHTWHEEL_START_HOUR",
@@ -159,9 +158,6 @@ WINDOW = {"in": (8, 13), "out": (13, 18)}
 # one, and it is what gets used if a question is skipped, so for the secrets it
 # is a marker that fails loudly rather than looking like a real value.
 SETUP = [
-    ("token", "text", "Brightwheel session token",
-     "The X-Parse-Session-Token for your account. Leave as 'not set' to sign in "
-     "on the first run instead.", "not set", ""),
     ("email", "text", "Brightwheel account email",
      "Used to sign in again when the session token stops working.",
      "not set", ""),
@@ -197,7 +193,7 @@ def build(direction, env=None):
     color = 4292093695 if checking_in else 4251333119  # green / orange
 
     i = iter(uuids(180))
-    U = {k: next(i) for k in ("code", "secret", "token", "email", "password",
+    U = {k: next(i) for k in ("code", "secret", "email", "password",
                               "start", "end")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
     U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
@@ -276,7 +272,7 @@ def build(direction, env=None):
         "one later, edit the matching Text action, or re-import the shortcut."
     ))
     names = {"code": "Check-In Code", "secret": "School Secret",
-             "token": "Saved Token", "email": "Account Email",
+             "email": "Account Email",
              "password": "Account Password",
              "start": "Start Hour", "end": "End Hour"}
     for key, kind, prompt, blurb, default, prompt_default in SETUP:
@@ -447,34 +443,18 @@ def build(direction, env=None):
     U_GT, U_PROBE = next(i), next(i)
     U_START, U_CODE, U_SESS = next(i), next(i), next(i)
     U_TMATCH, U_TGRP, U_ZERO = next(i), next(i), next(i)
-    G_HAVE, G_LOOP, G_SIGNIN, G_GOT, G_FAIL = (next(i) for _ in range(5))
+    G_LOOP, G_SIGNIN, G_GOT, G_FAIL = (next(i) for _ in range(4))
 
     A.append(comment(
         "--- SESSION ---\n"
-        "Use the saved token if there is one, otherwise the one entered at "
-        "import. If it has expired, sign in again below."
+        "Use the token saved by the last sign-in. There is none the first time, "
+        "so the first run signs in and saves one."
     ))
     A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GT,
                  WFStoredContentKey="BrightwheelSessionToken",
                  WFStoredContentGlobalValue=False))
-    C_HAVE = gate(U_GT, "Stored Content")
-    A.append(comment(
-        "Prefer a token saved by an earlier sign-in.\n"
-        "- Condition counts whether anything has been saved on this device yet\n"
-        "- Otherwise branch falls back to the token entered at import"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_HAVE, WFControlFlowMode=0,
-                 WFCondition=2, WFNumberValue="0",
-                 WFInput=cond_input(out(C_HAVE, "Count"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
                  WFInput=attach(out(U_GT, "Stored Content"))))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_HAVE, WFControlFlowMode=1))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
-                 WFInput=attach(out(U["token"], "Saved Token"))))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_HAVE, WFControlFlowMode=2))
 
     A.append(act("is.workflow.actions.downloadurl", UUID=U_PROBE,
                  Advanced=True, ShowHeaders=False,

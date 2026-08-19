@@ -77,22 +77,23 @@ So review the `.xml` diff, not the `.shortcut` diff.
 
 ## Setup values
 
-Both shortcuts ask for seven values **at import time**, so no credential is
+Both shortcuts ask for six values **at import time**, so no credential is
 stored in this repo or in the signed `.shortcut` file:
 
 | Prompt | Field | Notes |
 |---|---|---|
-| Brightwheel session token | text | Seeds the first run; leave as `not set` to sign in instead |
-| Brightwheel account email | text | Only used to sign in again when the token expires |
+| Brightwheel account email | text | Used to sign in |
 | Brightwheel account password | text | Same |
 | Check-in code | text | 4-digit guardian code; authenticates as you |
 | School QR secret | text | The `secret` value from the school's check-in QR |
 | Earliest hour this may run | number | 0–23, inclusive |
 | Hour this stops running | number | 0–23, **exclusive** |
 
-A refreshed token is saved to this shortcut's own on-device storage
-(`WFStoredContentGlobalValue = false`, so not synced to iCloud) and preferred
-over the imported one on later runs.
+**The session token is never asked for.** Nobody setting this up has one to hand.
+The first run finds nothing stored, gets `E1200` from `/users/me`, signs in, and
+saves the token to this shortcut's own on-device storage
+(`WFStoredContentGlobalValue = false`, so not synced to iCloud). Later runs reuse
+it until it expires, then sign in again.
 
 ### Sign-in is two steps and needs a 2FA code
 
