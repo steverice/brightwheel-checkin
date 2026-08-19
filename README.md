@@ -23,8 +23,22 @@ answers.
 The whole cycle is one command:
 
 ```bash
-./build.sh
+./build.sh           # normal build -> dist/, asks setup questions at import
+./build.sh --debug   # debug build  -> dist-debug/, no setup questions
 ```
+
+### Debug builds
+
+Answering six setup questions on every test import gets old fast. Copy
+`.env.example` to `.env`, fill it in, and `./build.sh --debug` bakes those values
+straight into the shortcuts and emits **no import questions at all** — import and
+run.
+
+A debug build therefore contains a real password, the school-wide secret and your
+check-in code. Both `.env` and `dist-debug/` are gitignored, and `--debug` writes
+only to `dist-debug/`, never to `dist/`, so a debug artifact cannot be committed
+by accident. Never AirDrop one to anyone else. Run `./build.sh` with no arguments
+before committing.
 
 which generates all three shortcuts, validates each against iOS 27, signs them,
 and writes both the unsigned `.xml` and the signed `.shortcut` into `dist/`.
@@ -240,6 +254,8 @@ Used to tell failure modes apart from the response body:
 ## What is deliberately not committed
 
 Local working notes are gitignored.
+
+`.env` and `dist-debug/` are excluded too — see Debug builds above.
 
 `dist/` **is** committed. The built shortcuts carry no live credentials: the four
 Setup values ship as placeholders (`you@example.com`, `PASTE PASSWORD AT

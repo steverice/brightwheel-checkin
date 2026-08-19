@@ -30,6 +30,36 @@ CLIENT_VERSION = "3.103.0"
 CHILDREN = [("First Child", CHILD_A), ("Second Child", CHILD_B)]
 
 
+ENV_KEYS = {
+    "email": "BRIGHTWHEEL_EMAIL",
+    "password": "BRIGHTWHEEL_PASSWORD",
+    "code": "BRIGHTWHEEL_CHECKIN_CODE",
+    "secret": "BRIGHTWHEEL_SCHOOL_SECRET",
+    "start": "BRIGHTWHEEL_START_HOUR",
+    "end": "BRIGHTWHEEL_END_HOUR",
+}
+
+
+def load_env(path):
+    """Read a KEY=VALUE .env for debug builds.
+
+    A debug build has real credentials baked into it, so it must never be
+    committed or shared. build.sh writes debug output to dist-debug/, which is
+    gitignored, and refuses to put it in dist/.
+    """
+    env = {}
+    for raw in Path(path).read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        env[k.strip()] = v.strip().strip('"').strip("'")
+    missing = [k for k in ENV_KEYS.values() if not env.get(k)]
+    if missing:
+        raise SystemExit(f"{path} is missing or has empty: {', '.join(missing)}")
+    return env
+
+
 def uuids(n):
     out = subprocess.run(
         ["bash", "-c", f"for i in $(seq 1 {n}); do uuidgen; done"],
@@ -148,7 +178,7 @@ SETUP = [
 ]
 
 
-def build(direction):
+def build(direction, env=None):
     """direction: 'in' or 'out'."""
     checking_in = direction == "in"
     desired = checking_in                 # value sent as `checked_in`
@@ -160,7 +190,7 @@ def build(direction):
     glyph = 59692 if checking_in else 59707   # circledDownArrow / circledUpArrow
     color = 4292093695 if checking_in else 4251333119  # green / orange
 
-    i = iter(uuids(90))
+    i = iter(uuids(180))
     U = {k: next(i) for k in ("email", "password", "code", "secret",
                               "start", "end")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
@@ -178,6 +208,25 @@ def build(direction):
 
     A = []
     questions = []
+
+    def gate(src, name):
+        """Append Text -> Match Text -> Count for a value, returning the Count
+        action's UUID for use as a numeric If input.
+
+        Two Shortcuts behaviors force this. A Dictionary Value compared
+        directly in an If reads as blank and the branch never fires, and an
+        empty string still satisfies "has any value", so presence has to be
+        measured rather than tested. Counting non-space characters handles both.
+        """
+        t, m, c = next(i), next(i), next(i)
+        A.append(act("is.workflow.actions.gettext", UUID=t,
+                     WFTextActionText=ts(out(src, name))))
+        A.append(act("is.workflow.actions.text.match", UUID=m,
+                     WFMatchTextPattern=r"\S", text=ts(out(t, "Text"))))
+        A.append(act("is.workflow.actions.count", UUID=c, WFCountType="Items",
+                     WFInput=attach(out(m, "Matches")),
+                     Input=attach(out(m, "Matches"))))
+        return c
 
     A.append(comment(
         f"Brightwheel — {title_word}\n\n"
@@ -229,13 +278,17 @@ def build(direction):
             param, ident = "WFNumberActionNumber", "is.workflow.actions.number"
         else:
             param, ident = "WFTextActionText", "is.workflow.actions.gettext"
-        questions.append({
-            "ActionIndex": len(A),
-            "Category": "Parameter",
-            "DefaultValue": prompt_default,
-            "ParameterKey": param,
-            "Text": f"{prompt} — {blurb}",
-        })
+        if env is not None:
+            # Debug build: bake the real value in and ask nothing at import.
+            default = env[ENV_KEYS[key]]
+        else:
+            questions.append({
+                "ActionIndex": len(A),
+                "Category": "Parameter",
+                "DefaultValue": prompt_default,
+                "ParameterKey": param,
+                "Text": f"{prompt} — {blurb}",
+            })
         A.append(act(ident, UUID=U[key], CustomOutputName=names[key],
                      **{param: default}))
 
@@ -401,6 +454,7 @@ def build(direction):
     A.append(act("is.workflow.actions.getvalueforkey", UUID=U_PERR,
                  WFDictionaryKey="error", WFGetDictionaryValueType="Value",
                  WFInput=ts(out(U_PDICT, "Dictionary"))))
+    C_ERR = gate(U_PERR, "Dictionary Value")
     A.append(comment(
         "Sign in again only when the saved token has expired.\n"
         "- Condition checks whether the account lookup came back with an error\n"
@@ -409,8 +463,9 @@ def build(direction):
         "- Session Token carries either the refreshed or the still-valid token"
     ))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G2, WFControlFlowMode=0, WFCondition=100,
-                 WFInput=cond_input(out(U_PERR, "Dictionary Value"))))
+                 GroupingIdentifier=G2, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_ERR, "Count"))))
     A.append(act("is.workflow.actions.downloadurl", UUID=U_LOGIN,
                  Advanced=True, ShowHeaders=False,
                  WFURL=f"{BASE}/sessions/", WFHTTPMethod="POST",
@@ -433,6 +488,7 @@ def build(direction):
                  text=ts(out(U_LTXT, "Text"))))
     A.append(act("is.workflow.actions.text.match.getgroup", UUID=U_GRP,
                  WFGroupIndex="1", matches=attach(out(U_MATCH, "Matches"))))
+    C_TOK = gate(U_GRP, "Matched Text Group")
     A.append(comment(
         "Save the refreshed token, or report why signing in did not work.\n"
         "- Condition checks whether a token was found in the sign-in reply\n"
@@ -441,8 +497,9 @@ def build(direction):
         "later even when the automation ran with the phone in a pocket"
     ))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G3, WFControlFlowMode=0, WFCondition=100,
-                 WFInput=cond_input(out(U_GRP, "Matched Text Group"))))
+                 GroupingIdentifier=G3, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_TOK, "Count"))))
     A.append(act("is.workflow.actions.setstoredcontent",
                  WFStoredContentKey="BrightwheelSessionToken",
                  WFStoredContentGlobalValue=False,
@@ -485,6 +542,7 @@ def build(direction):
     for cname, target in CHILDREN:
         p = kid[cname]
         state_var = f"{cname} State"
+        c_ok = gate(p["chk"], "Dictionary Value")
         A.append(comment(
             f"--- {title_word.upper()}: {cname.upper()} ---\n"
             f"Read {cname}'s most recent check-in event first, so that running "
@@ -570,8 +628,8 @@ def build(direction):
         ))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gres"], WFControlFlowMode=0,
-                     WFCondition=100,
-                     WFInput=cond_input(out(p["chk"], "Dictionary Value"))))
+                     WFCondition=2, WFNumberValue="0",
+                     WFInput=cond_input(out(c_ok, "Count"))))
         A.append(act("is.workflow.actions.notification",
                      WFNotificationActionTitle=ts("Brightwheel"),
                      WFNotificationActionBody=ts(f"✅ {cname} {verb}")))
@@ -740,10 +798,14 @@ def build_scanner():
 
 
 if __name__ == "__main__":
-    dest = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    argv = [a for a in sys.argv[1:] if a != "--debug"]
+    env = load_env(Path(__file__).parent / ".env") if "--debug" in sys.argv else None
+    dest = Path(argv[0] if argv else ".")
     dest.mkdir(parents=True, exist_ok=True)
+    if env is not None:
+        print("DEBUG BUILD — real credentials are baked in; do not commit or share")
     for d in ("in", "out"):
-        name, pl = build(d)
+        name, pl = build(d, env)
         (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
         print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
               f"{len(pl['WFWorkflowImportQuestions'])} setup questions")

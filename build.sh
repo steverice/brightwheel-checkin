@@ -11,7 +11,16 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-DIST="dist"
+# --debug bakes .env values in and drops the setup questions, for fast test
+# cycles. Its output carries real credentials, so it goes to a gitignored
+# directory and never to dist/.
+if [ "${1:-}" = "--debug" ]; then
+    DIST="dist-debug"
+    GEN_ARGS="--debug"
+else
+    DIST="dist"
+    GEN_ARGS=""
+fi
 OUTPUT_DIR="${CLAUDE_PLUGIN_OPTION_OUTPUT_DIR:-$HOME/Documents/Shortcuts Playground}"
 
 # The Shortcuts Playground attribution comment was deliberately removed, so this
@@ -22,7 +31,7 @@ WAIVED="Shortcuts Playground prompt text"
 rm -rf "$DIST"
 mkdir -p "$DIST"
 
-python3 build_shortcuts.py "$DIST"
+python3 build_shortcuts.py "$DIST" $GEN_ARGS
 echo
 
 for xml in "$DIST"/*.xml; do
@@ -43,6 +52,12 @@ for xml in "$DIST"/*.xml; do
 done
 
 echo
-echo "Artifacts in $DIST/ — commit them alongside any generator change."
+if [ "$DIST" = "dist-debug" ]; then
+    echo "DEBUG artifacts in $DIST/ — credentials are baked in."
+    echo "Do NOT commit or share these. Run ./build.sh with no arguments for a"
+    echo "clean build before committing."
+else
+    echo "Artifacts in $DIST/ — commit them alongside any generator change."
+fi
 echo "Reminder: delete the old shortcut on the phone before re-importing;"
 echo "a same-name import is silently skipped."

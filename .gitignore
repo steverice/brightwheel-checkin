@@ -7,3 +7,8 @@ brightwheel-checkin-shortcut-handoff.md
 # dist/ is intentionally NOT ignored. The generated .xml and signed .shortcut
 # are committed so an installable build is always available from the repo, and
 # so the XML diff shows what a generator change actually did.
+
+# Debug build inputs and outputs. `.env` holds a real password, the school-wide
+# secret and the check-in code; a debug build has all of them baked in.
+.env
+dist-debug/
