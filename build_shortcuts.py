@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+"""Generate the two Brightwheel check-in/check-out Shortcuts plists.
+
+Both shortcuts are structurally identical; only the `checked_in` literal,
+the display wording, and the icon differ. README.md has the endpoint
+contract.
+"""
+import json
+import plistlib
+import subprocess
+import sys
+from pathlib import Path
+
+OBJ = "￼"  # U+FFFC placeholder for an inline variable
+
+# --- Static, non-secret identifiers -------------------------------------
+ACTOR = "00000000-0000-0000-0000-000000000000"
+CHILD_A = "00000000-0000-0000-0000-000000000000"
+CHILD_B = "00000000-0000-0000-0000-000000000000"
+ROOM = "00000000-0000-0000-0000-000000000000"
+SCHOOL = "00000000-0000-0000-0000-000000000000"
+# The school QR secret and the 4-digit guardian check-in code are deliberately
+# NOT here. They are collected as import-time setup questions so that no live
+# credential is ever written into this repo or into the signed .shortcut.
+
+BASE = "https://schools.mybrightwheel.com/api/v1"
+CLIENT_NAME = "ios"
+CLIENT_VERSION = "3.103.0"
+
+USER_PROMPT = (
+    "generate the Brightwheel check-in and check-out shortcuts"
+)
+
+CHILDREN = [("First Child", CHILD_A), ("Second Child", CHILD_B)]
+
+
+def uuids(n):
+    out = subprocess.run(
+        ["bash", "-c", f"for i in $(seq 1 {n}); do uuidgen; done"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    return [u.upper() for u in out]
+
+
+# --- serialization helpers ---------------------------------------------
+def ts(*parts):
+    """WFTextTokenString from interleaved literals and attachments."""
+    s, att = "", {}
+    for p in parts:
+        if isinstance(p, str):
+            s += p
+        else:
+            att["{%d, 1}" % len(s)] = p
+            s += OBJ
+    return {
+        "Value": {"attachmentsByRange": att, "string": s},
+        "WFSerializationType": "WFTextTokenString",
+    }
+
+
+def out(uuid, name):
+    return {"OutputUUID": uuid, "OutputName": name, "Type": "ActionOutput"}
+
+
+def var(name):
+    return {"Type": "Variable", "VariableName": name}
+
+
+def attach(value):
+    return {"Value": value, "WFSerializationType": "WFTextTokenAttachment"}
+
+
+def cond_input(value):
+    """If-condition input: Type=Variable wrapper around an attachment."""
+    return {"Type": "Variable", "Variable": attach(value)}
+
+
+def dict_field(items):
+    return {
+        "Value": {"WFDictionaryFieldValueItems": items},
+        "WFSerializationType": "WFDictionaryFieldValue",
+    }
+
+
+def kv(key, value):
+    return {"WFItemType": 0, "WFKey": ts(key), "WFValue": value}
+
+
+def kv_dict(key, items):
+    return {
+        "WFItemType": 1,
+        "WFKey": ts(key),
+        "WFValue": {"Value": dict_field(items),
+                    "WFSerializationType": "WFDictionaryFieldValue"},
+    }
+
+
+def act(identifier, **params):
+    return {
+        "WFWorkflowActionIdentifier": identifier,
+        "WFWorkflowActionParameters": params,
+    }
+
+
+def comment(text):
+    return act("is.workflow.actions.comment", WFCommentActionText=text)
+
+
+
+
+# --- shortcut assembly --------------------------------------------------
+# `checked_in` is the DESIRED state, not the child's current state.
+#   checked_in: true  -> checks the child IN
+#   checked_in: false -> checks the child OUT
+# The activity feed's `state` field reports the result: "1" = in, "2" = out.
+STATE_IN, STATE_OUT = "1", "2"
+
+SETUP = [
+    ("email", "Brightwheel account email",
+     "Email address you sign in to Brightwheel with.", "you@example.com"),
+    ("password", "Brightwheel account password",
+     "Used only to refresh an expired session token.", "PASTE PASSWORD AT IMPORT"),
+    ("code", "Brightwheel check-in code",
+     "Your 4-digit guardian check-in code.", "0000"),
+    ("secret", "Brightwheel school QR secret",
+     "The 'secret' value from your school's check-in QR code.",
+     "PASTE SCHOOL SECRET AT IMPORT"),
+]
+
+
+def build(direction):
+    """direction: 'in' or 'out'."""
+    checking_in = direction == "in"
+    desired = checking_in                 # value sent as `checked_in`
+    already = STATE_IN if checking_in else STATE_OUT   # skip when state == this
+    verb = "checked in" if checking_in else "checked out"
+    already_word = "already checked in" if checking_in else "already checked out"
+    title_word = "Check In" if checking_in else "Check Out"
+    name = f"Brightwheel {title_word}"
+    glyph = 59692 if checking_in else 59707   # circledDownArrow / circledUpArrow
+    color = 4292093695 if checking_in else 4251333119  # green / orange
+
+    i = iter(uuids(90))
+    U = {k: next(i) for k in ("email", "password", "code", "secret")}
+    U_GT = next(i)
+    U_PROBE, U_PDICT, U_PERR = next(i), next(i), next(i)
+    U_LOGIN, U_LTXT, U_MATCH, U_GRP = next(i), next(i), next(i), next(i)
+    G2, G3 = next(i), next(i)
+    kid = {c: {k: next(i) for k in
+               ("act", "adict", "state", "stext", "gskip", "body", "resp",
+                "rdict", "chk", "rtext", "gres")}
+           for c, _ in CHILDREN}
+
+    A = []
+    questions = []
+
+    A.append(comment(
+        f"Brightwheel — {title_word}\n\n"
+        f"Checks First Child and Second Child {verb} at Your School (room Your Room) by "
+        "talking to the Brightwheel API directly, without opening the app.\n\n"
+        "Built to be run unattended by a location automation (for example, when "
+        "you arrive at school in the morning), so it never stops to ask a "
+        "question while it runs. Everything it needs is collected once, when you "
+        "import it.\n\n"
+        "Each run:\n"
+        "1. Checks the saved sign-in is still valid, and signs in again by itself "
+        "if it has expired.\n"
+        "2. Looks up whether each child is already checked in or out.\n"
+        f"3. Skips any child who is {already_word}, so running it twice is "
+        "harmless.\n"
+        "4. Sends the request for everyone else and posts a notification per child."
+    ))
+    A.append(comment(
+        "Shortcuts generated by Shortcuts Playground. May contain mistakes. "
+        "Always check the shortcut's actions first.\n\n"
+        "This shortcut was created via the following user prompt:\n\n"
+        f"> {USER_PROMPT}"
+    ))
+    A.append(comment(
+        "ALLOW_TOKEN_FILE — this shortcut saves the Brightwheel session token in "
+        "its own on-device storage and refreshes it automatically, because a "
+        "background automation cannot stop to ask you to paste a new one.\n\n"
+        "The four values below are filled in when you import the shortcut, so no "
+        "password, school secret or check-in code is stored in the shortcut file "
+        "itself. Your session token is never in the file either — it lives only in "
+        "this device's storage, scoped to this shortcut and not synced to iCloud.\n\n"
+        "If you ever share or export this shortcut, clear the four Text actions "
+        "below first. The school secret is shared with every family at the center, "
+        "and the check-in code authenticates as you."
+    ))
+
+    A.append(comment(
+        "--- SETUP ---\n"
+        "These four values are requested when the shortcut is imported. To change "
+        "one later, edit the matching Text action, or re-import the shortcut."
+    ))
+    for key, prompt, blurb, default in SETUP:
+        questions.append({
+            "ActionIndex": len(A),
+            "Category": "Parameter",
+            "DefaultValue": default,
+            "ParameterKey": "WFTextActionText",
+            "Text": f"{prompt} — {blurb}",
+        })
+        A.append(act("is.workflow.actions.gettext", UUID=U[key],
+                     CustomOutputName={"email": "Account Email",
+                                       "password": "Account Password",
+                                       "code": "Check-In Code",
+                                       "secret": "School Secret"}[key],
+                     WFTextActionText=default))
+
+    # ---- session token ----
+    A.append(comment(
+        "--- VERIFY SESSION TOKEN ---\n"
+        "Ask Brightwheel who the saved token belongs to. A valid token returns your "
+        "account details; an expired one returns an error, which is what triggers "
+        "the automatic sign-in below."
+    ))
+    A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GT,
+                 WFStoredContentKey="BrightwheelSessionToken",
+                 WFStoredContentGlobalValue=False))
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_PROBE,
+                 Advanced=True, ShowHeaders=False,
+                 WFURL=f"{BASE}/users/me", WFHTTPMethod="GET",
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Parse-Session-Token", ts(out(U_GT, "Stored Content"))),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ])))
+    A.append(act("is.workflow.actions.detect.dictionary", UUID=U_PDICT,
+                 WFInput=ts(out(U_PROBE, "Contents of URL"))))
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_PERR,
+                 WFDictionaryKey="error", WFGetDictionaryValueType="Value",
+                 WFInput=ts(out(U_PDICT, "Dictionary"))))
+    A.append(comment(
+        "Sign in again only when the saved token has expired.\n"
+        "- Condition checks whether the account lookup came back with an error\n"
+        "- Get Contents of URL signs in with the email and password from Setup\n"
+        "- Match Text pulls the new session token out of the reply\n"
+        "- Session Token carries either the refreshed or the still-valid token"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G2, WFControlFlowMode=0, WFCondition=100,
+                 WFInput=cond_input(out(U_PERR, "Dictionary Value"))))
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_LOGIN,
+                 Advanced=True, ShowHeaders=False,
+                 WFURL=f"{BASE}/sessions/", WFHTTPMethod="POST",
+                 WFHTTPBodyType="JSON",
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ]),
+                 WFJSONValues=dict_field([
+                     kv_dict("user", [
+                         kv("email", ts(out(U["email"], "Account Email"))),
+                         kv("password", ts(out(U["password"], "Account Password"))),
+                     ]),
+                 ])))
+    A.append(act("is.workflow.actions.gettext", UUID=U_LTXT,
+                 WFTextActionText=ts(out(U_LOGIN, "Contents of URL"))))
+    A.append(act("is.workflow.actions.text.match", UUID=U_MATCH,
+                 WFMatchTextPattern=r'"[sS]ession_?[tT]oken"\s*:\s*"([^"]+)"',
+                 text=ts(out(U_LTXT, "Text"))))
+    A.append(act("is.workflow.actions.text.match.getgroup", UUID=U_GRP,
+                 WFGroupIndex="1", matches=attach(out(U_MATCH, "Matches"))))
+    A.append(comment(
+        "Save the refreshed token, or report why signing in did not work.\n"
+        "- Condition checks whether a token was found in the sign-in reply\n"
+        "- Store Content saves it on this device for next time\n"
+        "- Notification repeats Brightwheel's own wording, so it is readable "
+        "later even when the automation ran with the phone in a pocket"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G3, WFControlFlowMode=0, WFCondition=100,
+                 WFInput=cond_input(out(U_GRP, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.setstoredcontent",
+                 WFStoredContentKey="BrightwheelSessionToken",
+                 WFStoredContentGlobalValue=False,
+                 WFInput=ts(out(U_GRP, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
+                 WFInput=attach(out(U_GRP, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G3, WFControlFlowMode=1))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel sign-in failed"),
+                 WFNotificationActionBody=ts(
+                     "Nobody was checked ", "in" if checking_in else "out",
+                     ". Brightwheel said: ", out(U_LTXT, "Text"))))
+    A.append(act("is.workflow.actions.exit"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G3, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G2, WFControlFlowMode=1))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
+                 WFInput=attach(out(U_GT, "Stored Content"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G2, WFControlFlowMode=2))
+
+    # ---- per child: read state, skip if already there, otherwise send ----
+    for cname, target in CHILDREN:
+        p = kid[cname]
+        state_var = f"{cname} State"
+        A.append(comment(
+            f"--- {title_word.upper()}: {cname.upper()} ---\n"
+            f"Read {cname}'s most recent check-in event first, so that running "
+            "this twice in one morning does not record a second arrival. "
+            "Brightwheel reports 1 for checked in and 2 for checked out."
+        ))
+        A.append(act("is.workflow.actions.downloadurl", UUID=p["act"],
+                     Advanced=True, ShowHeaders=False, WFHTTPMethod="GET",
+                     WFURL=f"{BASE}/students/{target}/activities"
+                           "?page_size=1&action_type=ac_checkin",
+                     WFHTTPHeaders=dict_field([
+                         kv("Accept", ts("application/json")),
+                         kv("X-Parse-Session-Token", ts(var("Session Token"))),
+                         kv("X-Client-Name", ts(CLIENT_NAME)),
+                         kv("X-Client-Version", ts(CLIENT_VERSION)),
+                     ])))
+        A.append(act("is.workflow.actions.detect.dictionary", UUID=p["adict"],
+                     WFInput=ts(out(p["act"], "Contents of URL"))))
+        A.append(act("is.workflow.actions.getvalueforkey", UUID=p["state"],
+                     WFDictionaryKey="activities.1.state",
+                     WFGetDictionaryValueType="Value",
+                     WFInput=ts(out(p["adict"], "Dictionary"))))
+        A.append(act("is.workflow.actions.gettext", UUID=p["stext"],
+                     WFTextActionText=ts(out(p["state"], "Dictionary Value"))))
+        A.append(act("is.workflow.actions.setvariable", WFVariableName=state_var,
+                     WFInput=attach(out(p["stext"], "Text"))))
+        A.append(comment(
+            f"Skip {cname} if nothing needs to change.\n"
+            f"- Condition compares {cname}'s latest state with the one this "
+            "shortcut would produce\n"
+            f"- Otherwise branch sends the request and reports the result\n"
+            "- If the state cannot be read, the request is sent anyway"
+        ))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=p["gskip"], WFControlFlowMode=0,
+                     WFCondition=4, WFConditionalActionString=already,
+                     WFInput=cond_input(var(state_var))))
+        A.append(act("is.workflow.actions.notification",
+                     WFNotificationActionTitle=ts("Brightwheel"),
+                     WFNotificationActionBody=ts(
+                         f"• {cname} was {already_word} — no change")))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=p["gskip"], WFControlFlowMode=1))
+
+        A.append(act("is.workflow.actions.gettext", UUID=p["body"],
+                     WFTextActionText=ts(
+                         '{"checkins":[{"actor":{"object_id":"' + ACTOR + '"},'
+                         '"health_screen":{"questions":[]},'
+                         '"room":{"object_id":"' + ROOM + '"},'
+                         '"checked_in":' + ("true" if desired else "false") + ','
+                         '"target":{"object_id":"' + target + '"},'
+                         '"note":""}],'
+                         '"school_id":"' + SCHOOL + '",'
+                         '"secret":"',
+                         out(U["secret"], "School Secret"),
+                         '","checkin_code":"',
+                         out(U["code"], "Check-In Code"),
+                         '"}')))
+        A.append(act("is.workflow.actions.downloadurl", UUID=p["resp"],
+                     Advanced=True, ShowHeaders=False,
+                     WFURL=f"{BASE}/checkins/", WFHTTPMethod="POST",
+                     WFHTTPBodyType="File",
+                     WFRequestVariable=ts(out(p["body"], "Text")),
+                     WFFormValues=dict_field([]),
+                     WFHTTPHeaders=dict_field([
+                         kv("Content-Type", ts("application/json")),
+                         kv("Accept", ts("application/json")),
+                         kv("X-Parse-Session-Token", ts(var("Session Token"))),
+                         kv("X-Client-Name", ts(CLIENT_NAME)),
+                         kv("X-Client-Version", ts(CLIENT_VERSION)),
+                     ])))
+        A.append(act("is.workflow.actions.detect.dictionary", UUID=p["rdict"],
+                     WFInput=ts(out(p["resp"], "Contents of URL"))))
+        A.append(act("is.workflow.actions.getvalueforkey", UUID=p["chk"],
+                     WFDictionaryKey="checkins", WFGetDictionaryValueType="Value",
+                     WFInput=ts(out(p["rdict"], "Dictionary"))))
+        A.append(act("is.workflow.actions.gettext", UUID=p["rtext"],
+                     WFTextActionText=ts(out(p["resp"], "Contents of URL"))))
+        A.append(comment(
+            f"Report the result for {cname}.\n"
+            "- Condition checks whether Brightwheel echoed the check-in back\n"
+            "- Otherwise branch shows Brightwheel's own error text"
+        ))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=p["gres"], WFControlFlowMode=0,
+                     WFCondition=100,
+                     WFInput=cond_input(out(p["chk"], "Dictionary Value"))))
+        A.append(act("is.workflow.actions.notification",
+                     WFNotificationActionTitle=ts("Brightwheel"),
+                     WFNotificationActionBody=ts(f"✅ {cname} {verb}")))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=p["gres"], WFControlFlowMode=1))
+        A.append(act("is.workflow.actions.notification",
+                     WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
+                     WFNotificationActionBody=ts(out(p["rtext"], "Text"))))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=p["gres"], WFControlFlowMode=2))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=p["gskip"], WFControlFlowMode=2))
+
+    return name, {
+        "WFWorkflowActions": A,
+        "WFWorkflowClientVersion": "2700.0.4",
+        "WFWorkflowHasOutputFallback": False,
+        "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": glyph,
+                           "WFWorkflowIconStartColor": color},
+        "WFWorkflowImportQuestions": questions,
+        "WFWorkflowInputContentItemClasses": [],
+        "WFWorkflowMinimumClientVersion": 900,
+        "WFWorkflowMinimumClientVersionString": "900",
+        "WFWorkflowName": name,
+        "WFWorkflowOutputContentItemClasses": [],
+        "WFWorkflowTypes": [],
+    }
+
+
+if __name__ == "__main__":
+    dest = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    dest.mkdir(parents=True, exist_ok=True)
+    for d in ("in", "out"):
+        name, pl = build(d)
+        (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
+        print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
+              f"{len(pl['WFWorkflowImportQuestions'])} setup questions")

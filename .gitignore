@@ -1,0 +1,9 @@
+# Local scratch: proxy captures and working notes.
+*.chlz
+*.chls
+
+brightwheel-checkin-shortcut-handoff.md
+
+# Generated shortcut plists. Rebuild with build_shortcuts.py.
+build/
+*.shortcut
