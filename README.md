@@ -11,13 +11,55 @@ Plus a manual helper:
 
 - **Brightwheel Scan Code** — recover the school secret from the check-in QR code
 
+Requires iOS 27 (uses Store Content / Get Stored Content).
+
+## Working in this repo
+
+**Never edit a shortcut by hand.** `build_shortcuts.py` is the source of truth;
+anything changed in the Shortcuts app or in `dist/` is overwritten by the next
+build. The only values meant to be edited on the phone are the four Setup
+answers.
+
+The whole cycle is one command:
+
 ```bash
-python3 build_shortcuts.py out/
-validate-shortcut "out/Brightwheel Check In.xml" --target-macos 27 --target-platform ios
-sign-shortcut "out/Brightwheel Check In.xml" --name "Brightwheel Check In"
+./build.sh
 ```
 
-Requires iOS 27 (uses Store Content / Get Stored Content).
+which generates all three shortcuts, validates each against iOS 27, signs them,
+and writes both the unsigned `.xml` and the signed `.shortcut` into `dist/`.
+**Commit `dist/` alongside the generator change that produced it**, so the repo
+always carries an installable build and the XML diff shows what actually
+changed.
+
+`build.sh` fails on any validator error except one deliberate waiver (below), so
+a red build is a real problem.
+
+To install a fresh build, AirDrop `dist/*.shortcut` to the phone. **Delete the
+old shortcut first** — a same-name import is silently skipped, with no warning,
+which looks exactly like a code change that did nothing.
+
+### One waived validator rule
+
+`validate-shortcut` reports `Second Comment missing required Shortcuts
+Playground prompt text` for all three shortcuts. The attribution comment was
+removed on purpose. That rule is a single string check on the second comment;
+`build.sh` waives it by name and treats every other error as fatal.
+
+### Build artifacts churn
+
+Two things make committed artifacts noisier than they look:
+
+- Every build calls `uuidgen` for each action, so a rebuild rewrites every UUID.
+  The XMLs are otherwise byte-identical across runs — masking UUIDs makes two
+  builds compare equal — but a no-op rebuild still shows ~64 changed lines in
+  the smallest shortcut. Seeding UUIDs deterministically (e.g. `uuid5` over the
+  shortcut name plus a slot key) would fix this if the noise becomes annoying.
+- `shortcuts sign` is not deterministic: signing the same XML twice produces
+  different bytes. The `.shortcut` blobs therefore always show as changed, and
+  no amount of generator determinism avoids that.
+
+So review the `.xml` diff, not the `.shortcut` diff.
 
 ## Setup values
 
@@ -134,3 +176,8 @@ Used to tell failure modes apart from the response body:
 ## What is deliberately not committed
 
 Local working notes are gitignored.
+
+`dist/` **is** committed. The built shortcuts carry no live credentials: the four
+Setup values ship as placeholders (`you@example.com`, `PASTE PASSWORD AT
+IMPORT`, `0000`, `PASTE SCHOOL SECRET AT IMPORT`) and are filled in at import
+time on the device. Re-check this if the Setup defaults ever change.

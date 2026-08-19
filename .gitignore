@@ -4,6 +4,6 @@
 
 brightwheel-checkin-shortcut-handoff.md
 
-# Generated shortcut plists. Rebuild with build_shortcuts.py.
-build/
-*.shortcut
+# dist/ is intentionally NOT ignored. The generated .xml and signed .shortcut
+# are committed so an installable build is always available from the repo, and
+# so the XML diff shows what a generator change actually did.
