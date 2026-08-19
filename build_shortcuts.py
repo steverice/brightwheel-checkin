@@ -115,10 +115,10 @@ STATE_IN, STATE_OUT = "1", "2"
 # nothing, which is what stops a stray Siri phrase or a mistaken tap from
 # recording real attendance. Hours are inclusive: 8..12 covers 08:00-12:59, so
 # the two windows meet at 13:00 without overlapping.
-# TEMPORARY: the check-in window is widened to 2:00pm for live testing. Revert
+# TEMPORARY: the check-in window is widened to 3:00pm for live testing. Revert
 # to (8, 12, "8:00am and 1:00pm") when testing is done — while it is widened it
-# overlaps the check-out window between 1:00pm and 2:00pm.
-WINDOW = {"in": (8, 13, "8:00am and 2:00pm"),
+# overlaps the check-out window between 1:00pm and 3:00pm.
+WINDOW = {"in": (8, 14, "8:00am and 3:00pm"),
           "out": (13, 17, "1:00pm and 6:00pm")}
 
 # (key, prompt, blurb, action_value, prompt_default)
