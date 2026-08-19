@@ -123,21 +123,31 @@ direction would write real attendance, which is what the window prevents.
 Each of these imported cleanly, passed the validator, and was still wrong. Do not
 "simplify" them back.
 
+- **Format Date puts the pattern in `WFDateFormat`, not `WFDateFormatString`.**
+  The working shape, taken from a real exported shortcut, is
+  `WFDateFormatStyle="Custom"` plus `WFDateFormat="H"`, with no
+  `WFDateFormatString` key at all. `BEST_PRACTICES.md` says to set
+  `WFDateFormat="Custom"` and put the pattern in `WFDateFormatString`; doing that
+  yields an **empty string**, which is worse than an error because it survives a
+  "has any value" check. The validator only enforces its `WFDateFormatString`
+  rules when `WFDateFormat == "Custom"`, so the correct shape passes cleanly.
 - **The current time comes from a `{Type: CurrentDate}` magic token fed straight
-  into Format Date, not from a Date action.** A `Date` action with
-  `WFDateActionMode="Current Date"` imports silently producing *nothing*, so the
-  hour came out blank. That enum string is undocumented, has no case list in
-  ToolKit, and the only observed sample uses `Specified Date`. `CurrentDate` is a
-  documented variable type confirmed against 127 real shortcuts.
+  into Format Date, rather than a Date action.** `CurrentDate` is a documented
+  variable type confirmed against 127 real shortcuts, whereas
+  `WFDateActionMode="Current Date"` is an undocumented enum string with no
+  ToolKit case list. Note the empty hour was caused by the format keys above, not
+  by the Date action — both were changed at once during debugging, and the format
+  keys were the actual fault.
 - **The bounds are compared with Math plus plain Ifs, not one multi-condition
   If.** Numeric rows inside a `WFConditions` table import with an empty, red
   comparison value, while string rows in the same table render fine. There is no
   verified sample of a numeric row in that shape anywhere, and the template in
   `CONTROL_FLOW.md` appears to be wrong on this point.
-- **The guard fails closed.** An explicit "hour has no value" check blocks and
-  notifies. Without it a broken clock makes the two bound checks quietly pass,
-  which is how the Date action bug would otherwise have gone unnoticed — the
-  guard would have looked correct in the editor while allowing every run.
+- **The guard fails closed, and tests that the hour is a number.** A plain "has
+  any value" check is not enough: an empty string passes it, then loses the
+  start-hour comparison, so the run reports itself as *too early* and the real
+  fault stays hidden. The check matches `^[0-9]+$` and blocks on no match, which
+  catches empty, blank and non-numeric alike.
 
 Because the bounds are runtime values, the hour test cannot be a regex built at
 build time; it is `Hour − Start < 0` and `End − Hour < 1` via two Math actions,

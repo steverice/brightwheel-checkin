@@ -164,7 +164,7 @@ def build(direction):
     U = {k: next(i) for k in ("email", "password", "code", "secret",
                               "start", "end")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
-    U_WEM, U_WEC = next(i), next(i)
+    U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
     G0, G0A, G0B, G0C = next(i), next(i), next(i), next(i)
     U_GT = next(i)
     U_PROBE, U_PDICT, U_PERR = next(i), next(i), next(i)
@@ -264,14 +264,12 @@ def build(direction):
     ))
     A.append(act("is.workflow.actions.format.date", UUID=U_HOUR,
                  WFDate=ts({"Type": "CurrentDate"}),
-                 WFDateFormatStyle="Custom", WFDateFormat="Custom",
-                 WFDateFormatString="H"))
+                 WFDateFormatStyle="Custom", WFDateFormat="H"))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Hour",
                  WFInput=attach(out(U_HOUR, "Formatted Date"))))
     A.append(act("is.workflow.actions.format.date", UUID=U_DAY,
                  WFDate=ts({"Type": "CurrentDate"}),
-                 WFDateFormatStyle="Custom", WFDateFormat="Custom",
-                 WFDateFormatString="EEEE"))
+                 WFDateFormatStyle="Custom", WFDateFormat="EEEE"))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Weekday",
                  WFInput=attach(out(U_DAY, "Formatted Date"))))
 
@@ -301,21 +299,31 @@ def build(direction):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G0, WFControlFlowMode=2))
 
+    # A plain "has any value" test is not enough: an empty string passes it, and
+    # the run then fails the start-hour comparison and reports itself as too
+    # early. Require the hour to actually be digits.
+    A.append(act("is.workflow.actions.text.match", UUID=U_HNM,
+                 WFMatchTextPattern="^[0-9]+$", text=ts(var("Hour"))))
+    A.append(act("is.workflow.actions.count", UUID=U_HNC,
+                 WFCountType="Items",
+                 WFInput=attach(out(U_HNM, "Matches")),
+                 Input=attach(out(U_HNM, "Matches"))))
     A.append(comment(
-        "Stop when the clock cannot be read at all.\n"
-        "- Condition checks whether the current hour came back empty\n"
-        "- Blocking here keeps a broken clock from quietly disabling the two "
-        "window checks below, which would let every run through"
+        "Stop when the clock cannot be read.\n"
+        "- Condition counts whether the current hour came back as a number\n"
+        "- Blocking here keeps an unreadable clock from quietly disabling the "
+        "two window checks below, which would let every run through"
     ))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G0C, WFControlFlowMode=0,
-                 WFCondition=101, WFInput=cond_input(var("Hour"))))
+                 WFCondition=0, WFNumberValue="1",
+                 WFInput=cond_input(out(U_HNC, "Count"))))
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
                  WFNotificationActionBody=ts(
-                     "The current hour could not be read, so nothing was sent. "
-                     "Check the Format Date actions at the top of this "
-                     "shortcut.")))
+                     "The current hour did not come back as a number, so "
+                     "nothing was sent. It read as '", var("Hour"),
+                     "'. Check the Format Date actions at the top.")))
     A.append(act("is.workflow.actions.exit"))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G0C, WFControlFlowMode=2))
