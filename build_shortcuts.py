@@ -138,16 +138,22 @@ STATE_IN, STATE_OUT = "1", "2"
 WINDOW = {"in": (8, 13, "8:00am and 2:00pm"),
           "out": (13, 17, "1:00pm and 6:00pm")}
 
+# (key, prompt, blurb, action_value, prompt_default)
+#
+# action_value sits in the Text action. The validator rejects an empty one, and
+# it is what gets sent if an import question is skipped, so it is a marker that
+# fails loudly rather than something that looks like a real value.
+# prompt_default pre-fills the import field: blank for anything secret, a format
+# hint only where one genuinely helps.
 SETUP = [
     ("email", "Brightwheel account email",
-     "Email address you sign in to Brightwheel with.", "you@example.com"),
+     "Email address you sign in to Brightwheel with.", "not set", ""),
     ("password", "Brightwheel account password",
-     "Used only to refresh an expired session token.", "PASTE PASSWORD AT IMPORT"),
+     "Used only to refresh an expired session token.", "not set", ""),
     ("code", "Brightwheel check-in code",
-     "Your 4-digit guardian check-in code.", "0000"),
+     "Your 4-digit guardian check-in code.", "not set", ""),
     ("secret", "Brightwheel school QR secret",
-     "The 'secret' value from your school's check-in QR code.",
-     "PASTE SCHOOL SECRET AT IMPORT"),
+     "The 'secret' value from your school's check-in QR code.", "not set", ""),
 ]
 
 
@@ -218,11 +224,11 @@ def build(direction):
         "These four values are requested when the shortcut is imported. To change "
         "one later, edit the matching Text action, or re-import the shortcut."
     ))
-    for key, prompt, blurb, default in SETUP:
+    for key, prompt, blurb, default, prompt_default in SETUP:
         questions.append({
             "ActionIndex": len(A),
             "Category": "Parameter",
-            "DefaultValue": default,
+            "DefaultValue": prompt_default,
             "ParameterKey": "WFTextActionText",
             "Text": f"{prompt} — {blurb}",
         })
