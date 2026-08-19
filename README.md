@@ -99,6 +99,39 @@ you copied. The clipboard is prefilled as the default answer, so it is normally
 one tap. The helper is deliberately interactive and makes no API calls — unlike
 the two automation shortcuts, it is only ever run by hand at the sign-in tablet.
 
+## Time guard
+
+Each shortcut refuses to act outside its window:
+
+| Shortcut | Window |
+|---|---|
+| Check In | weekdays, 08:00–12:59 |
+| Check Out | weekdays, 13:00–17:59 |
+
+Hours are inclusive, so the two windows meet at 13:00 without overlapping.
+Outside the window nothing is sent and a notification says so.
+
+This exists because **Siri invocation cannot be disabled**. Every shortcut in
+the library can be started by saying its name, and there is no plist key or
+in-app toggle to prevent it — the only surface controls in the file format are
+`WFWorkflowTypes` and `WFQuickActionSurfaces`, neither of which covers Siri. The
+idempotency check already makes a stray *repeat* harmless, but a stray
+*opposite* direction would write real attendance, which is what the window
+prevents.
+
+Two implementation notes:
+
+- The guard **fails closed**. A fifth condition fires when the hour reads as
+  empty, so a broken Date action blocks and notifies rather than silently
+  letting everything through while appearing to work.
+- `WFDateActionMode` is a free-form string in ToolKit with no case list, and the
+  only observed sample uses `Specified Date`. `Current Date` is the matching UI
+  label rather than a verified constant, so **check that the Date action reads
+  "Current Date" after importing**. If the notification ever shows a blank day
+  and hour, that is the cause.
+- The weekday test compares against the English day names `Saturday` and
+  `Sunday`, so it assumes the phone's language is English.
+
 ## Design constraints
 
 Both shortcuts are triggered by **background** automations, which drives three

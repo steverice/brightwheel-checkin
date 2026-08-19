@@ -91,6 +91,23 @@ def kv_dict(key, items):
     }
 
 
+def cond_row(code, inp, key=None, value=None):
+    """One row of a multi-condition If."""
+    row = {"WFCondition": code, "WFInput": cond_input(inp)}
+    if key is not None:
+        row[key] = value
+    return row
+
+
+def conditions(prefix, rows):
+    """WFConditions table. prefix 0 = Any are true, 1 = All are true."""
+    return {
+        "Value": {"WFActionParameterFilterPrefix": prefix,
+                  "WFActionParameterFilterTemplates": rows},
+        "WFSerializationType": "WFContentPredicateTableTemplate",
+    }
+
+
 def act(identifier, **params):
     return {
         "WFWorkflowActionIdentifier": identifier,
@@ -110,6 +127,13 @@ def comment(text):
 #   checked_in: false -> checks the child OUT
 # The activity feed's `state` field reports the result: "1" = in, "2" = out.
 STATE_IN, STATE_OUT = "1", "2"
+
+# Weekday-only windows, as local clock hours. A run outside its window sends
+# nothing, which is what stops a stray Siri phrase or a mistaken tap from
+# recording real attendance. Hours are inclusive: 8..12 covers 08:00-12:59, so
+# the two windows meet at 13:00 without overlapping.
+WINDOW = {"in": (8, 12, "8:00am and 1:00pm"),
+          "out": (13, 17, "1:00pm and 6:00pm")}
 
 SETUP = [
     ("email", "Brightwheel account email",
@@ -138,6 +162,7 @@ def build(direction):
 
     i = iter(uuids(90))
     U = {k: next(i) for k in ("email", "password", "code", "secret")}
+    U_NOW, U_HOUR, U_DAY, G0 = next(i), next(i), next(i), next(i)
     U_GT = next(i)
     U_PROBE, U_PDICT, U_PERR = next(i), next(i), next(i)
     U_LOGIN, U_LTXT, U_MATCH, U_GRP = next(i), next(i), next(i), next(i)
@@ -204,6 +229,69 @@ def build(direction):
                                        "code": "Check-In Code",
                                        "secret": "School Secret"}[key],
                      WFTextActionText=default))
+
+    # ---- time guard ----
+    lo, hi, window_label = WINDOW[direction]
+    A.append(comment(
+        "--- WHEN THIS IS ALLOWED TO RUN ---\n"
+        f"Only act on a weekday between {window_label}. Every shortcut in your "
+        "library can be started by saying its name to Siri, and there is no way "
+        "to turn that off, so this window is what stops a misheard phrase or a "
+        "stray tap from recording attendance at the wrong time.\n\n"
+        "The weekday name is read in whatever language the phone is set to, and "
+        "the check below compares against the English names."
+    ))
+    # WFDateActionMode is a free-form string in ToolKit with no case list. The
+    # one observed sample uses "Specified Date", so "Current Date" is the
+    # matching UI label rather than a verified constant. Check that this action
+    # reads "Current Date" in the editor after importing.
+    A.append(act("is.workflow.actions.date", UUID=U_NOW,
+                 WFDateActionMode="Current Date"))
+    A.append(act("is.workflow.actions.format.date", UUID=U_HOUR,
+                 WFDate=ts(out(U_NOW, "Date")),
+                 WFDateFormatStyle="Custom", WFDateFormat="Custom",
+                 WFDateFormatString="H"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Hour",
+                 WFInput=attach(out(U_HOUR, "Formatted Date"))))
+    A.append(act("is.workflow.actions.format.date", UUID=U_DAY,
+                 WFDate=ts(out(U_NOW, "Date")),
+                 WFDateFormatStyle="Custom", WFDateFormat="Custom",
+                 WFDateFormatString="EEEE"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Weekday",
+                 WFInput=attach(out(U_DAY, "Formatted Date"))))
+    A.append(comment(
+        "Stop early when now is outside the window.\n"
+        "- The block runs if any one of the four checks below is true\n"
+        "- Hour is the current hour of the day, from 0 to 23\n"
+        "- Weekday is the current day name\n"
+        "- Nothing has been sent to Brightwheel before this point"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G0, WFControlFlowMode=0,
+                 WFConditions=conditions(0, [
+                     cond_row(0, var("Hour"), "WFNumberValue", str(lo)),
+                     cond_row(2, var("Hour"), "WFNumberValue", str(hi)),
+                     cond_row(4, var("Weekday"), "WFConditionalActionString",
+                              "Saturday"),
+                     cond_row(4, var("Weekday"), "WFConditionalActionString",
+                              "Sunday"),
+                     # Fail closed. If the clock cannot be read, the three checks
+                     # above would all quietly be false and the guard would let
+                     # everything through while appearing to work.
+                     cond_row(101, var("Hour")),
+                 ])))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts(
+                     f"Brightwheel — nobody {verb}"),
+                 WFNotificationActionBody=ts(
+                     f"This only runs on a weekday between {window_label}, so "
+                     "nothing was sent. It is ", var("Weekday"), " at hour ",
+                     var("Hour"), ". If the day and hour are blank above, the "
+                     "Date action is misconfigured and needs to be set to "
+                     "Current Date.")))
+    A.append(act("is.workflow.actions.exit"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G0, WFControlFlowMode=2))
 
     # ---- session token ----
     A.append(comment(
