@@ -95,6 +95,15 @@ saves the token to this shortcut's own on-device storage
 (`WFStoredContentGlobalValue = false`, so not synced to iCloud). Later runs reuse
 it until it expires, then sign in again.
 
+**Each shortcut signs in separately.** Stored content is scoped per shortcut, so
+Check In and Check Out each keep their own token and each need one interactive
+sign-in. That matters because a *background* automation cannot answer the code
+prompt: **run each shortcut by hand once**, at a moment when the action it
+performs is one you actually want, and let the automation take over afterwards.
+
+Setting `WFStoredContentGlobalValue = true` would share one token between them,
+at the cost of putting it in the iCloud-synced stored-content namespace.
+
 ### Sign-in is two steps and needs a 2FA code
 
 Verified against a full login capture on 2026-08-19.
