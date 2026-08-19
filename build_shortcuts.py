@@ -169,6 +169,7 @@ def build(direction):
     U_GT = next(i)
     U_PROBE, U_PDICT, U_PERR = next(i), next(i), next(i)
     U_LOGIN, U_LTXT, U_MATCH, U_GRP = next(i), next(i), next(i), next(i)
+    U_APR, U_APC, U_TLEN = next(i), next(i), next(i)
     G2, G3 = next(i), next(i)
     kid = {c: {k: next(i) for k in
                ("act", "adict", "state", "stext", "gskip", "body", "resp",
@@ -448,6 +449,10 @@ def build(direction):
                  WFInput=ts(out(U_GRP, "Matched Text Group"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
                  WFInput=attach(out(U_GRP, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_APR,
+                 WFTextActionText="signed in again"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Auth Path",
+                 WFInput=attach(out(U_APR, "Text"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G3, WFControlFlowMode=1))
     A.append(act("is.workflow.actions.notification",
@@ -462,8 +467,19 @@ def build(direction):
                  GroupingIdentifier=G2, WFControlFlowMode=1))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
                  WFInput=attach(out(U_GT, "Stored Content"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_APC,
+                 WFTextActionText="reused the saved token"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Auth Path",
+                 WFInput=attach(out(U_APC, "Text"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G2, WFControlFlowMode=2))
+
+    # Length only, never the token itself: enough to tell an empty token from a
+    # plausible one when a request comes back rejected.
+    A.append(act("is.workflow.actions.count", UUID=U_TLEN,
+                 WFCountType="Characters",
+                 WFInput=attach(var("Session Token")),
+                 Input=attach(var("Session Token"))))
 
     # ---- per child: read state, skip if already there, otherwise send ----
     for cname, target in CHILDREN:
@@ -563,7 +579,10 @@ def build(direction):
                      GroupingIdentifier=p["gres"], WFControlFlowMode=1))
         A.append(act("is.workflow.actions.notification",
                      WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
-                     WFNotificationActionBody=ts(out(p["rtext"], "Text"))))
+                     WFNotificationActionBody=ts(
+                         out(p["rtext"], "Text"),
+                         "\n\n(", var("Auth Path"), ", token length ",
+                         out(U_TLEN, "Count"), ")")))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gres"], WFControlFlowMode=2))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
