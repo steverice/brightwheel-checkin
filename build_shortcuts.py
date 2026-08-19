@@ -153,7 +153,10 @@ SETUP = [
     ("code", "Brightwheel check-in code",
      "Your 4-digit guardian check-in code.", "not set", ""),
     ("secret", "Brightwheel school QR secret",
-     "The 'secret' value from your school's check-in QR code.", "not set", ""),
+     "The 'secret' value from your school's check-in QR code. It looks like "
+     "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Run the Brightwheel Scan Code "
+     "shortcut at the school to read it off the code and copy it.",
+     "not set", ""),
 ]
 
 
