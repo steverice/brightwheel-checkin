@@ -119,11 +119,26 @@ idempotency check already makes a stray *repeat* harmless, but a stray
 *opposite* direction would write real attendance, which is what the window
 prevents.
 
+Implemented as two ordinary single-condition Ifs — a weekend check and an hour
+check — each using **Match Text + Count + a numeric If**, and each bailing via
+Stop This Shortcut before any request is made.
+
+**It is deliberately not one multi-condition If.** That was the first attempt and
+it imported broken: numeric rows inside a `WFConditions` table render with an
+empty, red comparison value, while string rows in the very same table render
+their values correctly. There is no verified sample of a numeric row in that
+shape in the golden library, in the skill's references, or in any public
+documentation — the template in `CONTROL_FLOW.md` appears to be wrong on this
+point. Rather than guess at a serialization that cannot be checked without a
+device, the guard uses the documented Match Text + Count + numeric If workaround,
+which is the verified pattern.
+
 Two implementation notes:
 
-- The guard **fails closed**. A fifth condition fires when the hour reads as
-  empty, so a broken Date action blocks and notifies rather than silently
-  letting everything through while appearing to work.
+- The guard **fails closed**. An unreadable clock yields a match count of zero,
+  which trips the same `is less than 1` check as an out-of-hours run, so a broken
+  Date action blocks and notifies rather than silently letting everything through
+  while appearing to work.
 - `WFDateActionMode` is a free-form string in ToolKit with no case list, and the
   only observed sample uses `Specified Date`. `Current Date` is the matching UI
   label rather than a verified constant, so **check that the Date action reads
@@ -131,6 +146,15 @@ Two implementation notes:
   and hour, that is the cause.
 - The weekday test compares against the English day names `Saturday` and
   `Sunday`, so it assumes the phone's language is English.
+
+### Gray input fields are normal
+
+**Detect Dictionary** and **Get Dictionary Value** show a gray `Input` /
+`Dictionary` chip rather than a colored variable token. That is Shortcuts
+displaying an implicit connection to the previous action's output, not a broken
+wire — every one of these actions is placed immediately after the action that
+feeds it, so the implicit chain resolves to the intended source. The one thing to
+watch: inserting an action between such a pair would silently redirect the input.
 
 ## Design constraints
 

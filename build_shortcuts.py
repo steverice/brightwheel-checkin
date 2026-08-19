@@ -91,23 +91,6 @@ def kv_dict(key, items):
     }
 
 
-def cond_row(code, inp, key=None, value=None):
-    """One row of a multi-condition If."""
-    row = {"WFCondition": code, "WFInput": cond_input(inp)}
-    if key is not None:
-        row[key] = value
-    return row
-
-
-def conditions(prefix, rows):
-    """WFConditions table. prefix 0 = Any are true, 1 = All are true."""
-    return {
-        "Value": {"WFActionParameterFilterPrefix": prefix,
-                  "WFActionParameterFilterTemplates": rows},
-        "WFSerializationType": "WFContentPredicateTableTemplate",
-    }
-
-
 def act(identifier, **params):
     return {
         "WFWorkflowActionIdentifier": identifier,
@@ -174,7 +157,9 @@ def build(direction):
 
     i = iter(uuids(90))
     U = {k: next(i) for k in ("email", "password", "code", "secret")}
-    U_NOW, U_HOUR, U_DAY, G0 = next(i), next(i), next(i), next(i)
+    U_NOW, U_HOUR, U_DAY = next(i), next(i), next(i)
+    U_WEM, U_WEC, U_HRM, U_HRC = next(i), next(i), next(i), next(i)
+    G0, G0B = next(i), next(i)
     U_GT = next(i)
     U_PROBE, U_PDICT, U_PERR = next(i), next(i), next(i)
     U_LOGIN, U_LTXT, U_MATCH, U_GRP = next(i), next(i), next(i), next(i)
@@ -243,7 +228,15 @@ def build(direction):
                      WFTextActionText=default))
 
     # ---- time guard ----
+    #
+    # Deliberately NOT a multi-condition If. Numeric rows inside a
+    # WFConditions table import with an empty, red comparison value, while
+    # string rows in the same table render fine. There is no verified sample of
+    # a numeric row in that shape anywhere, so the hour test uses the documented
+    # Match Text + Count + numeric If workaround instead: two ordinary
+    # single-condition Ifs, which are the verified pattern.
     lo, hi, window_label = WINDOW[direction]
+    hour_pattern = "^(" + "|".join(str(h) for h in range(lo, hi + 1)) + ")$"
     A.append(comment(
         "--- WHEN THIS IS ALLOWED TO RUN ---\n"
         f"Only act on a weekday between {window_label}. Every shortcut in your "
@@ -251,12 +244,8 @@ def build(direction):
         "to turn that off, so this window is what stops a misheard phrase or a "
         "stray tap from recording attendance at the wrong time.\n\n"
         "The weekday name is read in whatever language the phone is set to, and "
-        "the check below compares against the English names."
+        "the checks below expect the English names."
     ))
-    # WFDateActionMode is a free-form string in ToolKit with no case list. The
-    # one observed sample uses "Specified Date", so "Current Date" is the
-    # matching UI label rather than a verified constant. Check that this action
-    # reads "Current Date" in the editor after importing.
     A.append(act("is.workflow.actions.date", UUID=U_NOW,
                  WFDateActionMode="Current Date"))
     A.append(act("is.workflow.actions.format.date", UUID=U_HOUR,
@@ -271,39 +260,60 @@ def build(direction):
                  WFDateFormatString="EEEE"))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Weekday",
                  WFInput=attach(out(U_DAY, "Formatted Date"))))
+
+    A.append(act("is.workflow.actions.text.match", UUID=U_WEM,
+                 WFMatchTextPattern="^(Saturday|Sunday)$",
+                 text=ts(var("Weekday"))))
+    A.append(act("is.workflow.actions.count", UUID=U_WEC,
+                 WFCountType="Items",
+                 WFInput=attach(out(U_WEM, "Matches")),
+                 Input=attach(out(U_WEM, "Matches"))))
     A.append(comment(
-        "Stop early when now is outside the window.\n"
-        "- The block runs if any one of the four checks below is true\n"
-        "- Hour is the current hour of the day, from 0 to 23\n"
-        "- Weekday is the current day name\n"
+        "Stop on a weekend.\n"
+        "- Condition counts how many times today's name matched Saturday or "
+        "Sunday\n"
         "- Nothing has been sent to Brightwheel before this point"
     ))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G0, WFControlFlowMode=0,
-                 WFConditions=conditions(0, [
-                     cond_row(0, var("Hour"), "WFNumberValue", str(lo)),
-                     cond_row(2, var("Hour"), "WFNumberValue", str(hi)),
-                     cond_row(4, var("Weekday"), "WFConditionalActionString",
-                              "Saturday"),
-                     cond_row(4, var("Weekday"), "WFConditionalActionString",
-                              "Sunday"),
-                     # Fail closed. If the clock cannot be read, the three checks
-                     # above would all quietly be false and the guard would let
-                     # everything through while appearing to work.
-                     cond_row(101, var("Hour")),
-                 ])))
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(U_WEC, "Count"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts(
-                     f"Brightwheel — nobody {verb}"),
+                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
                  WFNotificationActionBody=ts(
-                     f"This only runs on a weekday between {window_label}, so "
-                     "nothing was sent. It is ", var("Weekday"), " at hour ",
-                     var("Hour"), ". If the day and hour are blank above, the "
-                     "Date action is misconfigured and needs to be set to "
-                     "Current Date.")))
+                     "This only runs on weekdays, and today is ",
+                     var("Weekday"), ". Nothing was sent.")))
     A.append(act("is.workflow.actions.exit"))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G0, WFControlFlowMode=2))
+
+    A.append(act("is.workflow.actions.text.match", UUID=U_HRM,
+                 WFMatchTextPattern=hour_pattern,
+                 text=ts(var("Hour"))))
+    A.append(act("is.workflow.actions.count", UUID=U_HRC,
+                 WFCountType="Items",
+                 WFInput=attach(out(U_HRM, "Matches")),
+                 Input=attach(out(U_HRM, "Matches"))))
+    A.append(comment(
+        "Stop outside the hours of the day this shortcut is meant for.\n"
+        "- Condition counts how many times the current hour matched an allowed "
+        "one\n"
+        "- A count of zero also covers the clock being unreadable, so a broken "
+        "Date action blocks rather than quietly letting everything through"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G0B, WFControlFlowMode=0,
+                 WFCondition=0, WFNumberValue="1",
+                 WFInput=cond_input(out(U_HRC, "Count"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
+                 WFNotificationActionBody=ts(
+                     f"This only runs between {window_label}, and it is hour ",
+                     var("Hour"), " right now. Nothing was sent. If the hour is "
+                     "blank, the Date action is not set to Current Date.")))
+    A.append(act("is.workflow.actions.exit"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G0B, WFControlFlowMode=2))
 
     # ---- session token ----
     A.append(comment(
