@@ -35,8 +35,6 @@ ENV_KEYS = {
     "secret": "BRIGHTWHEEL_SCHOOL_SECRET",
     "email": "BRIGHTWHEEL_EMAIL",
     "password": "BRIGHTWHEEL_PASSWORD",
-    "start": "BRIGHTWHEEL_START_HOUR",
-    "end": "BRIGHTWHEEL_END_HOUR",
 }
 
 
@@ -141,11 +139,6 @@ def comment(text):
 # The activity feed's `state` field reports the result: "1" = in, "2" = out.
 STATE_IN, STATE_OUT = "1", "2"
 
-# Default window bounds, offered as import-time defaults only — the real values
-# are whatever gets typed at import. Start hour is inclusive, end hour is
-# EXCLUSIVE, so the numbers entered match the times as spoken: 8 and 13 is
-# "8:00 to 1:00".
-WINDOW = {"in": (8, 13), "out": (13, 18)}
 
 # (key, kind, prompt, blurb, action_value, prompt_default)
 #
@@ -171,12 +164,6 @@ SETUP = [
      "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Run the Brightwheel Scan Code "
      "shortcut at the school to read it off the code and copy it.",
      "not set", ""),
-    ("start", "number", "Earliest hour this may run",
-     "A whole hour from 0 to 23, and the shortcut may run from this hour "
-     "onwards. 8 means it can run from 8:00am.", None, None),
-    ("end", "number", "Hour this stops running",
-     "A whole hour from 0 to 23, and the shortcut stops running once this hour "
-     "arrives. 13 means the last run is at 12:59pm.", None, None),
 ]
 
 
@@ -193,8 +180,7 @@ def build(direction, env=None):
     color = 4292093695 if checking_in else 4251333119  # green / orange
 
     i = iter(uuids(180))
-    U = {k: next(i) for k in ("code", "secret", "email", "password",
-                              "start", "end")}
+    U = {k: next(i) for k in ("code", "secret", "email", "password")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
     U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
     G0, G0A, G0B, G0C = next(i), next(i), next(i), next(i)
@@ -235,10 +221,10 @@ def build(direction, env=None):
         f"Brightwheel — {title_word}\n\n"
         f"Checks First Child and Second Child {verb} at Your School (room Your Room) by "
         "talking to the Brightwheel API directly, without opening the app.\n\n"
-        "Built to be run unattended by a location automation (for example, when "
-        "you arrive at school in the morning), so it never stops to ask a "
-        "question while it runs. Everything it needs is collected once, when you "
-        "import it.\n\n"
+        "Built to be run unattended by an arrival trigger, so it does not stop "
+        "to ask anything on the normal path. Everything it needs is collected "
+        "once, when you import it. When it should run is decided by the "
+        "trigger's own time range, not by this shortcut.\n\n"
         "Each run:\n"
         "1. Checks the saved sign-in is still valid, and signs in again by itself "
         "if it has expired.\n"
@@ -273,15 +259,9 @@ def build(direction, env=None):
     ))
     names = {"code": "Check-In Code", "secret": "School Secret",
              "email": "Account Email",
-             "password": "Account Password",
-             "start": "Start Hour", "end": "End Hour"}
+             "password": "Account Password"}
     for key, kind, prompt, blurb, default, prompt_default in SETUP:
-        if kind == "number":
-            default = str(WINDOW[direction][0 if key == "start" else 1])
-            prompt_default = default
-            param, ident = "WFNumberActionNumber", "is.workflow.actions.number"
-        else:
-            param, ident = "WFTextActionText", "is.workflow.actions.gettext"
+        param, ident = "WFTextActionText", "is.workflow.actions.gettext"
         if env is not None:
             # Debug build: bake the real value in and ask nothing at import.
             default = env[ENV_KEYS[key]]
@@ -295,144 +275,6 @@ def build(direction, env=None):
             })
         A.append(act(ident, UUID=U[key], CustomOutputName=names[key],
                      **{param: default}))
-
-    # ---- time guard ----
-    #
-    # Two things here were learned the hard way and should not be "simplified":
-    #
-    # 1. The current time comes from a {Type: CurrentDate} magic token fed
-    #    straight into Format Date, not from a Date action. A Date action with
-    #    WFDateActionMode="Current Date" imported silently producing nothing, so
-    #    the hour came out blank. That enum string is undocumented and the only
-    #    observed sample uses "Specified Date". CurrentDate is a documented
-    #    magic variable type.
-    # 2. The bounds are compared with Math and two plain Ifs rather than one
-    #    multi-condition If. Numeric rows inside a WFConditions table import
-    #    with an empty, red comparison value, while string rows in the same
-    #    table render fine.
-    A.append(comment(
-        "--- WHEN THIS IS ALLOWED TO RUN ---\n"
-        "Only act on a weekday, between the two hours asked for at import. "
-        "Every shortcut in your library can be started by saying its name to "
-        "Siri, and there is no way to turn that off, so this window is what "
-        "stops a misheard phrase or a stray tap from recording attendance at "
-        "the wrong time.\n\n"
-        "The weekday name is read in whatever language the phone is set to, and "
-        "the check below expects the English names."
-    ))
-    A.append(act("is.workflow.actions.format.date", UUID=U_HOUR,
-                 WFDate=ts({"Type": "CurrentDate"}),
-                 WFDateFormatStyle="Custom", WFDateFormat="H"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Hour",
-                 WFInput=attach(out(U_HOUR, "Formatted Date"))))
-    A.append(act("is.workflow.actions.format.date", UUID=U_DAY,
-                 WFDate=ts({"Type": "CurrentDate"}),
-                 WFDateFormatStyle="Custom", WFDateFormat="EEEE"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Weekday",
-                 WFInput=attach(out(U_DAY, "Formatted Date"))))
-
-    A.append(act("is.workflow.actions.text.match", UUID=U_WEM,
-                 WFMatchTextPattern="^(Saturday|Sunday)$",
-                 text=ts(var("Weekday"))))
-    A.append(act("is.workflow.actions.count", UUID=U_WEC,
-                 WFCountType="Items",
-                 WFInput=attach(out(U_WEM, "Matches")),
-                 Input=attach(out(U_WEM, "Matches"))))
-    A.append(comment(
-        "Stop on a weekend.\n"
-        "- Condition counts how many times today's name matched Saturday or "
-        "Sunday\n"
-        "- Nothing has been sent to Brightwheel before this point"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0, WFControlFlowMode=0,
-                 WFCondition=2, WFNumberValue="0",
-                 WFInput=cond_input(out(U_WEC, "Count"))))
-    A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
-                 WFNotificationActionBody=ts(
-                     "This only runs on weekdays, and today is ",
-                     var("Weekday"), ". Nothing was sent.")))
-    A.append(act("is.workflow.actions.exit"))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0, WFControlFlowMode=2))
-
-    # A plain "has any value" test is not enough: an empty string passes it, and
-    # the run then fails the start-hour comparison and reports itself as too
-    # early. Require the hour to actually be digits.
-    A.append(act("is.workflow.actions.text.match", UUID=U_HNM,
-                 WFMatchTextPattern="^[0-9]+$", text=ts(var("Hour"))))
-    A.append(act("is.workflow.actions.count", UUID=U_HNC,
-                 WFCountType="Items",
-                 WFInput=attach(out(U_HNM, "Matches")),
-                 Input=attach(out(U_HNM, "Matches"))))
-    A.append(comment(
-        "Stop when the clock cannot be read.\n"
-        "- Condition counts whether the current hour came back as a number\n"
-        "- Blocking here keeps an unreadable clock from quietly disabling the "
-        "two window checks below, which would let every run through"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0C, WFControlFlowMode=0,
-                 WFCondition=0, WFNumberValue="1",
-                 WFInput=cond_input(out(U_HNC, "Count"))))
-    A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
-                 WFNotificationActionBody=ts(
-                     "The current hour did not come back as a number, so "
-                     "nothing was sent. It read as '", var("Hour"),
-                     "'. Check the Format Date actions at the top.")))
-    A.append(act("is.workflow.actions.exit"))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0C, WFControlFlowMode=2))
-
-    # Hour minus the start hour: negative means too early.
-    A.append(act("is.workflow.actions.math", UUID=U_AFT,
-                 WFMathOperation="-",
-                 WFInput=attach(var("Hour")),
-                 WFMathOperand=attach(out(U["start"], "Start Hour"))))
-    A.append(comment(
-        "Stop before the window opens.\n"
-        "- The calculation above is the current hour minus the earliest hour\n"
-        "- A result below zero means it is still too early today"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0A, WFControlFlowMode=0,
-                 WFCondition=0, WFNumberValue="0",
-                 WFInput=cond_input(out(U_AFT, "Calculation Result"))))
-    A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
-                 WFNotificationActionBody=ts(
-                     "It is hour ", var("Hour"), ", earlier than the ",
-                     out(U["start"], "Start Hour"),
-                     ":00 start set when this was imported. Nothing was sent.")))
-    A.append(act("is.workflow.actions.exit"))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0A, WFControlFlowMode=2))
-
-    # End hour minus hour: one or more means still inside, since end is exclusive.
-    A.append(act("is.workflow.actions.math", UUID=U_BEF,
-                 WFMathOperation="-",
-                 WFInput=attach(out(U["end"], "End Hour")),
-                 WFMathOperand=attach(var("Hour"))))
-    A.append(comment(
-        "Stop once the window has closed.\n"
-        "- The calculation above is the finish hour minus the current hour\n"
-        "- The finish hour is exclusive, so anything below one is too late"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0B, WFControlFlowMode=0,
-                 WFCondition=0, WFNumberValue="1",
-                 WFInput=cond_input(out(U_BEF, "Calculation Result"))))
-    A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
-                 WFNotificationActionBody=ts(
-                     "It is hour ", var("Hour"), ", and this stops running at ",
-                     out(U["end"], "End Hour"),
-                     ":00 as set when it was imported. Nothing was sent.")))
-    A.append(act("is.workflow.actions.exit"))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G0B, WFControlFlowMode=2))
 
     # ---- session token, with interactive sign-in on failure ----
     #

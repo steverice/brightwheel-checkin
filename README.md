@@ -77,7 +77,7 @@ So review the `.xml` diff, not the `.shortcut` diff.
 
 ## Setup values
 
-Both shortcuts ask for six values **at import time**, so no credential is
+Both shortcuts ask for four values **at import time**, so no credential is
 stored in this repo or in the signed `.shortcut` file:
 
 | Prompt | Field | Notes |
@@ -86,8 +86,6 @@ stored in this repo or in the signed `.shortcut` file:
 | Brightwheel account password | text | Same |
 | Check-in code | text | 4-digit guardian code; authenticates as you |
 | School QR secret | text | The `secret` value from the school's check-in QR |
-| Earliest hour this may run | number | 0–23, inclusive |
-| Hour this stops running | number | 0–23, **exclusive** |
 
 **The session token is never asked for.** Nobody setting this up has one to hand.
 The first run finds nothing stored, gets `E1200` from `/users/me`, signs in, and
@@ -150,58 +148,34 @@ you copied. The clipboard is prefilled as the default answer, so it is normally
 one tap. The helper is deliberately interactive and makes no API calls — unlike
 the two automation shortcuts, it is only ever run by hand at the sign-in tablet.
 
-## Time guard
+## When these run
 
-Each shortcut refuses to act outside a weekday window, and the window itself is
-set at import rather than baked in. **Start is inclusive, end is exclusive**, so
-the numbers typed match the times as spoken: `8` and `13` is "8:00 to 1:00", with
-the last run at 12:59. Defaults are 8→13 for Check In and 13→18 for Check Out.
+**iOS 27 folded automations into shortcuts.** There is no separate automation
+object any more: a shortcut carries one or more triggers at the top, so the
+arrival trigger and its time range are attached to the shortcut itself, on the
+device.
 
-Outside the window nothing is sent and a notification says which bound was
-missed. Everything happens before any network request.
+The shortcuts therefore contain **no time logic of their own**. An earlier build
+carried a weekday-and-hour guard; it was removed once the trigger's own time
+range made it redundant.
 
-This exists because **Siri invocation cannot be disabled**. Every shortcut in the
-library can be started by saying its name, and there is no plist key or in-app
-toggle to prevent it — the only surface controls in the file format are
-`WFWorkflowTypes` and `WFQuickActionSurfaces`, neither of which covers Siri. The
-idempotency check already makes a stray *repeat* harmless, but a stray *opposite*
-direction would write real attendance, which is what the window prevents.
+One consequence to be aware of. The guard also covered **Siri**, which cannot be
+disabled — every shortcut in the library can be started by saying its name, and
+a trigger's time range does not constrain a spoken or tapped run. The idempotency
+check still makes a stray *repeat* harmless, but a stray run of the *opposite*
+direction will now write real attendance.
 
-### Three things here were learned the hard way
+The trigger cannot be built into the file. `WFArriveLocationTrigger` is
+authorable and its `enter_location_between` variant takes `WFArriveLocation`,
+`WFArriveStartTime` and `WFArriveEndTime`, but `WFArriveLocation` is a
+`redacted-local-location-token` — a device-specific placemark that has to come
+from the on-device picker, and shipping a placeholder imports as an *invalid*
+automation. So **attach triggers last**: re-importing a rebuilt shortcut replaces
+it and loses them.
 
-Each of these imported cleanly, passed the validator, and was still wrong. Do not
-"simplify" them back.
-
-- **Format Date puts the pattern in `WFDateFormat`, not `WFDateFormatString`.**
-  The working shape, taken from a real exported shortcut, is
-  `WFDateFormatStyle="Custom"` plus `WFDateFormat="H"`, with no
-  `WFDateFormatString` key at all. `BEST_PRACTICES.md` says to set
-  `WFDateFormat="Custom"` and put the pattern in `WFDateFormatString`; doing that
-  yields an **empty string**, which is worse than an error because it survives a
-  "has any value" check. The validator only enforces its `WFDateFormatString`
-  rules when `WFDateFormat == "Custom"`, so the correct shape passes cleanly.
-- **The current time comes from a `{Type: CurrentDate}` magic token fed straight
-  into Format Date, rather than a Date action.** `CurrentDate` is a documented
-  variable type confirmed against 127 real shortcuts, whereas
-  `WFDateActionMode="Current Date"` is an undocumented enum string with no
-  ToolKit case list. Note the empty hour was caused by the format keys above, not
-  by the Date action — both were changed at once during debugging, and the format
-  keys were the actual fault.
-- **The bounds are compared with Math plus plain Ifs, not one multi-condition
-  If.** Numeric rows inside a `WFConditions` table import with an empty, red
-  comparison value, while string rows in the same table render fine. There is no
-  verified sample of a numeric row in that shape anywhere, and the template in
-  `CONTROL_FLOW.md` appears to be wrong on this point.
-- **The guard fails closed, and tests that the hour is a number.** A plain "has
-  any value" check is not enough: an empty string passes it, then loses the
-  start-hour comparison, so the run reports itself as *too early* and the real
-  fault stays hidden. The check matches `^[0-9]+$` and blocks on no match, which
-  catches empty, blank and non-numeric alike.
-
-Because the bounds are runtime values, the hour test cannot be a regex built at
-build time; it is `Hour − Start < 0` and `End − Hour < 1` via two Math actions,
-each compared against a literal. Only the *upper* bound of an `is between`
-condition may hold a variable, so that condition is unusable here.
+Arrival triggers also need Settings → Privacy & Security → Location Services →
+Shortcuts set to **Always**. "While Using the App" makes a geofence silently
+never fire, which is indistinguishable from a broken automation.
 
 ### Responses are matched as text, not parsed as JSON
 
