@@ -7,6 +7,10 @@ automations:
 - **Brightwheel Check In** — arrive at school in the morning
 - **Brightwheel Check Out** — arrive at school in the afternoon
 
+Plus a manual helper:
+
+- **Brightwheel Scan Code** — recover the school secret from the check-in QR code
+
 ```bash
 python3 build_shortcuts.py out/
 validate-shortcut "out/Brightwheel Check In.xml" --target-macos 27 --target-platform ios
@@ -30,6 +34,28 @@ stored in this repo or in the signed `.shortcut` file:
 The session token is never entered by hand. It is fetched on first run, saved to
 this shortcut's own on-device storage (`WFStoredContentGlobalValue = false`, so
 not synced to iCloud), and refreshed automatically when it expires.
+
+## Recovering the school secret
+
+`Brightwheel Scan Code` exists for the case where the school enables Quick Scan
+Refresh (which rotates the secret every ~3h) or a run fails with
+`Problem scanning QR code`. It reads the decoded QR text, extracts `secret`,
+copies it to the clipboard, and warns if `signatures_enabled` has flipped on.
+
+**iOS cannot decode a QR code inside a shortcut.** There is no available action
+for it:
+
+- `is.workflow.actions.scanbarcode` decodes an image, but has no row in the
+  iOS 27 ToolKit — it is macOS-only, and the validator rejects it for an iOS
+  target.
+- `com.apple.BarcodeScanner.BarcodeScannerIntent` is the iOS entry, but it is
+  *Open Code Scanner*: a launcher whose only parameter is `target: launch`. It
+  does not return the scanned text.
+
+So the scan happens in Code Scanner (Control Center) and the helper parses what
+you copied. The clipboard is prefilled as the default answer, so it is normally
+one tap. The helper is deliberately interactive and makes no API calls — unlike
+the two automation shortcuts, it is only ever run by hand at the sign-in tablet.
 
 ## Design constraints
 
