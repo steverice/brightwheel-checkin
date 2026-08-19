@@ -63,15 +63,17 @@ So review the `.xml` diff, not the `.shortcut` diff.
 
 ## Setup values
 
-Both shortcuts ask for four values **at import time**, so no credential is
+Both shortcuts ask for six values **at import time**, so no credential is
 stored in this repo or in the signed `.shortcut` file:
 
-| Prompt | Notes |
-|---|---|
-| Brightwheel account email | Used only to refresh an expired session token |
-| Brightwheel account password | Same |
-| Check-in code | 4-digit guardian code; authenticates as you |
-| School QR secret | The `secret` value from the school's check-in QR |
+| Prompt | Field | Notes |
+|---|---|---|
+| Brightwheel account email | text | Used only to refresh an expired session token |
+| Brightwheel account password | text | Same |
+| Check-in code | text | 4-digit guardian code; authenticates as you |
+| School QR secret | text | The `secret` value from the school's check-in QR |
+| Earliest hour this may run | number | 0–23, inclusive |
+| Hour this stops running | number | 0–23, **exclusive** |
 
 The session token is never entered by hand. It is fetched on first run, saved to
 this shortcut's own on-device storage (`WFStoredContentGlobalValue = false`, so
@@ -101,51 +103,46 @@ the two automation shortcuts, it is only ever run by hand at the sign-in tablet.
 
 ## Time guard
 
-Each shortcut refuses to act outside its window:
+Each shortcut refuses to act outside a weekday window, and the window itself is
+set at import rather than baked in. **Start is inclusive, end is exclusive**, so
+the numbers typed match the times as spoken: `8` and `13` is "8:00 to 1:00", with
+the last run at 12:59. Defaults are 8→13 for Check In and 13→18 for Check Out.
 
-| Shortcut | Window |
-|---|---|
-| Check In | weekdays, 08:00–12:59 |
-| Check Out | weekdays, 13:00–17:59 |
+Outside the window nothing is sent and a notification says which bound was
+missed. Everything happens before any network request.
 
-Hours are inclusive, so the two windows meet at 13:00 without overlapping.
-Outside the window nothing is sent and a notification says so.
-
-This exists because **Siri invocation cannot be disabled**. Every shortcut in
-the library can be started by saying its name, and there is no plist key or
-in-app toggle to prevent it — the only surface controls in the file format are
+This exists because **Siri invocation cannot be disabled**. Every shortcut in the
+library can be started by saying its name, and there is no plist key or in-app
+toggle to prevent it — the only surface controls in the file format are
 `WFWorkflowTypes` and `WFQuickActionSurfaces`, neither of which covers Siri. The
-idempotency check already makes a stray *repeat* harmless, but a stray
-*opposite* direction would write real attendance, which is what the window
-prevents.
+idempotency check already makes a stray *repeat* harmless, but a stray *opposite*
+direction would write real attendance, which is what the window prevents.
 
-Implemented as two ordinary single-condition Ifs — a weekend check and an hour
-check — each using **Match Text + Count + a numeric If**, and each bailing via
-Stop This Shortcut before any request is made.
+### Three things here were learned the hard way
 
-**It is deliberately not one multi-condition If.** That was the first attempt and
-it imported broken: numeric rows inside a `WFConditions` table render with an
-empty, red comparison value, while string rows in the very same table render
-their values correctly. There is no verified sample of a numeric row in that
-shape in the golden library, in the skill's references, or in any public
-documentation — the template in `CONTROL_FLOW.md` appears to be wrong on this
-point. Rather than guess at a serialization that cannot be checked without a
-device, the guard uses the documented Match Text + Count + numeric If workaround,
-which is the verified pattern.
+Each of these imported cleanly, passed the validator, and was still wrong. Do not
+"simplify" them back.
 
-Two implementation notes:
+- **The current time comes from a `{Type: CurrentDate}` magic token fed straight
+  into Format Date, not from a Date action.** A `Date` action with
+  `WFDateActionMode="Current Date"` imports silently producing *nothing*, so the
+  hour came out blank. That enum string is undocumented, has no case list in
+  ToolKit, and the only observed sample uses `Specified Date`. `CurrentDate` is a
+  documented variable type confirmed against 127 real shortcuts.
+- **The bounds are compared with Math plus plain Ifs, not one multi-condition
+  If.** Numeric rows inside a `WFConditions` table import with an empty, red
+  comparison value, while string rows in the same table render fine. There is no
+  verified sample of a numeric row in that shape anywhere, and the template in
+  `CONTROL_FLOW.md` appears to be wrong on this point.
+- **The guard fails closed.** An explicit "hour has no value" check blocks and
+  notifies. Without it a broken clock makes the two bound checks quietly pass,
+  which is how the Date action bug would otherwise have gone unnoticed — the
+  guard would have looked correct in the editor while allowing every run.
 
-- The guard **fails closed**. An unreadable clock yields a match count of zero,
-  which trips the same `is less than 1` check as an out-of-hours run, so a broken
-  Date action blocks and notifies rather than silently letting everything through
-  while appearing to work.
-- `WFDateActionMode` is a free-form string in ToolKit with no case list, and the
-  only observed sample uses `Specified Date`. `Current Date` is the matching UI
-  label rather than a verified constant, so **check that the Date action reads
-  "Current Date" after importing**. If the notification ever shows a blank day
-  and hour, that is the cause.
-- The weekday test compares against the English day names `Saturday` and
-  `Sunday`, so it assumes the phone's language is English.
+Because the bounds are runtime values, the hour test cannot be a regex built at
+build time; it is `Hour − Start < 0` and `End − Hour < 1` via two Math actions,
+each compared against a literal. Only the *upper* bound of an `is between`
+condition may hold a variable, so that condition is unusable here.
 
 ### Gray input fields are normal
 
