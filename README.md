@@ -125,9 +125,27 @@ and used until it stops working, at which point requests return `E1200` and the
 notification says to capture a fresh one and re-import.
 
 Tokens appear long-lived; the one from the original capture was still valid hours
-later. Note that first-attempt code delivery proved unreliable — the code only
-arrived after using "resend", which is what `/sessions/start` being called twice
-in the capture represents.
+later.
+
+### Code delivery is unreliable, so the prompt can resend
+
+The first `/sessions/start` frequently sends nothing; the code only arrives after
+a resend. That is why `/sessions/start` appears twice in the login capture, and
+it has since happened on the phone as well.
+
+The sign-in loop runs **five** passes and calls `/sessions/start` at the top of
+each, so every pass sends a fresh code. The prompt turns that into a resend
+control: **leave the box empty, or type `resend`**, and the answer is ignored so
+the next pass sends another code. Only a strict `^[0-9]{6}$` answer is exchanged,
+so a typo or a padded paste also falls through to a resend rather than burning a
+pass on a code the API would reject.
+
+Cancelling the prompt still stops the shortcut — that is Ask for Input's own
+behavior and the intended way out. Before this, cancelling was the *only* way
+out, so a run where no code ever arrived could not reach its own retry.
+
+There is no button: `Ask for Input` has none, `Show Alert` returns no choice, and
+`Choose from Menu` would add a tap to every normal sign-in.
 
 ## Recovering the school secret
 

@@ -285,7 +285,7 @@ def build(direction, env=None):
     U_GT, U_PROBE = next(i), next(i)
     U_START, U_CODE, U_SESS = next(i), next(i), next(i)
     U_TMATCH, U_TGRP, U_ZERO = next(i), next(i), next(i)
-    G_LOOP, G_SIGNIN, G_GOT, G_FAIL = (next(i) for _ in range(4))
+    G_LOOP, G_SIGNIN, G_CODE, G_GOT, G_FAIL = (next(i) for _ in range(5))
 
     A.append(comment(
         "--- SESSION ---\n"
@@ -316,15 +316,17 @@ def build(direction, env=None):
                  WFInput=attach(out(C_BAD, "Count"))))
 
     A.append(comment(
-        "Sign in again, up to three times.\n"
+        "Sign in again, up to five times.\n"
         "- Each pass asks Brightwheel to send a fresh code, then asks you for it\n"
+        "- Leaving the box empty, or typing resend, sends another code instead "
+        "of trying to use what was typed\n"
         "- Cancelling the code prompt stops the whole shortcut\n"
         "- A pass that gets a token clears Needs Sign In, so later passes do "
         "nothing"
     ))
     A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
                  GroupingIdentifier=G_LOOP, WFControlFlowMode=0,
-                 WFRepeatCount=3))
+                 WFRepeatCount=5))
     A.append(comment(
         "Only act while the session is still not usable.\n"
         "- Condition checks whether an earlier pass already signed in"
@@ -349,9 +351,25 @@ def build(direction, env=None):
                      ]),
                  ])))
     A.append(act("is.workflow.actions.ask", UUID=U_CODE,
-                 WFAskActionPrompt="Brightwheel emailed a 6-digit code. Enter it "
-                                   "here, or cancel to stop.",
+                 WFAskActionPrompt="Enter the 6-digit code Brightwheel emailed. "
+                                   "No code yet? Leave this empty, or type "
+                                   "resend, and another will be sent. Cancel "
+                                   "stops the shortcut.",
                  WFInputType="Text"))
+    # Only a six-digit answer is worth exchanging. Empty, "resend", or a typo
+    # all skip the exchange, so the next pass calls /sessions/start again and a
+    # new code is sent. Posting a junk code instead would burn an attempt and
+    # risks the API treating it as a failed sign-in.
+    C_CODE = gate(U_CODE, "Provided Input", "^[0-9]{6}$")
+    A.append(comment(
+        "Only try the code if one was actually entered.\n"
+        "- Condition counts whether the answer is six digits\n"
+        "- Anything else falls through, and the next pass sends a new code"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_CODE, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_CODE, "Count"))))
     A.append(act("is.workflow.actions.downloadurl", UUID=U_SESS,
                  Advanced=True, ShowHeaders=False,
                  WFURL=f"{BASE}/sessions", WFHTTPMethod="POST",
@@ -400,6 +418,8 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_GOT, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_CODE, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SIGNIN, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
                  GroupingIdentifier=G_LOOP, WFControlFlowMode=2))
@@ -416,8 +436,9 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
                  WFNotificationActionBody=ts(
-                     "Could not sign in, so nothing was sent. Run this shortcut "
-                     "by hand to enter a fresh code.")))
+                     "Could not sign in after five tries, so nothing was sent. "
+                     "Run this shortcut by hand and enter a code, or leave the "
+                     "box empty to have another sent.")))
     A.append(act("is.workflow.actions.exit"))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_FAIL, WFControlFlowMode=2))
