@@ -89,18 +89,21 @@ stored in this repo or in the signed `.shortcut` file:
 
 **The session token is never asked for.** Nobody setting this up has one to hand.
 The first run finds nothing stored, gets `E1200` from `/users/me`, signs in, and
-saves the token to this shortcut's own on-device storage
-(`WFStoredContentGlobalValue = false`, so not synced to iCloud). Later runs reuse
-it until it expires, then sign in again.
+saves the token. Later runs reuse it until it expires, then sign in again.
 
-**Each shortcut signs in separately.** Stored content is scoped per shortcut, so
-Check In and Check Out each keep their own token and each need one interactive
-sign-in. That matters because a *background* automation cannot answer the code
-prompt: **run each shortcut by hand once**, at a moment when the action it
-performs is one you actually want, and let the automation take over afterwards.
+**One sign-in covers both shortcuts.** The token lives in the shared
+stored-content namespace (`WFStoredContentGlobalValue = true`), so whichever
+shortcut runs first signs in and the other picks the token up. Scoped storage was
+used originally and meant signing in twice, which matters because a *background*
+trigger cannot answer the code prompt — the second shortcut could only be seeded
+by running it by hand at a moment when its action was one you actually wanted.
 
-Setting `WFStoredContentGlobalValue = true` would share one token between them,
-at the cost of putting it in the iCloud-synced stored-content namespace.
+The trade is that the shared store syncs through iCloud. It holds a session
+token, not the password: the password only ever exists in the shortcut's own
+setup fields, which Apple clears when a shortcut is shared.
+
+**Sign-in is still interactive**, so run whichever shortcut you set up first by
+hand once, then let the triggers take over.
 
 ### Sign-in is two steps and needs a 2FA code
 

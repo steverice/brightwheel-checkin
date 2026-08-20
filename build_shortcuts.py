@@ -290,11 +290,14 @@ def build(direction, env=None):
     A.append(comment(
         "--- SESSION ---\n"
         "Use the token saved by the last sign-in. There is none the first time, "
-        "so the first run signs in and saves one."
+        "so the first run signs in and saves one.\n\n"
+        "The token is kept in the shared store rather than this shortcut's own, "
+        "so signing in here also covers the other Brightwheel shortcut. That "
+        "store syncs through iCloud."
     ))
     A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GT,
                  WFStoredContentKey="BrightwheelSessionToken",
-                 WFStoredContentGlobalValue=False))
+                 WFStoredContentGlobalValue=True))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
                  WFInput=attach(out(U_GT, "Stored Content"))))
 
@@ -386,7 +389,7 @@ def build(direction, env=None):
                  WFInput=cond_input(out(C_GOT, "Count"))))
     A.append(act("is.workflow.actions.setstoredcontent",
                  WFStoredContentKey="BrightwheelSessionToken",
-                 WFStoredContentGlobalValue=False,
+                 WFStoredContentGlobalValue=True,
                  WFInput=ts(out(U_TGRP, "Matched Text Group"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
                  WFInput=attach(out(U_TGRP, "Matched Text Group"))))
