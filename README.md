@@ -191,10 +191,28 @@ out:
 | `E1200` | token expired or absent |
 | `"token"\s*:\s*"([^"]+)"` | sign-in succeeded (top-level `token`) |
 | `"state"\s*:\s*"1"` / `"2"` | child is already checked in / out |
-| `"checkins"\s*:` | the check-in was accepted |
+| `"event_date"` | a check-in record was really created |
 
 The activities reply for a single event carries exactly one `state` field, so
 that match is unambiguous.
+
+**Do not test success with `"checkins"`.** That was the original check and it
+reported success while nothing happened. An empty request body returns
+`422 {"checkins":"cannot process empty checkins"}` — which contains the very
+string being matched. `"event_date"` appears in no error body and only when a
+record is actually created.
+
+### The request body must be a token attachment
+
+`WFRequestVariable` takes a `WFTextTokenAttachment`, per SKILL.md rule 9, which
+names it as a variable-only parameter. Serialised as a `WFTextTokenString` — the
+form shown in the ACTIONS.md File Body example — the request goes out with an
+**empty body**. Combined with the `"checkins"` test above, that produced a
+completely silent failure: the shortcut reported both children checked out,
+posted no data, and created no records.
+
+No golden shortcut uses `WFHTTPBodyType = File` with `WFRequestVariable`, so this
+path had no worked example to copy.
 
 ### Gray input fields are normal
 

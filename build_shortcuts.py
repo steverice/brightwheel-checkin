@@ -477,7 +477,12 @@ def build(direction, env=None):
                      Advanced=True, ShowHeaders=False,
                      WFURL=f"{BASE}/checkins/", WFHTTPMethod="POST",
                      WFHTTPBodyType="File",
-                     WFRequestVariable=ts(out(p["body"], "Text")),
+                     # SKILL.md rule 9: WFRequestVariable is a variable-only
+                     # parameter and takes a WFTextTokenAttachment. Serialised as
+                     # a WFTextTokenString it sends an EMPTY body, and the API
+                     # answers 422 "cannot process empty checkins" — which still
+                     # contains "checkins", so it used to read as success.
+                     WFRequestVariable=attach(out(p["body"], "Text")),
                      WFFormValues=dict_field([]),
                      WFHTTPHeaders=dict_field([
                          kv("Content-Type", ts("application/json")),
@@ -488,7 +493,9 @@ def build(direction, env=None):
                      ])))
         A.append(act("is.workflow.actions.gettext", UUID=p["rtext"],
                      WFTextActionText=ts(out(p["resp"], "Contents of URL"))))
-        C_OK = gate(p["resp"], "Contents of URL", r'"checkins"\s*:')
+        # "event_date" appears only when a record was really created. The
+        # obvious test, "checkins", also matches the 422 empty-body error.
+        C_OK = gate(p["resp"], "Contents of URL", '"event_date"')
         A.append(comment(
             f"Report the result for {cname}.\n"
             "- Condition counts whether Brightwheel echoed the check-in back\n"
