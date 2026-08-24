@@ -12,3 +12,6 @@ brightwheel-checkin-shortcut-handoff.md
 # secret and the check-in code; a debug build has all of them baked in.
 .env
 dist-debug/
+
+# macOS
+.DS_Store
