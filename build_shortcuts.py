@@ -584,7 +584,7 @@ def build_scanner():
         "rotates the secret every few hours, or if a check-in fails with "
         "'Problem scanning QR code'.\n\n"
         "How to use it, standing at the sign-in tablet:\n"
-        "1. Run this, then open Code Scanner from Control Center.\n"
+        "1. Run this. It opens Code Scanner for you.\n"
         "2. Point it at the QR code and choose Copy.\n"
         "3. Come back and press OK.\n\n"
         "iOS has no action that reads a QR code inside a shortcut, so the "
@@ -602,19 +602,25 @@ def build_scanner():
         "The QR code is not a link. It holds a small block of text listing the "
         "school's secret, the school id, and whether signatures are required."
     ))
-    # An "Open Code Scanner" action belongs here and is genuinely nicer, but it
-    # cannot be generated: com.apple.BarcodeScanner.BarcodeScannerIntent needs an
-    # AppIntentDescriptor, no verified example of one exists in the toolkit
-    # catalogs or the golden library, and a hand-written descriptor makes the
-    # whole shortcut fail to import with "contains features not supported on
-    # this device". Add that action by hand above this alert if you want it —
-    # the alert is what makes it work, by holding the run until you are back
-    # from the scanner with something on the clipboard.
+    # Plain Open App pointed at Code Scanner — NOT
+    # com.apple.BarcodeScanner.BarcodeScannerIntent. The AppIntent shows up in
+    # the grounding catalog as "Open Code Scanner" and looks like the right
+    # answer, but it needs an AppIntentDescriptor that has no verified example
+    # anywhere, and an invented one makes the whole shortcut fail to import.
+    # Shape taken from a working shortcut exported by the user.
+    A.append(act("is.workflow.actions.openapp",
+                 WFAppIdentifier="com.apple.BarcodeScanner",
+                 WFSelectedApp={
+                     "BundleIdentifier": "com.apple.BarcodeScanner",
+                     "Name": "Code Scanner",
+                     "TeamIdentifier": "0000000000",
+                 }))
+    # Opening another app lets the run carry straight on, so this alert is what
+    # holds it until you are back with something on the clipboard.
     A.append(act("is.workflow.actions.alert",
                  WFAlertActionTitle=ts("Brightwheel"),
                  WFAlertActionMessage=ts(
-                     "Open Code Scanner from Control Center, scan the school's "
-                     'QR code and choose "Copy", then come back and press OK.'),
+                     'Scan the code and choose "Copy", then press OK'),
                  WFAlertActionCancelButtonShown=True))
     A.append(act("is.workflow.actions.getclipboard", UUID=U_CLIP))
     A.append(act("is.workflow.actions.detect.dictionary", UUID=U_DICT,

@@ -169,14 +169,17 @@ you copied. A **Show Alert** sits before the clipboard read and is load-bearing:
 it holds the run while you leave for the scanner, without which the clipboard
 read would return whatever was there beforehand.
 
-**The "Open Code Scanner" action cannot be generated.**
-`com.apple.BarcodeScanner.BarcodeScannerIntent` requires an
-`AppIntentDescriptor`, and no verified example of one exists — not in
-`toolkit-v78-first-party-parameter-keys.json`, not in the enum-case catalog, and
-not in any golden shortcut. A hand-written descriptor makes the **entire shortcut
-fail to import**, with "contains features not supported on this device", so it is
-left out. Adding that action by hand after import works fine; it just cannot
-survive a rebuild. The clipboard is prefilled as the default answer, so it is normally
+**"Open Code Scanner" is plain Open App, not an AppIntent.** It is
+`is.workflow.actions.openapp` with `WFAppIdentifier = com.apple.BarcodeScanner`
+and a matching `WFSelectedApp` dict.
+
+`com.apple.BarcodeScanner.BarcodeScannerIntent` also exists, and the grounding
+catalog lists it under the display name *Open Code Scanner*, which makes it look
+like the right answer. It is not: it needs an `AppIntentDescriptor` for which no
+verified example exists anywhere, and an invented one makes the **entire shortcut
+fail to import** with "contains features not supported on this device". Reach for
+the ordinary WF action first and only treat an AppIntent as necessary once a
+working sample proves it. The clipboard is prefilled as the default answer, so it is normally
 one tap. The helper is deliberately interactive and makes no API calls — unlike
 the two automation shortcuts, it is only ever run by hand at the sign-in tablet.
 
