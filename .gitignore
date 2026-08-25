@@ -19,3 +19,9 @@ dist-debug/
 # Python
 __pycache__/
 *.pyc
+
+# Integration-test scratch: generated certs, signed test builds, and
+# screenshots saved when an assertion fails.
+dist-test/
+tests/tls/
+tests/artifacts/
