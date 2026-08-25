@@ -8,8 +8,10 @@ only says what the shortcut believes.
 
 Run with ./test.sh. See TESTING.md for what the harness had to work around.
 """
+import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -117,6 +119,16 @@ class Suite:
             for entry in (r["body"] or {}).get("checkins", []):
                 out.append((entry.get("target") or {}).get("object_id"))
         return out
+
+    def unique_name(self, base):
+        """A library name not already taken, so a re-run is still meaningful."""
+        existing = set(self.sim.library())
+        if base not in existing:
+            return base
+        n = 2
+        while f"{base} {n}" in existing:
+            n += 1
+        return f"{base} {n}"
 
     def activity_ids(self):
         return [r["path"].split("/students/")[1].split("/")[0]
@@ -242,12 +254,62 @@ def test_expired_token_signs_in_again(s):
         f"the new token should have been stored, saw {stored}"
 
 
+
+def test_setup_questions_commit_their_answers(s):
+    """Canary: does answering an import question actually configure the shortcut?
+
+    This is the mechanism `dist/` relies on — the shipping build ships
+    placeholders and expects setup to fill them in. It is deliberately tiny, so
+    when it fails it is saying something about iOS and nothing about Brightwheel.
+
+    Known broken on iOS 27 betas from 24A5408d onwards: the wizard collects the
+    answers and "Add Shortcut" then does nothing at all, with no error logged.
+    Verified working on iOS 26.5 (23F77) and on iOS 27 beta 24A5355p, so the
+    question shape is right and this is a regression to wait out. When this
+    starts passing, drop the expected_broken marker.
+    """
+    name = s.unique_name("Setup Canary")
+    path = testbuild.build_setup_probe(name)
+    marker = "246813"          # digits: immune to the keyboard's autocapitalisation
+
+    s.sim.terminate_shortcuts()
+    time.sleep(1.2)
+    subprocess.run(["xcrun", "simctl", "openurl", s.sim.udid,
+                    "file://" + urllib.parse.quote(str(path))], check=True)
+    time.sleep(4)
+
+    assert s.sim.tap_affirmative(), "no Set Up Shortcut button on the import sheet"
+    time.sleep(3)
+
+    img = s.sim.image()
+    w, h = img.size
+    s.sim.tap(int(w * 0.33), int(h * 0.335), device_size=img.size)   # the answer field
+    time.sleep(0.8)
+    s.sim.type_text(marker)
+    time.sleep(0.5)
+    assert s.sim.tap_affirmative(), "no Add Shortcut button after answering"
+    time.sleep(4)
+
+    assert name in s.sim.library(), \
+        "answering the setup question left the shortcut uninstalled"
+    actions = s.sim.shortcut_actions(name)
+    value = actions[0]["WFWorkflowActionParameters"]["WFTextActionText"]
+    assert value == marker, \
+        f"setup answer did not reach the action: {value!r} (wanted {marker!r})"
+
+
+test_setup_questions_commit_their_answers.expected_broken = (
+    "iOS 27 beta regression: Add Shortcut is inert once a question is answered "
+    "(works on iOS 26.5 and on iOS 27 beta 24A5355p)")
+
+
 TESTS = [
     test_skips_children_already_in_the_wanted_state,
     test_checks_both_children_in,
     test_check_out_sends_checked_in_false,
     test_stale_school_code_causes_a_second_pass,
     test_expired_token_signs_in_again,
+    test_setup_questions_commit_their_answers,
 ]
 
 
@@ -264,25 +326,39 @@ def main(argv):
 
     chosen = [t for t in TESTS if not only or any(o in t.__name__ for o in only)]
     print(f"\nrunning {len(chosen)} test(s):\n")
-    failures = []
+    failures, known = [], []
     for t in chosen:
         label = t.__name__.replace("_", " ")
         print(f"  … {label}", flush=True)
+        broken = getattr(t, "expected_broken", None)
         try:
             t(suite)
-            print(f"  \033[32mPASS\033[0m {label}\n")
+            if broken:
+                print(f"  \033[32mFIXED\033[0m {label}\n"
+                      f"        this was expected to fail — drop the "
+                      f"expected_broken marker\n")
+            else:
+                print(f"  \033[32mPASS\033[0m {label}\n")
         except Exception as exc:
             shot = suite.sim.screenshot(f"FAIL-{t.__name__}.png")
-            print(f"  \033[31mFAIL\033[0m {label}\n        {exc}\n"
-                  f"        screenshot: {shot}\n")
-            failures.append(t.__name__)
+            if broken:
+                print(f"  \033[33mKNOWN\033[0m {label}\n        {broken}\n"
+                      f"        (failed as expected: {exc})\n")
+                known.append(t.__name__)
+            else:
+                print(f"  \033[31mFAIL\033[0m {label}\n        {exc}\n"
+                      f"        screenshot: {shot}\n")
+                failures.append(t.__name__)
     suite.teardown()
 
     print("-" * 60)
+    if known:
+        print(f"{len(known)} known-broken (not counted as failures): "
+              f"{', '.join(known)}")
     if failures:
         print(f"{len(failures)} failed: {', '.join(failures)}")
         return 1
-    print(f"all {len(chosen)} passed")
+    print(f"all {len(chosen) - len(known)} passed")
     return 0
 
 

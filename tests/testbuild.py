@@ -57,3 +57,60 @@ if __name__ == "__main__":
     base = sys.argv[1] if len(sys.argv) > 1 else "https://localhost:8788/api/v1"
     for name, path in build(base).items():
         print(f"{name}: {path}")
+
+
+SETUP_PROBE_PLACEHOLDER = "not set"
+
+
+def build_setup_probe(name, dest=OUT):
+    """A two-action shortcut whose only value comes from an import question.
+
+    Small on purpose: when the setup flow breaks, this says so without any of
+    the Brightwheel machinery being involved.
+    """
+    import plistlib
+    import uuid
+
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    u = str(uuid.uuid4()).upper()
+    plist = {
+        "WFWorkflowActions": [
+            {"WFWorkflowActionIdentifier": "is.workflow.actions.gettext",
+             "WFWorkflowActionParameters": {
+                 "UUID": u, "CustomOutputName": "Answer",
+                 "WFTextActionText": SETUP_PROBE_PLACEHOLDER}},
+            {"WFWorkflowActionIdentifier": "is.workflow.actions.setclipboard",
+             "WFWorkflowActionParameters": {
+                 "WFInput": {"Value": {"OutputName": "Answer", "OutputUUID": u,
+                                       "Type": "ActionOutput"},
+                             "WFSerializationType": "WFTextTokenAttachment"}}},
+        ],
+        "WFWorkflowClientVersion": "2700.0.4",
+        "WFWorkflowHasOutputFallback": False,
+        "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": 59692,
+                           "WFWorkflowIconStartColor": 4292093695},
+        "WFWorkflowImportQuestions": [{
+            "ActionIndex": 0,
+            "Category": "Parameter",
+            "DefaultValue": "",
+            "ParameterKey": "WFTextActionText",
+            "Text": "Setup canary — type the digits shown by the test",
+        }],
+        "WFWorkflowInputContentItemClasses": [],
+        "WFWorkflowMinimumClientVersion": 900,
+        "WFWorkflowMinimumClientVersionString": "900",
+        "WFWorkflowName": name,
+        "WFWorkflowOutputContentItemClasses": [],
+        "WFWorkflowTypes": [],
+    }
+    xml = dest / f"{name}.xml"
+    xml.write_bytes(plistlib.dumps(plist, fmt=plistlib.FMT_XML))
+    subprocess.run(["sign-shortcut", str(xml), "--name", name],
+                   check=True, capture_output=True, text=True)
+    signed_dir = Path(os.environ.get(
+        "CLAUDE_PLUGIN_OPTION_OUTPUT_DIR",
+        Path.home() / "Documents" / "Shortcuts Playground"))
+    target = dest / f"{name}.shortcut"
+    shutil.copy(signed_dir / f"{name}.shortcut", target)
+    return target
