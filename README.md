@@ -99,13 +99,9 @@ a resend. Cancelling stops the shortcut.
 
 Run **Brightwheel Scan Code** if the school enables Quick Scan Refresh (which
 rotates the secret every few hours) or a run fails with `Problem scanning QR
-code`. It opens Code Scanner, waits at an alert while you scan and choose Copy,
-then extracts the `secret`, copies it to the clipboard, and warns if
-`signatures_enabled` has flipped on — which would break check-ins, since the
-payload sends no signature.
-
-iOS has no action that decodes a QR code inside a shortcut, which is why the
-scanning itself happens in Code Scanner.
+code`. It opens the camera, reads the code, extracts the `secret`, copies it to
+the clipboard, and warns if `signatures_enabled` has flipped on — which would
+break check-ins, since the payload sends no signature.
 
 ## Brightwheel API
 

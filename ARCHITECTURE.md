@@ -178,12 +178,19 @@ Each of these passes the validator, imports cleanly, and then misbehaves.
 | Multi-condition If | CONTROL_FLOW.md shows numeric rows with `WFNumberValue` | Numeric rows import empty and red; use Match Text + Count + a numeric If |
 | "Open Code Scanner" | Grounding catalog lists `com.apple.BarcodeScanner.BarcodeScannerIntent` under that display name | Plain `is.workflow.actions.openapp` with `WFAppIdentifier` + `WFSelectedApp` |
 | Glyph numbers | `shortcuts-official-glyph-mapping.json` | Right for many entries, but `59692` documented as `circledDownArrow` renders as a checkmark |
-| `scanbarcode` | Listed as an action | macOS-only; no iOS 27 ToolKit row, and the validator rejects it for iOS |
+| `scanbarcode` | macOS-only, and requires `imageFile` | Works on iOS 27 as a **live scanner**: `WFScanCodeActionMode = 0`, no image input, output named `QR/Barcodes` |
 
 The Format Date one is the nastiest: the validator only enforces its
 `WFDateFormatString` rules when `WFDateFormat == "Custom"`, so the wrong shape is
 precisely the shape it never checks, and it yields an **empty string** rather than
 an error.
+
+The `scanbarcode` row is the clearest case of the bundled ToolKit snapshot being
+*incomplete* rather than wrong: `toolkit-v78-ios27-tool-ids.json` has no entry,
+so the validator concludes macOS-only, and the documented `imageFile` parameter
+describes the macOS scan-an-image variant. The iOS action is a live camera
+scanner that returns decoded text directly. Absence from the snapshot is not
+evidence of absence on the device.
 
 **AppIntents need an `AppIntentDescriptor`**, and no verified example of one
 exists in the catalogs or the golden library. An invented descriptor does not
@@ -212,8 +219,9 @@ distinguish "worked" from "looked like it worked".
   determined from the body.
 - **Handing off to another app lets the run continue.** A clipboard read after an
   `Open App` sees stale content; a blocking **Show Alert** immediately after the
-  hand-off holds the run until the user returns. That is what makes an "open
-  Code Scanner, then read what was copied" flow work.
+  hand-off holds the run until the user returns. Worth knowing generally, though
+  this project no longer needs it — `scanbarcode` returns the decoded text
+  in-process, so the hand-off went away entirely.
 - **Gray input chips are normal.** Detect Dictionary and Get Dictionary Value show
   a gray `Input` / `Dictionary` chip for an implicit connection to the previous
   action, not a broken wire. Inserting an action between such a pair silently
@@ -244,9 +252,10 @@ never fire.
   be called *before* the comment, not between it and the `If`.
 - **UUIDs must look random.** Repeating-hex placeholders are a hard error. Mint
   them with `uuidgen`.
-- **Waive validator rules by name, never wholesale.** `build.sh` waives exactly
-  one — the removed Shortcuts Playground attribution comment — and treats
-  everything else as fatal. That guard has caught real regressions, including a
+- **Waive validator rules by name, never wholesale.** `build.sh` waives two, each
+  with its reason recorded: the removed attribution comment, and both
+  `scanbarcode` complaints, which a device-exported shortcut disproves.
+  Everything else stays fatal. That guard has caught real regressions, including a
   malformed control-flow block and a genuinely empty parameter.
 - **Signing is flaky, not broken.** `shortcuts sign` intermittently returns
   "Failed to modify some records" or a 500; the wrapper retries after converting

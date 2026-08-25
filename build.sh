@@ -23,10 +23,16 @@ else
 fi
 OUTPUT_DIR="${CLAUDE_PLUGIN_OPTION_OUTPUT_DIR:-$HOME/Documents/Shortcuts Playground}"
 
-# The Shortcuts Playground attribution comment was deliberately removed, so this
-# one validator rule is expected to fail for every shortcut. Any other reported
-# error is real and must stop the build.
-WAIVED="Shortcuts Playground prompt text"
+# Validator errors that are expected and deliberate. Anything else is real and
+# must stop the build.
+#   1. The Shortcuts Playground attribution comment was removed on purpose.
+#   2. is.workflow.actions.scanbarcode, on two counts. It has no row in the
+#      bundled iOS 27 ToolKit snapshot, so the validator calls it macOS-only,
+#      and the validator also demands an imageFile parameter. Neither holds for
+#      the iOS live scanner, which takes WFScanCodeActionMode and no image at
+#      all. Both are contradicted by a working shortcut exported off an iOS 27
+#      phone; the docs describe the macOS scan-an-image variant.
+WAIVED="Shortcuts Playground prompt text|is\.workflow\.actions\.scanbarcode|Scan QR or Barcode missing imageFile"
 
 rm -rf "$DIST"
 mkdir -p "$DIST"
@@ -39,7 +45,7 @@ for xml in "$DIST"/*.xml; do
     printf '%-24s ' "$name"
 
     report="$(validate-shortcut "$xml" --target-macos 27 --target-platform ios 2>&1 || true)"
-    unexpected="$(printf '%s\n' "$report" | grep '^- ' | grep --invert-match "$WAIVED" || true)"
+    unexpected="$(printf '%s\n' "$report" | grep '^- ' | grep --extended-regexp --invert-match "$WAIVED" || true)"
     if [ -n "$unexpected" ]; then
         echo "FAILED"
         printf '%s\n' "$unexpected"
