@@ -113,9 +113,15 @@ stale secret, a wrong check-in code, an empty body and an expired token, and
 matches only the first.
 
 **Idempotency, failing open.** Each pass reads the child's latest check-in event
-and skips anyone already in the target state, so a repeated trigger cannot record
+and skips anyone already in the state this run wants, so a repeated trigger cannot record
 a second arrival. If the state cannot be read at all the request is sent anyway:
 a duplicate event is recoverable, a silently skipped arrival is not.
+
+Comparing "already checked in?" against "want them checked in?" needs two
+*runtime* numbers compared, and an If tests a variable against a literal, never
+against another variable. So the two are pasted into one string: `11` or `00`
+when they agree, `01` or `10` when they differ, matched with the fixed pattern
+`^(01|10)$`.
 
 That check is also what makes the retry safe. A second pass re-runs every child,
 and anyone who already succeeded is skipped — so the retry needs no memory of who
@@ -159,11 +165,28 @@ be seeded by running it by hand at a moment its action happened to be wanted. Th
 shared store syncs through iCloud; what it holds is a session token, not the
 password.
 
-**Two shortcuts, not one.** Merging would halve the setup, but
-`WFArriveLocationTrigger` reports no trigger output, so a merged shortcut cannot
-tell which trigger fired and would have to infer direction from the clock.
-Deciding from current state instead would make it a toggle and destroy
-idempotency — a second arrival would check the children out.
+**Direction is structural, carried by two thin wrappers.** `Brightwheel Check`
+holds all the logic and takes its direction from Shortcut Input; `Brightwheel
+Check In` and `Brightwheel Check Out` are four actions each — a Text action and a
+Run Shortcut — and are what the triggers attach to.
+
+The alternatives were worse. A location trigger reports **no output**
+(`outputTypeIdentifiers: ["none"]`, against a catalog that records real outputs
+for 13 other triggers), so a single shortcut cannot tell which trigger woke it.
+Inferring from the clock would put the deciding threshold in the actions while
+the trigger's time range lives on the device, editable — two sources of truth for
+one fact, and the failure is a silent wrong-direction write. Toggling from
+current state needs no clock but destroys idempotency: a second arrival would
+check the children out.
+
+Run Shortcut resolves its target **by name**. The generated `workflowIdentifier`
+is freshly minted and matches nothing on any device; a probe pair confirmed on
+device that an imported copy still finds its target and passes input. So the
+wrappers need no on-device picking, unlike a trigger's placemark.
+
+Running `Brightwheel Check` on its own stops with a notification, since its input
+is neither `in` nor `out`. That also makes it safe to have in the library: saying
+its name to Siri cannot check anyone anywhere.
 
 **Debug builds are isolated by construction.** `./build.sh --debug` bakes `.env`
 values in and emits no import questions. Such a build contains a real password,

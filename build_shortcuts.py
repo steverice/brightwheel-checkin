@@ -162,17 +162,10 @@ SETUP = [
 ]
 
 
-def build(direction, env=None):
-    """direction: 'in' or 'out'."""
-    checking_in = direction == "in"
-    desired = checking_in                 # value sent as `checked_in`
-    already = STATE_IN if checking_in else STATE_OUT   # skip when state == this
-    verb = "checked in" if checking_in else "checked out"
-    already_word = "already checked in" if checking_in else "already checked out"
-    title_word = "Check In" if checking_in else "Check Out"
-    name = f"Brightwheel {title_word}"
-    glyph = 59692 if checking_in else 59707   # circledDownArrow / circledUpArrow
-    color = 4292093695 if checking_in else 4251333119  # green / orange
+def build(direction=None, env=None):
+    """The shortcut that does the work. Direction arrives as Shortcut Input."""
+    name = "Brightwheel Check"
+    glyph, color = 59692, 4292093695
 
     i = iter(uuids(180))
     U = {k: next(i) for k in ("code", "email", "password")}
@@ -203,8 +196,14 @@ def build(direction, env=None):
         branch. Matching the raw response text is the primitive that works.
         """
         t, m, c = next(i), next(i), next(i)
-        # name=None means src is a variable name rather than an action UUID.
-        source = var(src) if name is None else out(src, name)
+        # src may be an action UUID (with name), a variable name (name=None),
+        # or a ready-made attachment value such as {"Type": "ExtensionInput"}.
+        if isinstance(src, dict):
+            source = src
+        elif name is None:
+            source = var(src)
+        else:
+            source = out(src, name)
         A.append(act("is.workflow.actions.gettext", UUID=t,
                      WFTextActionText=ts(source)))
         A.append(act("is.workflow.actions.text.match", UUID=m,
@@ -215,9 +214,12 @@ def build(direction, env=None):
         return c
 
     A.append(comment(
-        f"Brightwheel — {title_word}\n\n"
-        f"Checks First Child and Second Child {verb} at Your School (room Your Room) by "
+        "Brightwheel — Check\n\n"
+        "Checks First Child and Second Child in or out at Your School (room Your Room) by "
         "talking to the Brightwheel API directly, without opening the app.\n\n"
+        "Do not run this one directly. It is started by Brightwheel Check In or "
+        "Brightwheel Check Out, which is how it knows which direction to go; run "
+        "on its own it stops and says so.\n\n"
         "Built to be run unattended by an arrival trigger, so it does not stop "
         "to ask anything on the normal path. Everything it needs is collected "
         "once, when you import it. When it should run is decided by the "
@@ -226,8 +228,8 @@ def build(direction, env=None):
         "1. Checks the saved sign-in is still valid, and signs in again by itself "
         "if it has expired.\n"
         "2. Looks up whether each child is already checked in or out.\n"
-        f"3. Skips any child who is {already_word}, so running it twice is "
-        "harmless.\n"
+        "3. Skips anyone already the way this run wants them, so running it "
+        "twice is harmless.\n"
         "4. Sends the request for everyone else and posts a notification per child."
     ))
     A.append(comment(
@@ -248,6 +250,85 @@ def build(direction, env=None):
         "below first. The school secret is shared with every family at the center, "
         "and the check-in code authenticates as you."
     ))
+
+    # ---- which direction ----
+    #
+    # Direction comes from Shortcut Input, set by whichever wrapper started this.
+    # It deliberately is NOT inferred from the clock: the trigger time ranges
+    # live on the device and can be edited there, so a baked-in threshold would
+    # silently disagree with them and send the wrong direction.
+    #
+    # Run with no input, this stops. That also makes the shortcut safe to have
+    # in the library: saying its name to Siri cannot check anyone anywhere.
+    U_DIRT, U_DIRF, U_VT, U_VF, U_AT, U_AF = (next(i) for _ in range(6))
+    G_VALID, G_DIR = next(i), next(i)
+    EXT = {"Type": "ExtensionInput"}
+
+    C_VALID = gate(EXT, None, "^(in|out)$")
+    A.append(comment(
+        "Stop unless a direction was handed in.\n"
+        "- Condition counts whether the input is exactly in or out\n"
+        "- Nothing has been sent to Brightwheel at this point"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_VALID, WFControlFlowMode=0,
+                 WFCondition=0, WFNumberValue="1",
+                 WFInput=cond_input(out(C_VALID, "Count"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionBody=ts(
+                     "Nothing was sent. Run Brightwheel Check In or Brightwheel "
+                     "Check Out instead — they are what tell this which way "
+                     "round to go.")))
+    A.append(act("is.workflow.actions.exit"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_VALID, WFControlFlowMode=2))
+
+    # Wanted In is 1 for a check-in and 0 for a check-out, which later gets
+    # compared against whether the child is already checked in.
+    C_DIR = gate(EXT, None, "^in$")
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Wanted In",
+                 WFInput=attach(out(C_DIR, "Count"))))
+    A.append(comment(
+        "Set the wording and the value Brightwheel expects.\n"
+        "- Condition checks whether this run is a check-in\n"
+        "- Checked In Value goes into the request as true or false\n"
+        "- Verb and Already Word are only used in notifications"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_DIR, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(var("Wanted In"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_DIRT,
+                 WFTextActionText="true"))
+    A.append(act("is.workflow.actions.setvariable",
+                 WFVariableName="Checked In Value",
+                 WFInput=attach(out(U_DIRT, "Text"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_VT,
+                 WFTextActionText="checked in"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Verb",
+                 WFInput=attach(out(U_VT, "Text"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_AT,
+                 WFTextActionText="already checked in"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Already Word",
+                 WFInput=attach(out(U_AT, "Text"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_DIR, WFControlFlowMode=1))
+    A.append(act("is.workflow.actions.gettext", UUID=U_DIRF,
+                 WFTextActionText="false"))
+    A.append(act("is.workflow.actions.setvariable",
+                 WFVariableName="Checked In Value",
+                 WFInput=attach(out(U_DIRF, "Text"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_VF,
+                 WFTextActionText="checked out"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Verb",
+                 WFInput=attach(out(U_VF, "Text"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_AF,
+                 WFTextActionText="already checked out"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Already Word",
+                 WFInput=attach(out(U_AF, "Text"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_DIR, WFControlFlowMode=2))
 
     A.append(comment(
         "--- SETUP ---\n"
@@ -431,7 +512,7 @@ def build(direction, env=None):
                  WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(var("Needs Sign In"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts(f"Brightwheel — nobody {verb}"),
+                 WFNotificationActionTitle=ts("Brightwheel — nobody ", var("Verb")),
                  WFNotificationActionBody=ts(
                      "Could not sign in after five tries, so nothing was sent. "
                      "Run this shortcut by hand and enter a code, or leave the "
@@ -615,22 +696,31 @@ def build(direction, env=None):
                      kv("X-Client-Name", ts(CLIENT_NAME)),
                      kv("X-Client-Version", ts(CLIENT_VERSION)),
                  ])))
-    C_SKIP = gate(U_ACT, "Contents of URL", '"state"\\s*:\\s*"%s"' % already)
+    # Is the child checked in right now? 1 or 0, same shape as Wanted In.
+    C_IN = gate(U_ACT, "Contents of URL", '"state"\\s*:\\s*"1"')
+    # Two runtime numbers cannot be compared directly — an If tests a variable
+    # against a literal, not against another variable. Pasting them together
+    # gives 11 or 00 when they agree and 10 or 01 when they differ, which a
+    # fixed pattern can match.
+    u_pair = next(i)
+    A.append(act("is.workflow.actions.gettext", UUID=u_pair,
+                 WFTextActionText=ts(out(C_IN, "Count"), var("Wanted In"))))
+    C_SEND = gate(u_pair, "Text", "^(01|10)$")
     A.append(comment(
         "Skip anyone who needs no change.\n"
-        "- Condition counts whether they are already in the state this shortcut "
-        "would produce\n"
+        "- Condition counts whether their state and this run disagree\n"
         "- This is also what makes a second pass safe after a rescan\n"
         "- If the state cannot be read, the request is sent anyway"
     ))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SKIP, WFControlFlowMode=0,
-                 WFCondition=2, WFNumberValue="0",
-                 WFInput=cond_input(out(C_SKIP, "Count"))))
+                 WFCondition=0, WFNumberValue="1",
+                 WFInput=cond_input(out(C_SEND, "Count"))))
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
-                     "• ", var("Repeat Item"), f" was {already_word} — no change")))
+                     "• ", var("Repeat Item"), " was ",
+                     var("Already Word"), " — no change")))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SKIP, WFControlFlowMode=1))
 
@@ -639,7 +729,9 @@ def build(direction, env=None):
                      '{"checkins":[{"actor":{"object_id":"' + ACTOR + '"},'
                      '"health_screen":{"questions":[]},'
                      '"room":{"object_id":"' + ROOM + '"},'
-                     '"checked_in":' + ("true" if desired else "false") + ','
+                     '"checked_in":',
+                     var("Checked In Value"),
+                     ',',
                      '"target":{"object_id":"',
                      var("Child Id"),
                      '"},"note":""}],"school_id":"',
@@ -677,7 +769,7 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
-                     "✅ ", var("Repeat Item"), f" {verb}")))
+                     "✅ ", var("Repeat Item"), " ", var("Verb"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_RES, WFControlFlowMode=1))
     C_STALE = gate(U_RESP, "Contents of URL",
@@ -706,7 +798,7 @@ def build(direction, env=None):
                  GroupingIdentifier=G_STALE, WFControlFlowMode=1))
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts(
-                     "⚠️ ", var("Repeat Item"), f" not {verb}"),
+                     "⚠️ ", var("Repeat Item"), " not ", var("Verb")),
                  WFNotificationActionBody=ts(
                      out(U_RTEXT, "Text"),
                      "\n\nIf this says the session expired, run this shortcut "
@@ -731,7 +823,7 @@ def build(direction, env=None):
         "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": glyph,
                            "WFWorkflowIconStartColor": color},
         "WFWorkflowImportQuestions": questions,
-        "WFWorkflowInputContentItemClasses": [],
+        "WFWorkflowInputContentItemClasses": ["WFStringContentItem"],
         "WFWorkflowMinimumClientVersion": 900,
         "WFWorkflowMinimumClientVersionString": "900",
         "WFWorkflowName": name,
@@ -746,6 +838,65 @@ def build(direction, env=None):
 # `com.apple.BarcodeScanner.BarcodeScannerIntent` ("Open Code Scanner") only
 # launches the scanner app. So this helper parses the decoded text instead,
 # defaulting to whatever Code Scanner left on the clipboard.
+def build_wrapper(direction):
+    """A trigger carrier. Two actions: the direction, and the call.
+
+    Direction lives here rather than in the shortcut that does the work, so it
+    is structural — which wrapper ran decides it. Nothing infers it from the
+    clock, so editing a trigger's time range on the device cannot make it wrong.
+
+    Run Shortcut resolves its target by name: the workflowIdentifier below is
+    freshly minted and matches nothing, and an imported copy still finds
+    "Brightwheel Check" and passes its input. Verified on device.
+    """
+    checking_in = direction == "in"
+    title = "Brightwheel Check In" if checking_in else "Brightwheel Check Out"
+    word = "in" if checking_in else "out"
+    glyph = 59692 if checking_in else 59707
+    color = 4292093695 if checking_in else 4251333119
+
+    i = iter(uuids(6))
+    u_text = next(i)
+    A = [
+        comment(
+            f"Brightwheel — {title}\n\n"
+            f"Attach the arrival or departure trigger to this shortcut. All it "
+            f"does is tell Brightwheel Check to check the children {word}.\n\n"
+            "The direction lives here rather than in the shortcut that does the "
+            "work, so which trigger fired decides it. Nothing is worked out from "
+            "the time of day, which means changing a trigger's hours cannot make "
+            "it send the wrong direction."
+        ),
+        comment(
+            "Generated by build_shortcuts.py in the brightwheel-checkin repo.\n\n"
+            "Edits made here are lost the next time the shortcut is rebuilt, so "
+            "change the generator instead."
+        ),
+        act("is.workflow.actions.gettext", UUID=u_text,
+            CustomOutputName="Direction", WFTextActionText=word),
+        act("is.workflow.actions.runworkflow",
+            WFWorkflowName="Brightwheel Check",
+            WFWorkflow={"isSelf": False,
+                        "workflowIdentifier": next(i),
+                        "workflowName": "Brightwheel Check"},
+            WFInput=attach(out(u_text, "Direction"))),
+    ]
+    return title, {
+        "WFWorkflowActions": A,
+        "WFWorkflowClientVersion": "2700.0.4",
+        "WFWorkflowHasOutputFallback": False,
+        "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": glyph,
+                           "WFWorkflowIconStartColor": color},
+        "WFWorkflowImportQuestions": [],
+        "WFWorkflowInputContentItemClasses": [],
+        "WFWorkflowMinimumClientVersion": 900,
+        "WFWorkflowMinimumClientVersionString": "900",
+        "WFWorkflowName": title,
+        "WFWorkflowOutputContentItemClasses": [],
+        "WFWorkflowTypes": [],
+    }
+
+
 if __name__ == "__main__":
     argv = [a for a in sys.argv[1:] if a != "--debug"]
     env = load_env(Path(__file__).parent / ".env") if "--debug" in sys.argv else None
@@ -753,8 +904,12 @@ if __name__ == "__main__":
     dest.mkdir(parents=True, exist_ok=True)
     if env is not None:
         print("DEBUG BUILD — real credentials are baked in; do not commit or share")
+    name, pl = build(env=env)
+    (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
+    print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
+          f"{len(pl['WFWorkflowImportQuestions'])} setup questions")
     for d in ("in", "out"):
-        name, pl = build(d, env)
+        name, pl = build_wrapper(d)
         (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
         print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
               f"{len(pl['WFWorkflowImportQuestions'])} setup questions")

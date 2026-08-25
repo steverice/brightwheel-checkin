@@ -1,10 +1,15 @@
 # Brightwheel Check-In / Check-Out Shortcuts
 
 Signed iOS Shortcuts that check both children in or out of Brightwheel without
-opening the app, fired unattended by arrival triggers:
+opening the app, fired unattended by location triggers:
 
-- **Brightwheel Check In** — arriving at school in the morning
-- **Brightwheel Check Out** — arriving at school in the afternoon
+- **Brightwheel Check** — does the work. Never run directly.
+- **Brightwheel Check In** — carries the morning trigger; calls Check with `in`
+- **Brightwheel Check Out** — carries the afternoon trigger; calls Check with `out`
+
+The two small ones exist so that **which trigger fired decides the direction**.
+Nothing works it out from the time of day, so editing a trigger's hours on the
+device cannot make it send the wrong direction.
 
 Requires iOS 27 (Store Content / Get Stored Content, and the iOS 27 trigger
 model). `ARCHITECTURE.md` covers why the code looks the way it does, and what was
@@ -17,7 +22,7 @@ learned about building Shortcuts programmatically.
 ./build.sh --debug   # -> dist-debug/, values baked in, asks nothing
 ```
 
-Either command generates both shortcuts, validates them against iOS 27,
+Either command generates all three shortcuts, validates them against iOS 27,
 signs them, and writes both the unsigned `.xml` and the signed `.shortcut` to the
 target directory. It fails on any validator error except two named waivers, so
 a red build is a real problem.
@@ -40,12 +45,13 @@ Don't AirDrop one to anyone else.
 
 ## Install
 
-AirDrop `dist/*.shortcut` to the phone.
+AirDrop `dist/*.shortcut` to the phone, **Brightwheel Check first** so the other
+two have something to call.
 
-**Delete the old copy first.** A same-name import is silently skipped with no
+**Delete the old copies first.** A same-name import is silently skipped with no
 warning, which looks exactly like a code change that did nothing.
 
-Then answer three Setup questions:
+Only **Brightwheel Check** asks anything. Answer its three Setup questions:
 
 | Prompt | Notes |
 |---|---|
@@ -63,8 +69,14 @@ trigger — a background run cannot answer the code prompt.
 
 ### Triggers
 
-In iOS 27 a shortcut carries its own triggers, so add an **Arrive** trigger with
-a time range to each shortcut rather than creating a separate automation.
+In iOS 27 a shortcut carries its own triggers, so add them to **Brightwheel Check
+In** and **Brightwheel Check Out** — not to Brightwheel Check, which has no
+direction of its own.
+
+Any pair of triggers works, as long as one means "going in" and the other "going
+out": arriving in the morning and leaving in the afternoon, or arriving twice
+with different time ranges. The shortcut does not care which; it only knows which
+wrapper called it.
 
 - **Attach triggers last.** Re-importing a rebuilt shortcut loses them, and they
   cannot be generated into the file.
