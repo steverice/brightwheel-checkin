@@ -5,6 +5,7 @@ Both shortcuts are structurally identical; only the `checked_in` literal,
 the display wording, and the icon differ. README.md has the endpoint
 contract.
 """
+import argparse
 import json
 import plistlib
 import subprocess
@@ -24,6 +25,9 @@ SCHOOL = "00000000-0000-0000-0000-000000000000"
 # credential is ever written into this repo or into the signed .shortcut.
 
 BASE = "https://schools.mybrightwheel.com/api/v1"
+# Kept so an overridden BASE can be reported as such. The integration tests
+# point BASE at a mock; nothing else should.
+DEFAULT_BASE = BASE
 CLIENT_NAME = "ios"
 CLIENT_VERSION = "3.103.0"
 
@@ -948,12 +952,35 @@ def build_wrapper(direction):
 
 
 if __name__ == "__main__":
-    argv = [a for a in sys.argv[1:] if a != "--debug"]
-    env = load_env(Path(__file__).parent / ".env") if "--debug" in sys.argv else None
-    dest = Path(argv[0] if argv else ".")
-    dest.mkdir(parents=True, exist_ok=True)
-    if env is not None:
+    ap = argparse.ArgumentParser(
+        description="Generate the Brightwheel Shortcuts plists.")
+    ap.add_argument("dest", nargs="?", default=".",
+                    help="directory to write the .xml files into")
+    ap.add_argument("--debug", action="store_true",
+                    help="bake .env values in and emit no setup questions")
+    ap.add_argument("--env-file", metavar="PATH",
+                    help="bake this env file in instead of .env; use for test "
+                         "builds so real credentials never reach the artifact")
+    ap.add_argument("--api-base", metavar="URL", default=BASE,
+                    help="point the shortcuts at a different API root; used by "
+                         "the integration tests to reach the mock Brightwheel")
+    args = ap.parse_args()
+
+    # build() reads BASE at call time, so overriding it here is enough.
+    BASE = args.api_base
+
+    env = None
+    if args.env_file:
+        env = load_env(args.env_file)
+        print(f"BAKED BUILD from {args.env_file}")
+    elif args.debug:
+        env = load_env(Path(__file__).parent / ".env")
         print("DEBUG BUILD — real credentials are baked in; do not commit or share")
+    if BASE != DEFAULT_BASE:
+        print(f"API base overridden: {BASE}")
+
+    dest = Path(args.dest)
+    dest.mkdir(parents=True, exist_ok=True)
     name, pl = build(env=env)
     (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
     print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
