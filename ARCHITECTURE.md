@@ -90,10 +90,13 @@ also sidesteps empty strings satisfying "has any value".
 | `"state"\s*:\s*"1"` / `"2"` | child is already checked in / out |
 | `"event_date"` | a check-in record was really created |
 | `"secret"\s*:\s*"The given secret` | the stored school code has gone stale |
+| `"secret"\s*:\s*"([^"]+)"` / `"school_id"…` | pulling those out of the scanned code |
 
-The same actions work fine on the school code, where Detect Dictionary parses the
-**text** handed back by Scan Code. The failure is specific to an already-parsed
-HTTP response, not to the actions themselves.
+There is now **no Detect Dictionary action anywhere in the shortcut**. The school
+code was the last holdout, kept on the assumption the pair behaved on plain text.
+It does not: `school_id` came back empty and every check-in was rejected with
+`E1205 "You must specify the school"`. Those values are matched out of the raw
+scanned text like everything else.
 
 **The school code is scanned, not typed.** `scanbarcode` returns decoded text
 in-process, so the QR code became something the check shortcuts read directly
@@ -133,8 +136,19 @@ re-enters the *same* actions rather than a second copy: the built shortcut
 contains exactly one `POST /checkins/`. It also came out smaller — 138 actions
 unrolled, 125 looped, retry included.
 
-`Repeat Item` is the child's **name**, and the id comes from a roster Dictionary
-looked up with a **tokenized `WFDictionaryKey`** bound to Repeat Item. That is
+The loop item is **`Repeat Item 2`**, not `Repeat Item`, because this loop sits
+inside the retry Repeat — and a *count*-style outer loop shifts the numbering
+exactly as a nested Repeat with Each does. `BEST_PRACTICES.md` documents the
+nested-each case only; the count case was confirmed on device with a probe. With
+the unnumbered name the item came back empty, the roster lookup found nothing,
+and notifications showed a blank child name.
+
+It is captured into `Child Name` immediately, so the numbered variable appears
+exactly once in the whole shortcut. Change the nesting and that is the only line
+to revisit.
+
+The child's name is the loop item, and the id comes from a roster Dictionary
+looked up with a **tokenized `WFDictionaryKey`**. That is
 the one shape here with a verified example behind it, found in the golden
 library. `Get Item from List` and `Split Text` were the obvious alternatives for
 carrying a name and id together, and both appear in the golden shortcuts with

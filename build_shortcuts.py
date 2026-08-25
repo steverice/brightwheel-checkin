@@ -699,7 +699,7 @@ def build(direction=None, env=None):
     # --- one pass over the children ---
     A.append(comment(
         f"Work through the children in turn.\n"
-        "- Repeat Item is the child's name, straight from the list above\n"
+        "- Child Name is the current child, taken from the list above\n"
         "- Get Dictionary Value turns that name into their Brightwheel id\n"
         f"- Brightwheel reports 1 for checked in and 2 for checked out, and a "
         "reply for a single event carries exactly one of them"
@@ -707,8 +707,19 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
                  GroupingIdentifier=G_KIDS, WFControlFlowMode=0,
                  WFInput=attach(out(U_NAMES, "List"))))
+    # "Repeat Item 2", not "Repeat Item": this loop sits inside the retry
+    # Repeat, and a count-style outer loop shifts the numbering just as a
+    # nested Repeat with Each does. Verified on device with a probe — with the
+    # unnumbered name the item came back empty, the roster lookup found
+    # nothing, and notifications showed a blank child name.
+    #
+    # Captured into Child Name here so the numbered variable appears exactly
+    # once; if the nesting ever changes, this is the only line to revisit.
+    u_name = next(i)
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Name",
+                 WFInput=attach(var("Repeat Item 2"))))
     A.append(act("is.workflow.actions.getvalueforkey", UUID=U_CHILD,
-                 WFDictionaryKey=ts(var("Repeat Item")),
+                 WFDictionaryKey=ts(var("Child Name")),
                  WFGetDictionaryValueType="Value",
                  WFInput=ts(out(U_ROSTER, "Dictionary"))))
     A.append(act("is.workflow.actions.gettext", UUID=U_CHILDT,
@@ -748,7 +759,7 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
-                     "• ", var("Repeat Item"), " was ",
+                     "• ", var("Child Name"), " was ",
                      var("Already Word"), " — no change")))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SKIP, WFControlFlowMode=1))
@@ -798,7 +809,7 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
-                     "✅ ", var("Repeat Item"), " ", var("Verb"))))
+                     "✅ ", var("Child Name"), " ", var("Verb"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_RES, WFControlFlowMode=1))
     C_STALE = gate(U_RESP, "Contents of URL",
@@ -827,7 +838,7 @@ def build(direction=None, env=None):
                  GroupingIdentifier=G_STALE, WFControlFlowMode=1))
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts(
-                     "⚠️ ", var("Repeat Item"), " not ", var("Verb")),
+                     "⚠️ ", var("Child Name"), " not ", var("Verb")),
                  WFNotificationActionBody=ts(
                      out(U_RTEXT, "Text"),
                      "\n\nIf this says the session expired, run this shortcut "
