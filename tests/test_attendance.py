@@ -34,12 +34,14 @@ ARTIFACTS = Path(__file__).parent / "artifacts"
 class Suite:
     """Shared, expensive setup: one build, one install, many scenarios."""
 
-    def __init__(self, erase=False):
+    def __init__(self, erase=False, runtime="iOS 27"):
         self.erase = erase
+        self.runtime = runtime
 
     def setup(self):
         ca, server = ensure_certs()
-        self.sim = Simulator.find(artifacts=ARTIFACTS)
+        self.sim = Simulator.find(runtime=self.runtime, artifacts=ARTIFACTS)
+        print(f"  runtime {self.runtime}")
         print(f"  simulator {self.sim.udid}")
         if self.erase:
             print("  erasing device for a clean library")
@@ -71,7 +73,7 @@ class Suite:
         self.mock.stop()
 
     # -- the run loop ----------------------------------------------------
-    def run_and_settle(self, shortcut, timeout=150, quiet=6.0, min_wait=14.0):
+    def run_and_settle(self, shortcut, timeout=180, quiet=10.0, min_wait=18.0):
         """Start a shortcut, clear any prompts it raises, wait for it to stop.
 
         A consent prompt blocks the run and produces no traffic, so "no new
@@ -84,8 +86,18 @@ class Suite:
         started = time.time()
         self.sim.run_shortcut(shortcut)
         seen, stable = len(self.mock.requests), time.time()
+        relaunched = False
         while time.time() - started < timeout:
             time.sleep(0.8)
+            # A run URL delivered while Shortcuts is still shutting down is
+            # silently dropped; nothing happens and no error is raised.
+            if (not relaunched and seen == 0
+                    and time.time() - started > 20
+                    and not self.sim.blue_buttons()):
+                self.sim.run_shortcut(shortcut)
+                relaunched = True
+                stable = time.time()
+                continue
             now = len(self.mock.requests)
             if now != seen:
                 seen, stable = now, time.time()
@@ -240,8 +252,13 @@ TESTS = [
 
 
 def main(argv):
+    runtime = "iOS 27"
+    if "--runtime" in argv:
+        i = argv.index("--runtime")
+        runtime = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
     only = [a for a in argv if not a.startswith("-")]
-    suite = Suite(erase="--erase" in argv)
+    suite = Suite(erase="--erase" in argv, runtime=runtime)
     print("setup:")
     suite.setup()
 

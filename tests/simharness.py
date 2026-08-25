@@ -104,16 +104,29 @@ class Simulator:
         _run("open", "-a", "Simulator")
         self.wait_booted()
 
-    def wait_booted(self, timeout=120):
+    def wait_booted(self, timeout=180):
+        """Wait for Booted, then for the system to actually be usable.
+
+        "Booted" is reported well before SpringBoard can service an openurl,
+        and the gap is much wider on the first boot after an erase — so poll
+        for Shortcuts being resolvable rather than sleeping a fixed amount.
+        """
         deadline = time.time() + timeout
         while time.time() < deadline:
             out = _run("xcrun", "simctl", "list", "devices").stdout
             if any(self.udid in l and "(Booted)" in l for l in out.splitlines()):
-                # springboard needs a moment past "Booted" before it draws
+                break
+            time.sleep(1)
+        else:
+            raise SimulatorError("simulator did not boot in time")
+
+        while time.time() < deadline:
+            r = _run("xcrun", "simctl", "listapps", self.udid, check=False)
+            if "com.apple.shortcuts" in r.stdout:
                 time.sleep(3)
                 return
-            time.sleep(1)
-        raise SimulatorError("simulator did not boot in time")
+            time.sleep(2)
+        raise SimulatorError("Shortcuts never became available on the device")
 
     def erase(self):
         """Full clean slate. Also drops the trusted root cert, so re-add it."""
@@ -130,9 +143,16 @@ class Simulator:
 
     # -- window geometry ------------------------------------------------
     def prepare_window(self):
-        """Point Accurate + no bezels makes device px -> screen points exact."""
+        """Point Accurate + no bezels makes device px -> screen points exact.
+
+        The Window menu applies to the frontmost window, so raise this
+        device's window first — otherwise a second booted simulator silently
+        gets configured instead.
+        """
         _osa('tell application "Simulator" to activate')
         time.sleep(0.5)
+        self._window_rect()          # raises this device's window
+        time.sleep(0.3)
         _osa('tell application "System Events" to tell process "Simulator" to '
              'click menu item "Point Accurate" of menu 1 of menu bar item '
              '"Window" of menu bar 1')
@@ -148,11 +168,43 @@ class Simulator:
             time.sleep(1.0)
         self.ensure_hardware_keyboard()
 
+    def device_label(self):
+        """(name, os version) as the Simulator window titles them."""
+        out = _run("xcrun", "simctl", "list", "devices", "--json").stdout
+        import json
+        for runtime, devices in json.loads(out)["devices"].items():
+            for d in devices:
+                if d["udid"] == self.udid:
+                    version = runtime.rsplit(".", 1)[-1].replace("iOS-", "").replace("-", ".")
+                    return d["name"], version
+        raise SimulatorError(f"device {self.udid} not found")
+
     def _window_rect(self):
+        """Locate *this* device's Simulator window.
+
+        More than one simulator can be booted at once, and "window 1" is then
+        whichever happens to be frontmost — which silently sends every tap to
+        the wrong device, or off-screen entirely. Match the title instead.
+        """
+        name, version = self.device_label()
+        raw = _osa(
+            'tell application "System Events" to tell process "Simulator" to '
+            'return name of every window')
+        titles = [t.strip() for t in raw.split(",")] if raw else []
+        match = next((t for t in titles if name in t and version in t), None)
+        if match is None:
+            match = next((t for t in titles if name in t), None)
+        if match is None:
+            raise SimulatorError(
+                f"no Simulator window for {name} ({version}); saw {titles}")
+
+        q = match.replace('"', '\\"')
+        _osa(f'tell application "System Events" to tell process "Simulator" to '
+             f'perform action "AXRaise" of window "{q}"')
         pos = _osa('tell application "System Events" to tell process "Simulator" '
-                   'to return position of window 1')
+                   f'to return position of window "{q}"')
         size = _osa('tell application "System Events" to tell process "Simulator" '
-                    'to return size of window 1')
+                    f'to return size of window "{q}"')
         x, y = (int(v) for v in pos.split(", "))
         w, h = (int(v) for v in size.split(", "))
         return x, y, w, h
@@ -209,6 +261,7 @@ class Simulator:
         raw keycodes through, so every character arrives as whatever keycode 0
         is and "123456" lands in the field as "Aaaaaa".
         """
+        self.ensure_hardware_keyboard()
         _osa('tell application "Simulator" to activate')
         time.sleep(0.3)
         for ch in text:
@@ -226,12 +279,23 @@ class Simulator:
     def answer_prompt(self, text):
         """Fill an Ask for Input dialog and commit it.
 
-        This exists to avoid a trap: the dialog's Done button is iOS blue, so
-        the generic "tap the affirmative button" submits it *empty* — which
-        this shortcut reads as a request to resend the code, five times over.
+        Two traps here. The field is *not* focused when the dialog appears, so
+        typing without tapping it first goes nowhere and the answer stays
+        empty. And the Done button is iOS blue, so the generic
+        tap-the-affirmative would submit that empty answer — which this
+        shortcut reads as "send me another code", five times over.
         """
+        img = self.image()
+        boxes = self.blue_buttons(img)
+        if not boxes:
+            return False
+        w, h = img.size
+        done = max(boxes, key=lambda b: (b[3], b[2]))
+        # The text field sits directly above the button row.
+        self.tap(int(w * 0.25), int(done[1] - h * 0.12), device_size=img.size)
+        time.sleep(0.8)
         self.type_text(text)
-        time.sleep(0.4)
+        time.sleep(0.5)
         return self.tap_affirmative()
 
     def press_return(self):
@@ -245,16 +309,24 @@ class Simulator:
         time.sleep(0.6)
 
     def ensure_hardware_keyboard(self):
-        """Typed characters only reach the device with this connected."""
+        """Connect the hardware keyboard, re-applying it even if already ticked.
+
+        Synthesized keystrokes only reach the device through the hardware
+        keyboard. An erase resets the device side of this while the Simulator
+        menu can still show it ticked, and the giveaway is the software
+        keyboard appearing — at which point typing silently goes nowhere. So
+        cycle the setting rather than trusting the tick.
+        """
         item = ('menu item "Connect Hardware Keyboard" of menu 1 of menu item '
                 '"Keyboard" of menu 1 of menu bar item "I/O" of menu bar 1')
         marked = _osa('tell application "System Events" to tell process '
                       f'"Simulator" to return value of attribute '
                       f'"AXMenuItemMarkChar" of {item}')
-        if not marked or marked == "missing value":
+        clicks = 2 if (marked and marked != "missing value") else 1
+        for _ in range(clicks):
             _osa('tell application "System Events" to tell process "Simulator" '
                  f'to click {item}')
-            time.sleep(0.8)
+            time.sleep(0.7)
 
     # -- finding the affirmative button ---------------------------------
     def blue_buttons(self, img=None):
@@ -315,7 +387,14 @@ class Simulator:
         if name in self.library():
             return False
         url = "file://" + urllib.parse.quote(str(path))
-        _run("xcrun", "simctl", "openurl", self.udid, url)
+        # Right after a boot the URL can be refused for a few seconds.
+        for attempt in range(4):
+            r = _run("xcrun", "simctl", "openurl", self.udid, url, check=False)
+            if r.returncode == 0:
+                break
+            time.sleep(3)
+        else:
+            raise SimulatorError(f"could not open {path.name}: {r.stderr.strip()}")
 
         # Wait for the sheet rather than sleeping a fixed amount: on a freshly
         # erased device the first launch of Shortcuts is slow enough to miss.
@@ -347,14 +426,24 @@ class Simulator:
             f"~/Library/Developer/CoreSimulator/Devices/{self.udid}"
             "/data/Library/Shortcuts/Shortcuts.sqlite"))
 
-    def _query(self, sql):
+    def _query(self, sql, params=()):
         if not self._db.exists():
             return []
         con = sqlite3.connect(f"file:{self._db}?mode=ro", uri=True)
         try:
-            return con.execute(sql).fetchall()
+            return con.execute(sql, params).fetchall()
         finally:
             con.close()
+
+    def shortcut_actions(self, name):
+        """The installed shortcut's actions, as the plist list they came from."""
+        rows = self._query(
+            "SELECT a.ZDATA FROM ZSHORTCUTACTIONS a JOIN ZSHORTCUT s "
+            "ON s.Z_PK = a.ZSHORTCUT WHERE s.ZNAME = ? AND s.ZTOMBSTONED = 0",
+            (name,))
+        if not rows or rows[0][0] is None:
+            return None
+        return plistlib.loads(bytes(rows[0][0]))
 
     def library(self):
         return [r[0] for r in
