@@ -56,11 +56,45 @@ grep -c schools.mybrightwheel.com "dist-test/Brightwheel Attendance.xml"   # 0
 | `check_out_sends_checked_in_false` | Direction is structural — the wrapper decides it, not the clock |
 | `stale_school_code_causes_a_second_pass` | A rejected secret is recognized and retried instead of reported as a plain failure |
 | `expired_token_signs_in_again` | `E1200` → two-step 2FA → token stored → the run recovers and still sends |
+| `setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. Currently a **known-broken canary** — see the support matrix |
 
 Assertions are on **recorded traffic**, not on notifications. "Nobody was
 checked in" is exactly "no POST reached `/checkins/`", which is a fact the mock
 holds; a notification only reports what the shortcut believes happened. The
 shortcut's own state is checked by reading Store Content back off the device.
+
+## Support matrix
+
+Established by running the suite and targeted probes against each runtime, not
+inferred from release notes.
+
+| Runtime | Shortcuts run? | Setup questions? |
+|---|---|---|
+| iOS 26.5 `23F77` (release) and earlier | **No** | yes |
+| iOS 27.0 beta `24A5355p` | yes | yes |
+| iOS 27.0 beta `24A5408d` | yes | **No** |
+| iOS 27.0 beta `24A5423a` | yes | **No** |
+
+**iOS 27 is genuinely required to run these shortcuts.** On iOS 26.5 every test
+fails at the first action with "the shortcut could not be run because an action
+could not be found". Probed individually, both `is.workflow.actions.getstoredcontent`
+(Store Content) and `is.workflow.actions.scanbarcode` (Scan Code) fail there on
+their own, so this is not something a workaround in the generator could fix —
+the shortcut is built on two iOS 27 actions.
+
+**Setup questions regressed during the iOS 27 beta cycle.** Answering them and
+tapping "Add Shortcut" does nothing at all: no install, no error, nothing in the
+log — while the tap is delivered (`UIEvent` dispatched, gesture actions sent).
+It reproduces with a **two-action** shortcut carrying one question, so it is
+nothing to do with this project's build. Skip Setup still installs, and
+importing a shortcut that merely *has* questions is fine; it is committing the
+*answers* that is inert.
+
+That is what `test_setup_questions_commit_their_answers` watches. It is marked
+`expected_broken`, so it reports **KNOWN** in yellow and does not fail the
+suite — and the day a beta fixes it, it reports **FIXED** and tells you to drop
+the marker. Until then, `dist/` cannot be installed through its documented
+setup flow, which is why the debug build (no questions) is the practical path.
 
 ## How it fits together
 
@@ -148,6 +182,26 @@ an action, under a `WFObjectRepresentation`'s `object`.
 **Consent prompts** are per capability per shortcut — running another shortcut,
 network access, the clipboard — and persist until the device is erased. The
 suite absorbs them in one throwaway priming run.
+
+**Which window.** More than one simulator can be booted, and AppleScript's
+"window 1" is then whichever is frontmost. Taps silently go to the wrong device
+— or, if the window sizes differ, to a computed point off-screen entirely. The
+harness matches the window by title (device name + OS version) and raises it
+before measuring or clicking.
+
+**Focus before typing.** Neither the Ask for Input dialog nor the setup wizard
+focuses its text field, so typing straight into either goes nowhere and leaves
+an empty answer. Tap the field first. The software keyboard being visible is
+*not* a sign that the hardware keyboard is disconnected — it can be connected
+and showing anyway, so that is not a useful diagnostic.
+
+**Autocapitalisation is on**, so `zzemail` arrives as `Zzemail`. The canary
+types digits to sidestep it; anything asserting on typed letters has to account
+for it or turn it off on the device.
+
+**A run URL can be dropped** if it arrives while Shortcuts is still shutting
+down — nothing happens and no error is raised. The runner re-issues the run
+once if no traffic has appeared and no prompt is on screen.
 
 ## What the simulator cannot tell you
 

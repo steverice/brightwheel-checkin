@@ -16,8 +16,18 @@ whether to check in or out. Cancelling the menu sends nothing.
 
 `ARCHITECTURE.md` covers why it is built this way.
 
-Requires iOS 27 — Store Content, the live `Scan Code` action, and the iOS 27
-model where triggers live on the shortcut itself.
+Requires iOS 27. On iOS 26.5 the
+shortcut stops at its first action, because both Store Content and the live
+`Scan Code` action only exist in iOS 27. Triggers also live on the shortcut
+itself only from iOS 27. See the support matrix in `TESTING.md`.
+
+> **Setup questions are broken on current iOS 27 betas.** From `24A5408d`
+> onwards, answering the import questions and tapping **Add Shortcut** does
+> nothing — no install, no error. It is an iOS regression, not a problem with
+> this build: it reproduces with a two-action shortcut, and the same file
+> installs correctly on iOS 26.5 and on iOS 27 beta `24A5355p`. Until it is
+> fixed, either tap **Skip Setup** and fill the three Text actions in yourself,
+> or install a `--debug` build, which asks nothing.
 
 ## Build
 
