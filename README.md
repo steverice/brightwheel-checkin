@@ -103,10 +103,11 @@ and re-parsed, so both values come from one source of truth.
 If the scan says `signatures_enabled` is on, you get a warning: check-ins send no
 signature and would start failing.
 
-**A rotated secret has no automatic recovery.** If the school enables Quick Scan
-Refresh, the stored code goes stale and check-ins fail with
-`The given secret does not exist or is expired`. Clearing the shortcut's stored
-content — or re-importing — makes the next run scan again.
+**A rotated code recovers by itself.** If the school enables Quick Scan Refresh,
+the stored code eventually goes stale and Brightwheel rejects it with its own
+distinct error. That is detected, the stored code is forgotten, and the
+notification says so — the next run offers the scanner again. No re-import
+needed.
 
 ## Brightwheel API
 
@@ -142,7 +143,7 @@ HTTP status codes:
 | Expired / absent token | `{"error":"This resource requires authentication"}`, `E1200` |
 | Empty request body | `{"checkins":"cannot process empty checkins"}`, `E2001` |
 | Wrong check-in code | `{"checkin_code":"Incorrect checkin code"}`, `E2004` |
-| Bad or expired secret | `{"secret":"The given secret does not exist or is expired."}` |
+| Stale school code | `{"secret":"The given secret does not exist or is expired."}` — triggers a re-scan |
 | Success | `{"checkins":[{… "event_date": …}]}` |
 
 Success is detected by **`event_date`**, not `"checkins"` — the empty-body error

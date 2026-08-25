@@ -85,6 +85,7 @@ also sidesteps empty strings satisfying "has any value".
 | `"token"\s*:\s*"([^"]+)"` | sign-in succeeded |
 | `"state"\s*:\s*"1"` / `"2"` | child is already checked in / out |
 | `"event_date"` | a check-in record was really created |
+| `"secret"\s*:\s*"The given secret` | the stored school code has gone stale |
 
 The same actions work fine on the school code, where Detect Dictionary parses the
 **text** handed back by Scan Code. The failure is specific to an already-parsed
@@ -97,6 +98,13 @@ blob is stored under one key and re-parsed on later runs, so `secret` and
 `school_id` share a single source and one code path extracts both. Scanning is
 interactive, so it sits behind an "is anything stored" check — the same shape as
 the sign-in prompt, and for the same reason.
+
+A rotated code self-heals. Brightwheel rejects a stale secret with a distinct
+error, which is matched against the response text; the stored code is then
+deleted so the next run scans a fresh one. The pattern
+(`"secret"\s*:\s*"The given secret`) was checked against live responses for a
+stale secret, a wrong check-in code, an empty body and an expired token, and
+matches only the first.
 
 **Idempotency, failing open.** Each run reads the child's latest check-in event
 and skips anyone already in the target state, so a repeated trigger cannot record

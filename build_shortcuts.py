@@ -635,12 +635,42 @@ def build(direction, env=None):
                      WFNotificationActionBody=ts(f"✅ {cname} {verb}")))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gres"], WFControlFlowMode=1))
+        # A rotated school code fails with its own distinct error. Forgetting the
+        # stored code is what makes the next run offer the scanner again;
+        # verified against the live API that this string appears for a stale
+        # secret and for none of the other failures.
+        C_STALE = gate(p["resp"], "Contents of URL",
+                       r'"secret"\s*:\s*"The given secret')
+        g_stale = next(i)
+        A.append(comment(
+            f"Tell a stale school code apart from anything else.\n"
+            "- Condition counts whether Brightwheel rejected the school's code\n"
+            "- Forgetting it makes the next run scan a fresh one\n"
+            "- Otherwise branch just reports what Brightwheel said"
+        ))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=g_stale, WFControlFlowMode=0,
+                     WFCondition=2, WFNumberValue="0",
+                     WFInput=cond_input(out(C_STALE, "Count"))))
+        A.append(act("is.workflow.actions.deletestoredcontent",
+                     WFStoredContentKey="BrightwheelSchoolCode",
+                     WFStoredContentGlobalValue=True))
+        A.append(act("is.workflow.actions.notification",
+                     WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
+                     WFNotificationActionBody=ts(
+                         "The school's check-in code has changed, so it has been "
+                         "forgotten. Run this again and it will ask you to scan "
+                         "the new one.")))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=g_stale, WFControlFlowMode=1))
         A.append(act("is.workflow.actions.notification",
                      WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
                      WFNotificationActionBody=ts(
                          out(p["rtext"], "Text"),
                          "\n\nIf this says the session expired, run this "
                          "shortcut by hand to sign in again.")))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=g_stale, WFControlFlowMode=2))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=p["gres"], WFControlFlowMode=2))
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
