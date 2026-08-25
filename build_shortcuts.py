@@ -440,26 +440,71 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_FAIL, WFControlFlowMode=2))
 
-    # ---- school code: scanned once, then remembered ----
+    # ---- attempt loop: school code, then every child ----
     #
-    # The QR code holds {secret, school_id, signatures_enabled}. Both values the
-    # request needs come from it, so it is stored whole and re-parsed rather than
-    # split into two keys. Scanning is interactive and only happens when nothing
-    # is stored, i.e. first run or after the school rotates the code — the same
-    # shape as the sign-in prompt.
+    # Two passes. The first sends; if a child comes back with the school code
+    # rejected, the stored code is deleted and a second pass is requested, which
+    # finds nothing stored and scans a fresh one. "First run" and "the code
+    # rotated" are therefore the same branch — deleting the stored code is what
+    # turns one into the other.
+    #
+    # Children are a Repeat rather than an unrolled pair so the retry re-enters
+    # the same actions instead of a second copy. Repeat Item is the child's
+    # name, and the id comes from a roster Dictionary looked up with a tokenized
+    # key — the one wiring here with a verified example behind it. Get Item from
+    # List and Split Text were the obvious alternatives and have no worked
+    # example of their parameters anywhere.
+    U_ROSTER, U_NAMES, U_ONE, U_ZERO2 = (next(i) for _ in range(4))
     U_GC, U_SCAN, U_CDICT = next(i), next(i), next(i)
     U_CSEC, U_CSID, U_ST, U_SI = (next(i) for _ in range(4))
-    G_CODE_HAVE, G_SIGS = next(i), next(i)
+    U_CHILD, U_CHILDT = next(i), next(i)
+    U_ACT, U_BODY, U_RESP, U_RTEXT = (next(i) for _ in range(4))
+    G_ATTEMPT, G_DOIT, G_HAVE, G_SIGS = (next(i) for _ in range(4))
+    G_KIDS, G_SKIP, G_RES, G_STALE = (next(i) for _ in range(4))
 
     A.append(comment(
-        "--- SCHOOL CODE ---\n"
-        "The school's check-in QR code carries the secret this request needs. It "
-        "is scanned once and remembered, so this only asks on the first run, or "
-        "again if the school rotates the code."
+        "--- WHO TO SEND FOR ---\n"
+        "The roster pairs each child's name with their Brightwheel id. The list "
+        "below drives the loop, so the name shown in notifications and the id "
+        "sent to Brightwheel always come from the same entry."
     ))
+    A.append(act("is.workflow.actions.dictionary", UUID=U_ROSTER,
+                 WFItems=dict_field([kv(n, ts(t)) for n, t in CHILDREN])))
+    A.append(act("is.workflow.actions.list", UUID=U_NAMES,
+                 WFItems=[n for n, _ in CHILDREN]))
+    A.append(act("is.workflow.actions.number", UUID=U_ONE,
+                 WFNumberActionNumber="1"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Send Needed",
+                 WFInput=attach(out(U_ONE, "Number"))))
+
+    A.append(comment(
+        "Send, and send again once if the school code turned out to be stale.\n"
+        "- Send Needed starts at yes, and is set again only by a rejected code\n"
+        "- A child already in the right state is skipped, so a second pass "
+        "cannot double up on anyone who already succeeded"
+    ))
+    A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
+                 GroupingIdentifier=G_ATTEMPT, WFControlFlowMode=0,
+                 WFRepeatCount=2))
+    A.append(comment(
+        "Do nothing on the second pass unless one was asked for.\n"
+        "- Condition checks whether a send is still outstanding\n"
+        "- Only a rejected school code asks for another pass"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_DOIT, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(var("Send Needed"))))
+    A.append(act("is.workflow.actions.number", UUID=U_ZERO2,
+                 WFNumberActionNumber="0"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Send Needed",
+                 WFInput=attach(out(U_ZERO2, "Number"))))
+
+    # --- school code ---
     if env is not None:
         # Debug builds seed the store so a test import never has to scan.
-        A.append(act("is.workflow.actions.gettext", UUID=next(i),
+        u_seed = next(i)
+        A.append(act("is.workflow.actions.gettext", UUID=u_seed,
                      CustomOutputName="Debug School Code",
                      WFTextActionText=json.dumps(
                          {"secret": env["BRIGHTWHEEL_SCHOOL_SECRET"],
@@ -468,31 +513,31 @@ def build(direction, env=None):
         A.append(act("is.workflow.actions.setstoredcontent",
                      WFStoredContentKey="BrightwheelSchoolCode",
                      WFStoredContentGlobalValue=True,
-                     WFInput=ts(out(A[-1]["WFWorkflowActionParameters"]["UUID"],
-                                    "Debug School Code"))))
+                     WFInput=ts(out(u_seed, "Debug School Code"))))
     A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GC,
                  WFStoredContentKey="BrightwheelSchoolCode",
                  WFStoredContentGlobalValue=True))
     C_CODE = gate(U_GC, "Stored Content")
     A.append(comment(
-        "Scan the code the first time, and remember it.\n"
-        "- Condition counts whether anything has been stored yet\n"
-        "- Show Alert explains what to point the camera at before it opens\n"
-        "- Otherwise branch reuses what was scanned before"
+        "Scan the school's code when there is none saved.\n"
+        "- Condition counts whether anything is stored\n"
+        "- Nothing is stored on the first run, or after a stale code was "
+        "forgotten below\n"
+        "- Show Alert explains what to point the camera at before it opens"
     ))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_CODE_HAVE, WFControlFlowMode=0,
+                 GroupingIdentifier=G_HAVE, WFControlFlowMode=0,
                  WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(out(C_CODE, "Count"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="School Code",
                  WFInput=attach(out(U_GC, "Stored Content"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_CODE_HAVE, WFControlFlowMode=1))
+                 GroupingIdentifier=G_HAVE, WFControlFlowMode=1))
     A.append(act("is.workflow.actions.alert",
                  WFAlertActionTitle=ts("Brightwheel"),
                  WFAlertActionMessage=ts(
-                     "The school's check-in QR code is needed once. Point the "
-                     "camera at the code on the sign-in tablet."),
+                     "The school's check-in QR code is needed. Point the camera "
+                     "at the code on the sign-in tablet."),
                  WFAlertActionCancelButtonShown=True))
     A.append(act("is.workflow.actions.scanbarcode", UUID=U_SCAN,
                  WFScanCodeActionMode=0))
@@ -503,7 +548,7 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.setvariable", WFVariableName="School Code",
                  WFInput=attach(out(U_SCAN, "QR/Barcodes"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_CODE_HAVE, WFControlFlowMode=2))
+                 GroupingIdentifier=G_HAVE, WFControlFlowMode=2))
 
     A.append(act("is.workflow.actions.detect.dictionary", UUID=U_CDICT,
                  WFInput=ts(var("School Code"))))
@@ -522,8 +567,6 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.setvariable", WFVariableName="School Id",
                  WFInput=attach(out(U_SI, "Text"))))
 
-    # Matched against the raw scanned text rather than an extracted value, so no
-    # JSON boolean has to survive coercion.
     C_SIGS = gate("School Code", None, r'"signatures_enabled"\s*:\s*(true|1)')
     A.append(comment(
         "Warn if the school has started requiring signatures.\n"
@@ -543,138 +586,143 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SIGS, WFControlFlowMode=2))
 
-    # ---- per child: read state, skip if already there, otherwise send ----
-    for cname, target in CHILDREN:
-        p = kid[cname]
-        A.append(comment(
-            f"--- {title_word.upper()}: {cname.upper()} ---\n"
-            f"Read {cname}'s most recent check-in event first, so running this "
-            "twice in one morning does not record a second arrival. Brightwheel "
-            "reports 1 for checked in and 2 for checked out, and the reply for a "
-            "single event carries exactly one of them."
-        ))
-        A.append(act("is.workflow.actions.downloadurl", UUID=p["act"],
-                     Advanced=True, ShowHeaders=False, WFHTTPMethod="GET",
-                     WFURL=f"{BASE}/students/{target}/activities"
-                           "?page_size=1&action_type=ac_checkin",
-                     WFHTTPHeaders=dict_field([
-                         kv("Accept", ts("application/json")),
-                         kv("X-Parse-Session-Token", ts(var("Session Token"))),
-                         kv("X-Client-Name", ts(CLIENT_NAME)),
-                         kv("X-Client-Version", ts(CLIENT_VERSION)),
-                     ])))
-        C_SKIP = gate(p["act"], "Contents of URL",
-                      '"state"\\s*:\\s*"%s"' % already)
-        A.append(comment(
-            f"Skip {cname} if nothing needs to change.\n"
-            f"- Condition counts whether {cname} is already in the state this "
-            "shortcut would produce\n"
-            "- Otherwise branch sends the request and reports the result\n"
-            "- If the state cannot be read, the request is sent anyway"
-        ))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=p["gskip"], WFControlFlowMode=0,
-                     WFCondition=2, WFNumberValue="0",
-                     WFInput=cond_input(out(C_SKIP, "Count"))))
-        A.append(act("is.workflow.actions.notification",
-                     WFNotificationActionTitle=ts("Brightwheel"),
-                     WFNotificationActionBody=ts(
-                         f"• {cname} was {already_word} — no change")))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=p["gskip"], WFControlFlowMode=1))
+    # --- one pass over the children ---
+    A.append(comment(
+        f"Work through the children in turn.\n"
+        "- Repeat Item is the child's name, straight from the list above\n"
+        "- Get Dictionary Value turns that name into their Brightwheel id\n"
+        f"- Brightwheel reports 1 for checked in and 2 for checked out, and a "
+        "reply for a single event carries exactly one of them"
+    ))
+    A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
+                 GroupingIdentifier=G_KIDS, WFControlFlowMode=0,
+                 WFInput=attach(out(U_NAMES, "List"))))
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_CHILD,
+                 WFDictionaryKey=ts(var("Repeat Item")),
+                 WFGetDictionaryValueType="Value",
+                 WFInput=ts(out(U_ROSTER, "Dictionary"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_CHILDT,
+                 WFTextActionText=ts(out(U_CHILD, "Dictionary Value"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Id",
+                 WFInput=attach(out(U_CHILDT, "Text"))))
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_ACT,
+                 Advanced=True, ShowHeaders=False, WFHTTPMethod="GET",
+                 WFURL=ts(f"{BASE}/students/", var("Child Id"),
+                          "/activities?page_size=1&action_type=ac_checkin"),
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Parse-Session-Token", ts(var("Session Token"))),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ])))
+    C_SKIP = gate(U_ACT, "Contents of URL", '"state"\\s*:\\s*"%s"' % already)
+    A.append(comment(
+        "Skip anyone who needs no change.\n"
+        "- Condition counts whether they are already in the state this shortcut "
+        "would produce\n"
+        "- This is also what makes a second pass safe after a rescan\n"
+        "- If the state cannot be read, the request is sent anyway"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_SKIP, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_SKIP, "Count"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionBody=ts(
+                     "• ", var("Repeat Item"), f" was {already_word} — no change")))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_SKIP, WFControlFlowMode=1))
 
-        A.append(act("is.workflow.actions.gettext", UUID=p["body"],
-                     WFTextActionText=ts(
-                         '{"checkins":[{"actor":{"object_id":"' + ACTOR + '"},'
-                         '"health_screen":{"questions":[]},'
-                         '"room":{"object_id":"' + ROOM + '"},'
-                         '"checked_in":' + ("true" if desired else "false") + ','
-                         '"target":{"object_id":"' + target + '"},'
-                         '"note":""}],'
-                         '"school_id":"',
-                         var("School Id"),
-                         '","secret":"',
-                         var("School Secret"),
-                         '","checkin_code":"',
-                         out(U["code"], "Check-In Code"),
-                         '"}')))
-        A.append(act("is.workflow.actions.downloadurl", UUID=p["resp"],
-                     Advanced=True, ShowHeaders=False,
-                     WFURL=f"{BASE}/checkins/", WFHTTPMethod="POST",
-                     WFHTTPBodyType="File",
-                     # SKILL.md rule 9: WFRequestVariable is a variable-only
-                     # parameter and takes a WFTextTokenAttachment. Serialised as
-                     # a WFTextTokenString it sends an EMPTY body, and the API
-                     # answers 422 "cannot process empty checkins" — which still
-                     # contains "checkins", so it used to read as success.
-                     WFRequestVariable=attach(out(p["body"], "Text")),
-                     WFFormValues=dict_field([]),
-                     WFHTTPHeaders=dict_field([
-                         kv("Content-Type", ts("application/json")),
-                         kv("Accept", ts("application/json")),
-                         kv("X-Parse-Session-Token", ts(var("Session Token"))),
-                         kv("X-Client-Name", ts(CLIENT_NAME)),
-                         kv("X-Client-Version", ts(CLIENT_VERSION)),
-                     ])))
-        A.append(act("is.workflow.actions.gettext", UUID=p["rtext"],
-                     WFTextActionText=ts(out(p["resp"], "Contents of URL"))))
-        # "event_date" appears only when a record was really created. The
-        # obvious test, "checkins", also matches the 422 empty-body error.
-        C_OK = gate(p["resp"], "Contents of URL", '"event_date"')
-        A.append(comment(
-            f"Report the result for {cname}.\n"
-            "- Condition counts whether Brightwheel echoed the check-in back\n"
-            "- Otherwise branch shows Brightwheel's own error text"
-        ))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=p["gres"], WFControlFlowMode=0,
-                     WFCondition=2, WFNumberValue="0",
-                     WFInput=cond_input(out(C_OK, "Count"))))
-        A.append(act("is.workflow.actions.notification",
-                     WFNotificationActionTitle=ts("Brightwheel"),
-                     WFNotificationActionBody=ts(f"✅ {cname} {verb}")))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=p["gres"], WFControlFlowMode=1))
-        # A rotated school code fails with its own distinct error. Forgetting the
-        # stored code is what makes the next run offer the scanner again;
-        # verified against the live API that this string appears for a stale
-        # secret and for none of the other failures.
-        C_STALE = gate(p["resp"], "Contents of URL",
-                       r'"secret"\s*:\s*"The given secret')
-        g_stale = next(i)
-        A.append(comment(
-            f"Tell a stale school code apart from anything else.\n"
-            "- Condition counts whether Brightwheel rejected the school's code\n"
-            "- Forgetting it makes the next run scan a fresh one\n"
-            "- Otherwise branch just reports what Brightwheel said"
-        ))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=g_stale, WFControlFlowMode=0,
-                     WFCondition=2, WFNumberValue="0",
-                     WFInput=cond_input(out(C_STALE, "Count"))))
-        A.append(act("is.workflow.actions.deletestoredcontent",
-                     WFStoredContentKey="BrightwheelSchoolCode",
-                     WFStoredContentGlobalValue=True))
-        A.append(act("is.workflow.actions.notification",
-                     WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
-                     WFNotificationActionBody=ts(
-                         "The school's check-in code has changed, so it has been "
-                         "forgotten. Run this again and it will ask you to scan "
-                         "the new one.")))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=g_stale, WFControlFlowMode=1))
-        A.append(act("is.workflow.actions.notification",
-                     WFNotificationActionTitle=ts(f"⚠️ {cname} not {verb}"),
-                     WFNotificationActionBody=ts(
-                         out(p["rtext"], "Text"),
-                         "\n\nIf this says the session expired, run this "
-                         "shortcut by hand to sign in again.")))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=g_stale, WFControlFlowMode=2))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=p["gres"], WFControlFlowMode=2))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=p["gskip"], WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.gettext", UUID=U_BODY,
+                 WFTextActionText=ts(
+                     '{"checkins":[{"actor":{"object_id":"' + ACTOR + '"},'
+                     '"health_screen":{"questions":[]},'
+                     '"room":{"object_id":"' + ROOM + '"},'
+                     '"checked_in":' + ("true" if desired else "false") + ','
+                     '"target":{"object_id":"',
+                     var("Child Id"),
+                     '"},"note":""}],"school_id":"',
+                     var("School Id"),
+                     '","secret":"',
+                     var("School Secret"),
+                     '","checkin_code":"',
+                     out(U["code"], "Check-In Code"),
+                     '"}')))
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_RESP,
+                 Advanced=True, ShowHeaders=False,
+                 WFURL=f"{BASE}/checkins/", WFHTTPMethod="POST",
+                 WFHTTPBodyType="File",
+                 WFRequestVariable=attach(out(U_BODY, "Text")),
+                 WFFormValues=dict_field([]),
+                 WFHTTPHeaders=dict_field([
+                     kv("Content-Type", ts("application/json")),
+                     kv("Accept", ts("application/json")),
+                     kv("X-Parse-Session-Token", ts(var("Session Token"))),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ])))
+    A.append(act("is.workflow.actions.gettext", UUID=U_RTEXT,
+                 WFTextActionText=ts(out(U_RESP, "Contents of URL"))))
+    C_OK = gate(U_RESP, "Contents of URL", '"event_date"')
+    A.append(comment(
+        "Report the result.\n"
+        "- Condition counts whether Brightwheel really recorded something\n"
+        "- Otherwise branch works out whether the school code was the problem"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_RES, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_OK, "Count"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionBody=ts(
+                     "✅ ", var("Repeat Item"), f" {verb}")))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_RES, WFControlFlowMode=1))
+    C_STALE = gate(U_RESP, "Contents of URL",
+                   r'"secret"\s*:\s*"The given secret')
+    A.append(comment(
+        "Tell a stale school code apart from anything else.\n"
+        "- Condition counts whether Brightwheel rejected the school's code\n"
+        "- Forgetting it makes this run scan a fresh one and try again\n"
+        "- Otherwise branch just reports what Brightwheel said"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_STALE, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_STALE, "Count"))))
+    A.append(act("is.workflow.actions.deletestoredcontent",
+                 WFStoredContentKey="BrightwheelSchoolCode",
+                 WFStoredContentGlobalValue=True))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Send Needed",
+                 WFInput=attach(out(U_ONE, "Number"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionBody=ts(
+                     "The school's check-in code has changed. Scanning the new "
+                     "one and trying again.")))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_STALE, WFControlFlowMode=1))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts(
+                     "⚠️ ", var("Repeat Item"), f" not {verb}"),
+                 WFNotificationActionBody=ts(
+                     out(U_RTEXT, "Text"),
+                     "\n\nIf this says the session expired, run this shortcut "
+                     "by hand to sign in again.")))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_STALE, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_RES, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_SKIP, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
+                 GroupingIdentifier=G_KIDS, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_DOIT, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
+                 GroupingIdentifier=G_ATTEMPT, WFControlFlowMode=2))
 
     return name, {
         "WFWorkflowActions": A,

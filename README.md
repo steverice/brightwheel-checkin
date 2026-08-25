@@ -103,11 +103,12 @@ and re-parsed, so both values come from one source of truth.
 If the scan says `signatures_enabled` is on, you get a warning: check-ins send no
 signature and would start failing.
 
-**A rotated code recovers by itself.** If the school enables Quick Scan Refresh,
-the stored code eventually goes stale and Brightwheel rejects it with its own
-distinct error. That is detected, the stored code is forgotten, and the
-notification says so — the next run offers the scanner again. No re-import
-needed.
+**A rotated code recovers within the same run.** If the school enables Quick Scan
+Refresh, the stored code eventually goes stale and Brightwheel rejects it with
+its own distinct error. That is detected, the stored code is forgotten, and the
+run makes a second pass — which finds nothing stored, asks you to scan the new
+code, and sends again. Anyone already checked in on the first pass is skipped, so
+nobody is recorded twice.
 
 ## Brightwheel API
 

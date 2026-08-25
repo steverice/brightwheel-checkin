@@ -60,14 +60,18 @@ GET /users/me
          POST /sessions/start           (sends, and on later passes resends, a code)
          Ask for the 6-digit code       (empty or "resend" falls through to the next pass)
          POST /sessions with 2fa_code   -> token -> Store Content
-Get Stored Content: school code
-  └─ nothing stored ──> alert, Scan Code, store it
-Detect Dictionary  ->  School Secret, School Id
-
-for each child:
-    GET /students/{id}/activities?page_size=1&action_type=ac_checkin
-      └─ already in the target state ──> notify "no change", send nothing
-      └─ otherwise ──> POST /checkins/ ──> notify success or the API's own error
+Repeat 2, but only while Send Needed:
+    Get Stored Content: school code
+      └─ nothing stored ──> alert, Scan Code, store it
+    Detect Dictionary  ->  School Secret, School Id
+    Repeat for each child name:
+        roster lookup: name -> Child Id
+        GET /students/{id}/activities?page_size=1&action_type=ac_checkin
+          └─ already in the target state ──> notify "no change", send nothing
+          └─ otherwise ──> POST /checkins/
+                 ├─ event_date        ──> notify success
+                 ├─ stale school code ──> forget it, ask for another pass
+                 └─ anything else     ──> notify the API's own error
 ```
 
 ## Key design decisions
@@ -99,17 +103,38 @@ blob is stored under one key and re-parsed on later runs, so `secret` and
 interactive, so it sits behind an "is anything stored" check — the same shape as
 the sign-in prompt, and for the same reason.
 
-A rotated code self-heals. Brightwheel rejects a stale secret with a distinct
-error, which is matched against the response text; the stored code is then
-deleted so the next run scans a fresh one. The pattern
+A rotated code self-heals **within the run**. Brightwheel rejects a stale secret
+with a distinct error, matched against the response text; the stored code is
+deleted and a second pass requested. The next pass finds nothing stored and
+scans, so **"first run" and "the code rotated" are the same branch** — deleting
+the stored code is what turns one into the other. The pattern
 (`"secret"\s*:\s*"The given secret`) was checked against live responses for a
 stale secret, a wrong check-in code, an empty body and an expired token, and
 matches only the first.
 
-**Idempotency, failing open.** Each run reads the child's latest check-in event
+**Idempotency, failing open.** Each pass reads the child's latest check-in event
 and skips anyone already in the target state, so a repeated trigger cannot record
 a second arrival. If the state cannot be read at all the request is sent anyway:
 a duplicate event is recoverable, a silently skipped arrival is not.
+
+That check is also what makes the retry safe. A second pass re-runs every child,
+and anyone who already succeeded is skipped — so the retry needs no memory of who
+was done.
+
+**Children are a Repeat, not an unrolled pair.** They were unrolled originally,
+which was simpler while there was nothing to retry. Looping means the retry
+re-enters the *same* actions rather than a second copy: the built shortcut
+contains exactly one `POST /checkins/`. It also came out smaller — 138 actions
+unrolled, 125 looped, retry included.
+
+`Repeat Item` is the child's **name**, and the id comes from a roster Dictionary
+looked up with a **tokenized `WFDictionaryKey`** bound to Repeat Item. That is
+the one shape here with a verified example behind it, found in the golden
+library. `Get Item from List` and `Split Text` were the obvious alternatives for
+carrying a name and id together, and both appear in the golden shortcuts with
+*empty* parameters — no worked example of how to index or separate anything. That
+is the whole reason the roster is a dictionary keyed by name rather than a list
+of `name|id` strings.
 
 **No interactive actions on the happy path.** These run from background arrival
 triggers, which cannot answer a prompt on a locked phone. Credentials are
