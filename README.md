@@ -47,6 +47,20 @@ your check-in code. `.env` and `dist-debug/` are both gitignored and `--debug`
 never writes to `dist/`, so a debug artifact cannot be committed by accident.
 Don't AirDrop one to anyone else.
 
+## Testing
+
+`./test.sh` runs all three shortcuts on an iOS 27 simulator against a mock
+Brightwheel and asserts on the requests they send. It covers the skip path, a
+genuine write in both directions, a stale school code, and recovering from an
+expired token — including error paths that cannot be produced on demand against
+the real API.
+
+A test build is generated with fake credentials and its API base pointed at the
+mock, so **no test can reach the real Brightwheel** or check a real child in.
+
+`TESTING.md` covers what it needs, what it cannot cover — the QR scanning path
+needs a real camera — and what had to be worked out to drive the simulator.
+
 ## Install
 
 AirDrop `dist/*.shortcut` to the phone, **Brightwheel Attendance first** so the other

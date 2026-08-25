@@ -28,9 +28,13 @@ build_shortcuts.py   Generator. Builds all three shortcuts as plist dicts.
 build.sh             Pipeline: generate -> validate -> sign -> stage.
 dist/                Committed build output: unsigned .xml + signed .shortcut.
 dist-debug/          Gitignored. Same shortcuts with credentials baked in.
+dist-test/           Gitignored. Test builds, pointed at the mock API.
+test.sh              Pipeline: build against a mock -> install -> run -> assert.
+tests/               The integration suite and the simulator harness.
 .env.example         Template for the debug build's credential file.
 README.md            What this is and how to set it up.
 ARCHITECTURE.md      This file: why it looks the way it does.
+TESTING.md           How the simulator suite works, and what it cannot cover.
 ```
 
 Inside `build_shortcuts.py`:
@@ -44,6 +48,7 @@ Inside `build_shortcuts.py`:
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
 | `build()` | `Brightwheel Attendance` — everything except the direction. |
 | `build_wrapper()` | The two trigger carriers, parameterised by direction. |
+| `--api-base` / `--env-file` | Overrides used only by the integration tests, so a test build cannot reach the real API. See `TESTING.md`. |
 
 ## Data flow
 
