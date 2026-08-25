@@ -659,22 +659,23 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_HAVE, WFControlFlowMode=2))
 
-    A.append(act("is.workflow.actions.detect.dictionary", UUID=U_CDICT,
-                 WFInput=ts(var("School Code"))))
-    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_CSEC,
-                 WFDictionaryKey="secret", WFGetDictionaryValueType="Value",
-                 WFInput=ts(out(U_CDICT, "Dictionary"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_ST,
-                 WFTextActionText=ts(out(U_CSEC, "Dictionary Value"))))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="School Secret",
-                 WFInput=attach(out(U_ST, "Text"))))
-    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_CSID,
-                 WFDictionaryKey="school_id", WFGetDictionaryValueType="Value",
-                 WFInput=ts(out(U_CDICT, "Dictionary"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_SI,
-                 WFTextActionText=ts(out(U_CSID, "Dictionary Value"))))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="School Id",
-                 WFInput=attach(out(U_SI, "Text"))))
+    # Pulled out with Match Text, not Detect Dictionary + Get Dictionary Value.
+    # That pair was banned from the check path for never producing a working
+    # branch, and was left here on the assumption it behaved on plain text. It
+    # does not: school_id came back empty and Brightwheel answered E1205 "You
+    # must specify the school".
+    for key, varname, u_m, u_g, u_t in (
+            ("secret", "School Secret", U_CSEC, U_CDICT, U_ST),
+            ("school_id", "School Id", U_CSID, U_SI, next(i))):
+        A.append(act("is.workflow.actions.text.match", UUID=u_m,
+                     WFMatchTextPattern=r'"%s"\s*:\s*"([^"]+)"' % key,
+                     text=ts(var("School Code"))))
+        A.append(act("is.workflow.actions.text.match.getgroup", UUID=u_g,
+                     WFGroupIndex="1", matches=attach(out(u_m, "Matches"))))
+        A.append(act("is.workflow.actions.gettext", UUID=u_t,
+                     WFTextActionText=ts(out(u_g, "Matched Text Group"))))
+        A.append(act("is.workflow.actions.setvariable", WFVariableName=varname,
+                     WFInput=attach(out(u_t, "Text"))))
 
     C_SIGS = gate("School Code", None, r'"signatures_enabled"\s*:\s*(true|1)')
     A.append(comment(
