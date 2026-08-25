@@ -12,8 +12,8 @@ hand. Variable references are UUID-keyed, string parameters carry
 `attachmentsByRange` offsets that must line up with U+FFFC placeholders
 character-for-character, and control flow is expressed as flat runs of actions
 sharing a `GroupingIdentifier`. Generating it means offsets are computed rather
-than counted, the two check shortcuts cannot drift apart, and a change is a diff
-in one Python file instead of an untracked edit on a phone.
+than counted, the two wrappers cannot drift apart, and a change is a diff in one
+Python file instead of an untracked edit on a phone.
 
 The cost is that **the phone is downstream**. Anything edited in the Shortcuts
 app is overwritten by the next build, and the only values meant to be changed on
@@ -24,7 +24,7 @@ documentation* below for how to extract one.
 ## Directory structure
 
 ```
-build_shortcuts.py   Generator. Builds both shortcuts as plist dicts.
+build_shortcuts.py   Generator. Builds all three shortcuts as plist dicts.
 build.sh             Pipeline: generate -> validate -> sign -> stage.
 dist/                Committed build output: unsigned .xml + signed .shortcut.
 dist-debug/          Gitignored. Same shortcuts with credentials baked in.
@@ -42,7 +42,8 @@ Inside `build_shortcuts.py`:
 | `act()` / `comment()` | Bare action constructors. |
 | `gate()` | Text → Match Text → Count. The presence primitive; see below. Pass `name=None` to read a named variable instead of an action output. |
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
-| `build()` | Both shortcuts, parameterised by direction. |
+| `build()` | `Brightwheel Attendance` — everything except the direction. |
+| `build_wrapper()` | The two trigger carriers, parameterised by direction. |
 
 ## Data flow
 
@@ -51,23 +52,29 @@ shortcut runs `validate-shortcut` against iOS 27, signs it with `sign-shortcut`,
 and copies the signed file back beside its XML. Any validator error except two
 named waivers aborts the build.
 
-**Runtime**, for a check shortcut:
+**Runtime**, for `Brightwheel Attendance`:
 
 ```
-Get Stored Content (shared namespace)  ->  Session Token
+Shortcut Input is "in" or "out"?
+  ├─ yes ──> Direction                  (a wrapper handed it in)
+  └─ no  ──> Choose from Menu           (run by hand)
+Direction  ->  Wanted In, Checked In Value, Verb, Already Word
+
+Get Stored Content (shared)  ->  Session Token
 GET /users/me
   └─ body contains E1200 ──> sign-in loop, up to 5 passes:
-         POST /sessions/start           (sends, and on later passes resends, a code)
-         Ask for the 6-digit code       (empty or "resend" falls through to the next pass)
-         POST /sessions with 2fa_code   -> token -> Store Content
+         POST /sessions/start          (sends, and on later passes resends, a code)
+         Ask for the 6-digit code      (empty or "resend" falls through to the next pass)
+         POST /sessions with 2fa_code  -> token -> Store Content
+
 Repeat 2, but only while Send Needed:
     Get Stored Content: school code
       └─ nothing stored ──> alert, Scan Code, store it
-    Detect Dictionary  ->  School Secret, School Id
+    Match Text  ->  School Secret, School Id
     Repeat for each child name:
-        roster lookup: name -> Child Id
+        Repeat Item 2 -> Child Name -> (one If per child) -> Child Id
         GET /students/{id}/activities?page_size=1&action_type=ac_checkin
-          └─ already in the target state ──> notify "no change", send nothing
+          └─ already the way this run wants ──> notify "no change", send nothing
           └─ otherwise ──> POST /checkins/
                  ├─ event_date        ──> notify success
                  ├─ stale school code ──> forget it, ask for another pass
@@ -141,8 +148,8 @@ was done.
 **Children are a Repeat, not an unrolled pair.** They were unrolled originally,
 which was simpler while there was nothing to retry. Looping means the retry
 re-enters the *same* actions rather than a second copy: the built shortcut
-contains exactly one `POST /checkins/`. It also came out smaller — 138 actions
-unrolled, 125 looped, retry included.
+contains exactly one `POST /checkins/`. It was also smaller at the time — 138 actions
+unrolled against 125 looped, retry included.
 
 The loop item is **`Repeat Item 2`**, not `Repeat Item`, because this loop sits
 inside the retry Repeat — and a *count*-style outer loop shifts the numbering
@@ -155,25 +162,27 @@ It is captured into `Child Name` immediately, so the numbered variable appears
 exactly once in the whole shortcut. Change the nesting and that is the only line
 to revisit.
 
-The child's name is the loop item, and the id comes from one plain If per child
+The child's name is the loop item; the id comes from **one plain If per child**
 comparing that name against a literal. A roster Dictionary read with
 `Get Dictionary Value` was tried first and returned nothing, leaving the target
 empty and every check-in answered `E1204 "The requested resource could not be
-found"`. That is
-the one shape here with a verified example behind it, found in the golden
-library. `Get Item from List` and `Split Text` were the obvious alternatives for
-carrying a name and id together, and both appear in the golden shortcuts with
-*empty* parameters — no worked example of how to index or separate anything. That
-is the whole reason the roster is a dictionary keyed by name rather than a list
-of `name|id` strings.
+found"`.
+
+Carrying name and id together in one list item would have been tidier, but
+`Get Item from List` and `Split Text` both appear in the golden shortcuts with
+*empty* parameters — no worked example of how to index or separate anything — so
+neither has a verified shape to copy.
 
 **No interactive actions on the happy path.** These run from background arrival
 triggers, which cannot answer a prompt on a locked phone. Credentials are
-import-time Setup questions rather than first-run prompts, and every outcome is
-a notification. The one prompt — the 2FA code — sits on the recovery branch,
-which only runs once the token has already expired, i.e. when that run was
-failing regardless. An earlier blanket ban on interactive actions was too broad;
-the rule belongs on the happy path, not the recovery path.
+import-time Setup questions rather than first-run prompts, and every outcome is a
+notification.
+
+Three prompts exist, and each is reachable only when the run would otherwise fail
+or was started by hand: the 2FA code (the token has already expired), the QR scan
+(no school code is stored), and the direction menu (no input, so a person is
+driving). An earlier blanket ban on interactive actions was too broad — the rule
+belongs on the happy path, not the recovery paths.
 
 **No time logic.** iOS 27 attaches triggers to the shortcut itself, and the
 trigger carries its own time range, so a weekday-and-hour guard inside the
@@ -274,7 +283,7 @@ Each of these passes the validator, imports cleanly, and then misbehaves.
 | Format Date custom pattern | `WFDateFormat="Custom"` + pattern in `WFDateFormatString` | Pattern goes **in `WFDateFormat`**, with `WFDateFormatStyle="Custom"` and no `WFDateFormatString` |
 | `WFRequestVariable` | ACTIONS.md File Body example shows `WFTextTokenString` | Must be a `WFTextTokenAttachment` (SKILL.md rule 9 is the correct one) |
 | Multi-condition If | CONTROL_FLOW.md shows numeric rows with `WFNumberValue` | Numeric rows import empty and red; use Match Text + Count + a numeric If |
-| "Open Code Scanner" | Grounding catalog lists `com.apple.BarcodeScanner.BarcodeScannerIntent` under that display name | Plain `is.workflow.actions.openapp` with `WFAppIdentifier` + `WFSelectedApp` |
+| "Open Code Scanner" | Grounding catalog lists `com.apple.BarcodeScanner.BarcodeScannerIntent` under that display name | Plain `is.workflow.actions.openapp` with `WFAppIdentifier` + `WFSelectedApp`. (This project no longer opens the app at all — `scanbarcode` replaced it — but the lesson stands.) |
 | Glyph numbers | `shortcuts-official-glyph-mapping.json` | Right for many entries, but `59692` documented as `circledDownArrow` renders as a checkmark |
 | `scanbarcode` | macOS-only, and requires `imageFile` | Works on iOS 27 as a **live scanner**: `WFScanCodeActionMode = 0`, no image input, output named `QR/Barcodes` |
 
@@ -296,6 +305,44 @@ degrade gracefully — it makes the *entire shortcut* fail to import with "conta
 features not supported on this device". Prefer an ordinary
 `is.workflow.actions.*` action whenever one exists, even when an AppIntent shares
 its display name.
+
+## Actions with no verified example
+
+Treat these as unproven until a sample turns up. Each appears in the golden
+library with **empty parameters**, or not at all, so their wiring is guesswork:
+
+| Action | Status |
+|---|---|
+| `Get Item from List` | present with no parameters — no example of `WFItemSpecifier` or any index |
+| `Split Text` | present with no parameters — no example of a separator in use |
+| `Run Shortcut` | no golden example; shape recovered from a user's share link |
+| AppIntent `AppIntentDescriptor` | no example anywhere; an invented one breaks the whole import |
+| Multi-condition `WFConditions` numeric rows | no example; imports red and empty |
+
+Working around a missing shape is usually cheap. Carrying a name and an id
+through a loop *looks* like it needs Split Text; one plain If per item does the
+same job with primitives that are proven.
+
+## Loops
+
+- **Nested loops renumber the item.** A Repeat with Each inside a `Repeat 2`
+  exposes its item as **`Repeat Item 2`**, not `Repeat Item` — a *count*-style
+  outer loop shifts the numbering just as a nested Repeat with Each does, which
+  `BEST_PRACTICES.md` does not say. Confirmed on device with a probe. Getting it
+  wrong fails silently: the item reads empty and everything derived from it is
+  empty. Capture the numbered variable into a named one immediately so it appears
+  exactly once.
+- **An If compares a variable to a *literal*, never to another variable.** To
+  compare two runtime values, paste them into one string and match a fixed
+  pattern — `11`/`00` versus `01`/`10` for a pair of booleans.
+- **Idempotency makes retries free.** If each iteration already skips work that
+  is done, an outer retry loop needs no memory of what succeeded.
+
+## Choose from Menu
+
+`WFMenuItems` on the start action and the `WFMenuItemTitle` of each case must
+match exactly, and there must be one case per item. A mismatch imports without
+complaint and misroutes at runtime.
 
 ## Silent failures to design against
 
@@ -320,10 +367,12 @@ distinguish "worked" from "looked like it worked".
   hand-off holds the run until the user returns. Worth knowing generally, though
   this project no longer needs it — `scanbarcode` returns the decoded text
   in-process, so the hand-off went away entirely.
-- **Gray input chips are normal.** Detect Dictionary and Get Dictionary Value show
-  a gray `Input` / `Dictionary` chip for an implicit connection to the previous
+- **Gray input chips are normal.** An action showing a gray `Input` chip rather
+  than a colored token is displaying an implicit connection to the previous
   action, not a broken wire. Inserting an action between such a pair silently
   redirects the input.
+- **Dictionary actions return empty rather than failing.** See the prohibition
+  above; this is the specific reason they cost four separate debugging rounds.
 
 ## iOS 27 automations
 
@@ -338,6 +387,16 @@ and `WFArriveEndTime`, but `WFArriveLocation` is a
 from the on-device picker — and an incomplete trigger header imports as an
 *invalid* automation. So **attach triggers last**: re-importing a rebuilt
 shortcut replaces it and loses them.
+
+A share link confirms the split. Both triggers came through in
+`WFWorkflowTriggers` with their `WFArriveStartTime` / `WFArriveEndTime` and
+`WFArriveTimeRange` intact, and **without** any `WFArriveLocation` — the time
+range travels, the placemark does not.
+
+Triggers also report **no output** (`outputTypeIdentifiers: ["none"]`), so a
+shortcut cannot tell which one woke it. That is a real absence, not missing
+metadata: 13 of the 42 catalogued triggers *do* declare an output, including
+message, email, notification and file triggers.
 
 Arrival triggers also require Settings → Privacy & Security → Location Services →
 Shortcuts set to **Always**. "While Using the App" makes a geofence silently

@@ -14,9 +14,10 @@ device cannot make it send the wrong direction.
 Run Attendance on its own — from the app, the Home Screen, or Siri — and it asks
 whether to check in or out. Cancelling the menu sends nothing.
 
-Requires iOS 27 (Store Content / Get Stored Content, and the iOS 27 trigger
-model). `ARCHITECTURE.md` covers why the code looks the way it does, and what was
-learned about building Shortcuts programmatically.
+`ARCHITECTURE.md` covers why it is built this way.
+
+Requires iOS 27 — Store Content, the live `Scan Code` action, and the iOS 27
+model where triggers live on the shortcut itself.
 
 ## Build
 
@@ -108,6 +109,11 @@ the box empty, or type `resend`**, and another code is sent. Only a strict
 a resend. Cancelling stops the shortcut.
 
 ## The school code
+
+Nothing about the school is baked into the build: `secret` and `school_id` both
+come from the scanned QR code, so these shortcuts would work at a different
+school without a rebuild.
+
 
 The school's check-in QR code carries the `secret` and `school_id` the request
 needs. **It is not a Setup question.** The first run finds nothing stored, shows
