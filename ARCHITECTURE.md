@@ -92,11 +92,19 @@ also sidesteps empty strings satisfying "has any value".
 | `"secret"\s*:\s*"The given secret` | the stored school code has gone stale |
 | `"secret"\s*:\s*"([^"]+)"` / `"school_id"…` | pulling those out of the scanned code |
 
-There is now **no Detect Dictionary action anywhere in the shortcut**. The school
-code was the last holdout, kept on the assumption the pair behaved on plain text.
-It does not: `school_id` came back empty and every check-in was rejected with
-`E1205 "You must specify the school"`. Those values are matched out of the raw
-scanned text like everything else.
+There is now **no Detect Dictionary, Get Dictionary Value, or Dictionary action
+anywhere in the shortcut** — verified on the built output.
+
+That pair broke four separate things before it was fully removed: the auth probe
+read its own 401 as "no error"; the success test reported a check-in that never
+happened; the school code yielded an empty `school_id` and `E1205 "You must
+specify the school"`; and the roster lookup yielded an empty target and `E1204
+"The requested resource could not be found"`.
+
+Each time it was removed from the place that had just failed and left where it
+seemed harmless. The rule is **never**, not "not there". Its failure mode is what
+makes it dangerous: it does not error, it returns empty, and the empty value
+travels until something far away complains about the wrong thing.
 
 **The school code is scanned, not typed.** `scanbarcode` returns decoded text
 in-process, so the QR code became something the check shortcuts read directly
@@ -147,8 +155,11 @@ It is captured into `Child Name` immediately, so the numbered variable appears
 exactly once in the whole shortcut. Change the nesting and that is the only line
 to revisit.
 
-The child's name is the loop item, and the id comes from a roster Dictionary
-looked up with a **tokenized `WFDictionaryKey`**. That is
+The child's name is the loop item, and the id comes from one plain If per child
+comparing that name against a literal. A roster Dictionary read with
+`Get Dictionary Value` was tried first and returned nothing, leaving the target
+empty and every check-in answered `E1204 "The requested resource could not be
+found"`. That is
 the one shape here with a verified example behind it, found in the golden
 library. `Get Item from List` and `Split Text` were the obvious alternatives for
 carrying a name and id together, and both appear in the golden shortcuts with

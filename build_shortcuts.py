@@ -573,12 +573,10 @@ def build(direction=None, env=None):
 
     A.append(comment(
         "--- WHO TO SEND FOR ---\n"
-        "The roster pairs each child's name with their Brightwheel id. The list "
-        "below drives the loop, so the name shown in notifications and the id "
-        "sent to Brightwheel always come from the same entry."
+        "This list drives the loop. Each name is matched to a Brightwheel id "
+        "inside it, so the name shown in notifications and the id sent to "
+        "Brightwheel always come from the same entry."
     ))
-    A.append(act("is.workflow.actions.dictionary", UUID=U_ROSTER,
-                 WFItems=dict_field([kv(n, ts(t)) for n, t in CHILDREN])))
     A.append(act("is.workflow.actions.list", UUID=U_NAMES,
                  WFItems=[n for n, _ in CHILDREN]))
     A.append(act("is.workflow.actions.number", UUID=U_ONE,
@@ -700,7 +698,7 @@ def build(direction=None, env=None):
     A.append(comment(
         f"Work through the children in turn.\n"
         "- Child Name is the current child, taken from the list above\n"
-        "- Get Dictionary Value turns that name into their Brightwheel id\n"
+        "- A short block below turns that name into their Brightwheel id\n"
         f"- Brightwheel reports 1 for checked in and 2 for checked out, and a "
         "reply for a single event carries exactly one of them"
     ))
@@ -715,17 +713,29 @@ def build(direction=None, env=None):
     #
     # Captured into Child Name here so the numbered variable appears exactly
     # once; if the nesting ever changes, this is the only line to revisit.
-    u_name = next(i)
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Name",
                  WFInput=attach(var("Repeat Item 2"))))
-    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_CHILD,
-                 WFDictionaryKey=ts(var("Child Name")),
-                 WFGetDictionaryValueType="Value",
-                 WFInput=ts(out(U_ROSTER, "Dictionary"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_CHILDT,
-                 WFTextActionText=ts(out(U_CHILD, "Dictionary Value"))))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Id",
-                 WFInput=attach(out(U_CHILDT, "Text"))))
+    # One plain If per child rather than a dictionary lookup. Get Dictionary
+    # Value returned nothing here too, leaving the target empty and every
+    # check-in answered with E1204 "The requested resource could not be found".
+    # Comparing a variable against a literal string is the primitive that works.
+    for cname, target in CHILDREN:
+        g_who, u_id = next(i), next(i)
+        A.append(comment(
+            f"Look up {cname}'s Brightwheel id.\n"
+            "- Condition compares the current child's name with this one\n"
+            "- Only the matching block sets Child Id"
+        ))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=g_who, WFControlFlowMode=0,
+                     WFCondition=4, WFConditionalActionString=cname,
+                     WFInput=cond_input(var("Child Name"))))
+        A.append(act("is.workflow.actions.gettext", UUID=u_id,
+                     WFTextActionText=target))
+        A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Id",
+                     WFInput=attach(out(u_id, "Text"))))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=g_who, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.downloadurl", UUID=U_ACT,
                  Advanced=True, ShowHeaders=False, WFHTTPMethod="GET",
                  WFURL=ts(f"{BASE}/students/", var("Child Id"),
