@@ -159,11 +159,6 @@ SETUP = [
      "not set", ""),
     ("code", "text", "Brightwheel check-in code",
      "Your 4-digit guardian check-in code.", "not set", ""),
-    ("secret", "text", "Brightwheel school QR secret",
-     "The 'secret' value from your school's check-in QR code. It looks like "
-     "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Run the Brightwheel Scan Code "
-     "shortcut at the school to read it off the code and copy it.",
-     "not set", ""),
 ]
 
 
@@ -180,7 +175,7 @@ def build(direction, env=None):
     color = 4292093695 if checking_in else 4251333119  # green / orange
 
     i = iter(uuids(180))
-    U = {k: next(i) for k in ("code", "secret", "email", "password")}
+    U = {k: next(i) for k in ("code", "email", "password")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
     U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
     G0, G0A, G0B, G0C = next(i), next(i), next(i), next(i)
@@ -208,8 +203,10 @@ def build(direction, env=None):
         branch. Matching the raw response text is the primitive that works.
         """
         t, m, c = next(i), next(i), next(i)
+        # name=None means src is a variable name rather than an action UUID.
+        source = var(src) if name is None else out(src, name)
         A.append(act("is.workflow.actions.gettext", UUID=t,
-                     WFTextActionText=ts(out(src, name))))
+                     WFTextActionText=ts(source)))
         A.append(act("is.workflow.actions.text.match", UUID=m,
                      WFMatchTextPattern=pattern, text=ts(out(t, "Text"))))
         A.append(act("is.workflow.actions.count", UUID=c, WFCountType="Items",
@@ -257,7 +254,7 @@ def build(direction, env=None):
         "These four values are requested when the shortcut is imported. To change "
         "one later, edit the matching Text action, or re-import the shortcut."
     ))
-    names = {"code": "Check-In Code", "secret": "School Secret",
+    names = {"code": "Check-In Code",
              "email": "Account Email",
              "password": "Account Password"}
     for key, kind, prompt, blurb, default, prompt_default in SETUP:
@@ -443,6 +440,109 @@ def build(direction, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_FAIL, WFControlFlowMode=2))
 
+    # ---- school code: scanned once, then remembered ----
+    #
+    # The QR code holds {secret, school_id, signatures_enabled}. Both values the
+    # request needs come from it, so it is stored whole and re-parsed rather than
+    # split into two keys. Scanning is interactive and only happens when nothing
+    # is stored, i.e. first run or after the school rotates the code — the same
+    # shape as the sign-in prompt.
+    U_GC, U_SCAN, U_CDICT = next(i), next(i), next(i)
+    U_CSEC, U_CSID, U_ST, U_SI = (next(i) for _ in range(4))
+    G_CODE_HAVE, G_SIGS = next(i), next(i)
+
+    A.append(comment(
+        "--- SCHOOL CODE ---\n"
+        "The school's check-in QR code carries the secret this request needs. It "
+        "is scanned once and remembered, so this only asks on the first run, or "
+        "again if the school rotates the code."
+    ))
+    if env is not None:
+        # Debug builds seed the store so a test import never has to scan.
+        A.append(act("is.workflow.actions.gettext", UUID=next(i),
+                     CustomOutputName="Debug School Code",
+                     WFTextActionText=json.dumps(
+                         {"secret": env["BRIGHTWHEEL_SCHOOL_SECRET"],
+                          "school_id": SCHOOL, "signatures_enabled": False},
+                         separators=(",", ":"))))
+        A.append(act("is.workflow.actions.setstoredcontent",
+                     WFStoredContentKey="BrightwheelSchoolCode",
+                     WFStoredContentGlobalValue=True,
+                     WFInput=ts(out(A[-1]["WFWorkflowActionParameters"]["UUID"],
+                                    "Debug School Code"))))
+    A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GC,
+                 WFStoredContentKey="BrightwheelSchoolCode",
+                 WFStoredContentGlobalValue=True))
+    C_CODE = gate(U_GC, "Stored Content")
+    A.append(comment(
+        "Scan the code the first time, and remember it.\n"
+        "- Condition counts whether anything has been stored yet\n"
+        "- Show Alert explains what to point the camera at before it opens\n"
+        "- Otherwise branch reuses what was scanned before"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_CODE_HAVE, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_CODE, "Count"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="School Code",
+                 WFInput=attach(out(U_GC, "Stored Content"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_CODE_HAVE, WFControlFlowMode=1))
+    A.append(act("is.workflow.actions.alert",
+                 WFAlertActionTitle=ts("Brightwheel"),
+                 WFAlertActionMessage=ts(
+                     "The school's check-in QR code is needed once. Point the "
+                     "camera at the code on the sign-in tablet."),
+                 WFAlertActionCancelButtonShown=True))
+    A.append(act("is.workflow.actions.scanbarcode", UUID=U_SCAN,
+                 WFScanCodeActionMode=0))
+    A.append(act("is.workflow.actions.setstoredcontent",
+                 WFStoredContentKey="BrightwheelSchoolCode",
+                 WFStoredContentGlobalValue=True,
+                 WFInput=ts(out(U_SCAN, "QR/Barcodes"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="School Code",
+                 WFInput=attach(out(U_SCAN, "QR/Barcodes"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_CODE_HAVE, WFControlFlowMode=2))
+
+    A.append(act("is.workflow.actions.detect.dictionary", UUID=U_CDICT,
+                 WFInput=ts(var("School Code"))))
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_CSEC,
+                 WFDictionaryKey="secret", WFGetDictionaryValueType="Value",
+                 WFInput=ts(out(U_CDICT, "Dictionary"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_ST,
+                 WFTextActionText=ts(out(U_CSEC, "Dictionary Value"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="School Secret",
+                 WFInput=attach(out(U_ST, "Text"))))
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_CSID,
+                 WFDictionaryKey="school_id", WFGetDictionaryValueType="Value",
+                 WFInput=ts(out(U_CDICT, "Dictionary"))))
+    A.append(act("is.workflow.actions.gettext", UUID=U_SI,
+                 WFTextActionText=ts(out(U_CSID, "Dictionary Value"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="School Id",
+                 WFInput=attach(out(U_SI, "Text"))))
+
+    # Matched against the raw scanned text rather than an extracted value, so no
+    # JSON boolean has to survive coercion.
+    C_SIGS = gate("School Code", None, r'"signatures_enabled"\s*:\s*(true|1)')
+    A.append(comment(
+        "Warn if the school has started requiring signatures.\n"
+        "- Condition counts whether the scanned code says signatures are on\n"
+        "- Check-ins send no signature, so they would start failing"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_SIGS, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_SIGS, "Count"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionBody=ts(
+                     "This school now requires signatures at check-in. These "
+                     "shortcuts do not send one, so check-ins may start "
+                     "failing.")))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_SIGS, WFControlFlowMode=2))
+
     # ---- per child: read state, skip if already there, otherwise send ----
     for cname, target in CHILDREN:
         p = kid[cname]
@@ -491,9 +591,10 @@ def build(direction, env=None):
                          '"checked_in":' + ("true" if desired else "false") + ','
                          '"target":{"object_id":"' + target + '"},'
                          '"note":""}],'
-                         '"school_id":"' + SCHOOL + '",'
-                         '"secret":"',
-                         out(U["secret"], "School Secret"),
+                         '"school_id":"',
+                         var("School Id"),
+                         '","secret":"',
+                         var("School Secret"),
                          '","checkin_code":"',
                          out(U["code"], "Check-In Code"),
                          '"}')))
@@ -567,132 +668,6 @@ def build(direction, env=None):
 # `com.apple.BarcodeScanner.BarcodeScannerIntent` ("Open Code Scanner") only
 # launches the scanner app. So this helper parses the decoded text instead,
 # defaulting to whatever Code Scanner left on the clipboard.
-def build_scanner():
-    name = "Brightwheel Scan Code"
-    i = iter(uuids(30))
-    U_SCAN, U_DICT = next(i), next(i)
-    U_SEC, U_SID, U_SIG = next(i), next(i), next(i)
-    U_SECT, U_SIGT = next(i), next(i)
-    G1, G2 = next(i), next(i)
-
-    A = []
-    A.append(comment(
-        "Brightwheel — Scan Code\n\n"
-        "Reads the school's check-in QR code and gives you the 'secret' value to "
-        "paste into Brightwheel Check In and Brightwheel Check Out.\n\n"
-        "You only need this if the school turns on Quick Scan Refresh, which "
-        "rotates the secret every few hours, or if a check-in fails with "
-        "'Problem scanning QR code'.\n\n"
-        "Run it at the sign-in tablet and point the camera at the QR code. The "
-        "secret is read straight out of the scan and copied to the clipboard."
-    ))
-    A.append(comment(
-        "Generated by build_shortcuts.py in the brightwheel-checkin repo.\n\n"
-        "Edits made here are lost the next time the shortcut is rebuilt, so change "
-        "the generator instead."
-    ))
-    A.append(comment(
-        "--- READ THE CODE ---\n"
-        "The QR code is not a link. It holds a small block of text listing the "
-        "school's secret, the school id, and whether signatures are required, "
-        "which Scan Code hands back as text."
-    ))
-    # Scan Code opens the camera and hands the decoded text straight back, so
-    # there is no app hand-off and no clipboard involved. Mode 0 is the live
-    # scanner. Shape taken from a working shortcut exported by the user; the
-    # bundled iOS 27 ToolKit snapshot has no row for this action and the
-    # validator rejects it for an iOS target, which build.sh waives by name.
-    A.append(act("is.workflow.actions.scanbarcode", UUID=U_SCAN,
-                 WFScanCodeActionMode=0))
-    A.append(act("is.workflow.actions.detect.dictionary", UUID=U_DICT,
-                 WFInput=ts(out(U_SCAN, "QR/Barcodes"))))
-    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_SEC,
-                 WFDictionaryKey="secret", WFGetDictionaryValueType="Value",
-                 WFInput=ts(out(U_DICT, "Dictionary"))))
-    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_SID,
-                 WFDictionaryKey="school_id", WFGetDictionaryValueType="Value",
-                 WFInput=ts(out(U_DICT, "Dictionary"))))
-    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_SIG,
-                 WFDictionaryKey="signatures_enabled",
-                 WFGetDictionaryValueType="Value",
-                 WFInput=ts(out(U_DICT, "Dictionary"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_SECT,
-                 WFTextActionText=ts(out(U_SEC, "Dictionary Value"))))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="School Secret",
-                 WFInput=attach(out(U_SECT, "Text"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_SIGT,
-                 WFTextActionText=ts(out(U_SIG, "Dictionary Value"))))
-    A.append(act("is.workflow.actions.setvariable",
-                 WFVariableName="Signatures Flag",
-                 WFInput=attach(out(U_SIGT, "Text"))))
-    A.append(comment(
-        "Copy the secret out, or explain what went wrong.\n"
-        "- Condition checks whether a secret was found in the scanned text\n"
-        "- Copy to Clipboard replaces the scanned block with just the secret\n"
-        "- Otherwise branch shows what was actually read, to help spot a "
-        "half-copied or wrong code"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G1, WFControlFlowMode=0, WFCondition=100,
-                 WFInput=cond_input(var("School Secret"))))
-    A.append(act("is.workflow.actions.setclipboard",
-                 WFInput=ts(var("School Secret"))))
-    A.append(comment(
-        "Warn when the school starts requiring signatures.\n"
-        "- Condition checks the signatures setting from the scanned code\n"
-        "- Brightwheel reports 1 when signatures are required and 0 when not"
-    ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G2, WFControlFlowMode=0, WFCondition=4,
-                 WFConditionalActionString="1",
-                 WFInput=cond_input(var("Signatures Flag"))))
-    A.append(act("is.workflow.actions.showresult",
-                 Text=ts("Secret copied to the clipboard:\n\n",
-                         var("School Secret"),
-                         "\n\nSchool: ", out(U_SID, "Dictionary Value"),
-                         "\n\nWARNING: this school now requires signatures at "
-                         "check-in. The check-in and check-out shortcuts do not "
-                         "send a signature, so they will probably stop working "
-                         "until they are rebuilt to include one.")))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G2, WFControlFlowMode=1))
-    A.append(act("is.workflow.actions.showresult",
-                 Text=ts("Secret copied to the clipboard:\n\n",
-                         var("School Secret"),
-                         "\n\nSchool: ", out(U_SID, "Dictionary Value"),
-                         "\n\nPaste it into the 'Brightwheel school QR secret' "
-                         "question when you re-import Brightwheel Check In and "
-                         "Brightwheel Check Out, or into the School Secret text "
-                         "action inside each one.")))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G2, WFControlFlowMode=2))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G1, WFControlFlowMode=1))
-    A.append(act("is.workflow.actions.showresult",
-                 Text=ts("No secret found in that text.\n\nExpected a block "
-                         "listing a secret and a school id. What was read:\n\n",
-                         out(U_SCAN, "QR/Barcodes"),
-                         "\n\nRun this again and scan the school's check-in "
-                         "code, not some other QR code.")))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G1, WFControlFlowMode=2))
-
-    return name, {
-        "WFWorkflowActions": A,
-        "WFWorkflowClientVersion": "2700.0.4",
-        "WFWorkflowHasOutputFallback": False,
-        "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": 59819,
-                           "WFWorkflowIconStartColor": 463140863},
-        "WFWorkflowImportQuestions": [],
-        "WFWorkflowInputContentItemClasses": [],
-        "WFWorkflowMinimumClientVersion": 900,
-        "WFWorkflowMinimumClientVersionString": "900",
-        "WFWorkflowName": name,
-        "WFWorkflowOutputContentItemClasses": [],
-        "WFWorkflowTypes": [],
-    }
-
-
 if __name__ == "__main__":
     argv = [a for a in sys.argv[1:] if a != "--debug"]
     env = load_env(Path(__file__).parent / ".env") if "--debug" in sys.argv else None
@@ -705,6 +680,3 @@ if __name__ == "__main__":
         (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
         print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
               f"{len(pl['WFWorkflowImportQuestions'])} setup questions")
-    name, pl = build_scanner()
-    (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
-    print(f"{name}: {len(pl['WFWorkflowActions'])} actions")

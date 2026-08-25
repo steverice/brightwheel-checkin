@@ -24,7 +24,7 @@ documentation* below for how to extract one.
 ## Directory structure
 
 ```
-build_shortcuts.py   Generator. Builds all three shortcuts as plist dicts.
+build_shortcuts.py   Generator. Builds both shortcuts as plist dicts.
 build.sh             Pipeline: generate -> validate -> sign -> stage.
 dist/                Committed build output: unsigned .xml + signed .shortcut.
 dist-debug/          Gitignored. Same shortcuts with credentials baked in.
@@ -40,10 +40,9 @@ Inside `build_shortcuts.py`:
 | `ts()` / `attach()` / `var()` / `out()` | Serialization helpers. `ts()` computes `attachmentsByRange` offsets so placeholders always line up. |
 | `dict_field()` / `kv()` / `kv_dict()` | `WFDictionaryFieldValue` builders for HTTP headers and JSON bodies. |
 | `act()` / `comment()` | Bare action constructors. |
-| `gate()` | Text → Match Text → Count. The presence primitive; see below. |
+| `gate()` | Text → Match Text → Count. The presence primitive; see below. Pass `name=None` to read a named variable instead of an action output. |
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
-| `build()` | The two check shortcuts, parameterised by direction. |
-| `build_scanner()` | The QR helper. |
+| `build()` | Both shortcuts, parameterised by direction. |
 
 ## Data flow
 
@@ -61,6 +60,10 @@ GET /users/me
          POST /sessions/start           (sends, and on later passes resends, a code)
          Ask for the 6-digit code       (empty or "resend" falls through to the next pass)
          POST /sessions with 2fa_code   -> token -> Store Content
+Get Stored Content: school code
+  └─ nothing stored ──> alert, Scan Code, store it
+Detect Dictionary  ->  School Secret, School Id
+
 for each child:
     GET /students/{id}/activities?page_size=1&action_type=ac_checkin
       └─ already in the target state ──> notify "no change", send nothing
@@ -83,9 +86,17 @@ also sidesteps empty strings satisfying "has any value".
 | `"state"\s*:\s*"1"` / `"2"` | child is already checked in / out |
 | `"event_date"` | a check-in record was really created |
 
-The same actions work fine in `build_scanner()`, where Detect Dictionary parses
-the **text** handed back by Scan Code. The failure is specific to an
-already-parsed HTTP response, not to the actions themselves.
+The same actions work fine on the school code, where Detect Dictionary parses the
+**text** handed back by Scan Code. The failure is specific to an already-parsed
+HTTP response, not to the actions themselves.
+
+**The school code is scanned, not typed.** `scanbarcode` returns decoded text
+in-process, so the QR code became something the check shortcuts read directly
+rather than a separate helper shortcut feeding the clipboard. The whole scanned
+blob is stored under one key and re-parsed on later runs, so `secret` and
+`school_id` share a single source and one code path extracts both. Scanning is
+interactive, so it sits behind an "is anything stored" check — the same shape as
+the sign-in prompt, and for the same reason.
 
 **Idempotency, failing open.** Each run reads the child's latest check-in event
 and skips anyone already in the target state, so a repeated trigger cannot record

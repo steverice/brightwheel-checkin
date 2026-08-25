@@ -5,8 +5,6 @@ opening the app, fired unattended by arrival triggers:
 
 - **Brightwheel Check In** — arriving at school in the morning
 - **Brightwheel Check Out** — arriving at school in the afternoon
-- **Brightwheel Scan Code** — manual helper; recovers the school secret from the
-  check-in QR code
 
 Requires iOS 27 (Store Content / Get Stored Content, and the iOS 27 trigger
 model). `ARCHITECTURE.md` covers why the code looks the way it does, and what was
@@ -19,7 +17,7 @@ learned about building Shortcuts programmatically.
 ./build.sh --debug   # -> dist-debug/, values baked in, asks nothing
 ```
 
-Either command generates all three shortcuts, validates them against iOS 27,
+Either command generates both shortcuts, validates them against iOS 27,
 signs them, and writes both the unsigned `.xml` and the signed `.shortcut` to the
 target directory. It fails on any validator error except two named waivers, so
 a red build is a real problem.
@@ -31,7 +29,7 @@ generator change that produced it.**
 
 ### Debug builds
 
-Answering four Setup questions on every test import gets old. Copy
+Answering three Setup questions on every test import gets old. Copy
 `.env.example` to `.env`, fill it in, and `./build.sh --debug` bakes those values
 straight in and emits no import questions.
 
@@ -47,14 +45,13 @@ AirDrop `dist/*.shortcut` to the phone.
 **Delete the old copy first.** A same-name import is silently skipped with no
 warning, which looks exactly like a code change that did nothing.
 
-Then answer four Setup questions:
+Then answer three Setup questions:
 
 | Prompt | Notes |
 |---|---|
 | Brightwheel account email | Used to sign in |
 | Brightwheel account password | Same |
 | Check-in code | 4-digit guardian code; authenticates as you |
-| School QR secret | The `secret` from the school's check-in QR |
 
 **No session token is asked for** — nobody setting this up has one. The first run
 finds nothing stored, gets `E1200` from `/users/me`, signs in, and saves the
@@ -95,13 +92,21 @@ the box empty, or type `resend`**, and another code is sent. Only a strict
 `^[0-9]{6}$` answer is exchanged, so a typo or padded paste also falls through to
 a resend. Cancelling stops the shortcut.
 
-## Recovering the school secret
+## The school code
 
-Run **Brightwheel Scan Code** if the school enables Quick Scan Refresh (which
-rotates the secret every few hours) or a run fails with `Problem scanning QR
-code`. It opens the camera, reads the code, extracts the `secret`, copies it to
-the clipboard, and warns if `signatures_enabled` has flipped on — which would
-break check-ins, since the payload sends no signature.
+The school's check-in QR code carries the `secret` and `school_id` the request
+needs. **It is not a Setup question.** The first run finds nothing stored, shows
+an alert explaining what to point the camera at, scans the code, and remembers
+it — so this is asked once, not every import. The whole scanned blob is stored
+and re-parsed, so both values come from one source of truth.
+
+If the scan says `signatures_enabled` is on, you get a warning: check-ins send no
+signature and would start failing.
+
+**A rotated secret has no automatic recovery.** If the school enables Quick Scan
+Refresh, the stored code goes stale and check-ins fail with
+`The given secret does not exist or is expired`. Clearing the shortcut's stored
+content — or re-importing — makes the next run scan again.
 
 ## Brightwheel API
 
