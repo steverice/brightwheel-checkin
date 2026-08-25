@@ -1,9 +1,9 @@
-# Brightwheel Check-In / Check-Out Shortcuts
+# Brightwheel Attendance-In / Check-Out Shortcuts
 
 Signed iOS Shortcuts that check both children in or out of Brightwheel without
 opening the app, fired unattended by location triggers:
 
-- **Brightwheel Check** — does the work. Never run directly.
+- **Brightwheel Attendance** — does the work. Never run directly.
 - **Brightwheel Check In** — carries the morning trigger; calls Check with `in`
 - **Brightwheel Check Out** — carries the afternoon trigger; calls Check with `out`
 
@@ -45,13 +45,13 @@ Don't AirDrop one to anyone else.
 
 ## Install
 
-AirDrop `dist/*.shortcut` to the phone, **Brightwheel Check first** so the other
+AirDrop `dist/*.shortcut` to the phone, **Brightwheel Attendance first** so the other
 two have something to call.
 
 **Delete the old copies first.** A same-name import is silently skipped with no
 warning, which looks exactly like a code change that did nothing.
 
-Only **Brightwheel Check** asks anything. Answer its three Setup questions:
+Only **Brightwheel Attendance** asks anything. Answer its three Setup questions:
 
 | Prompt | Notes |
 |---|---|
@@ -69,8 +69,8 @@ trigger — a background run cannot answer the code prompt.
 
 ### Triggers
 
-In iOS 27 a shortcut carries its own triggers, so add them to **Brightwheel Check
-In** and **Brightwheel Check Out** — not to Brightwheel Check, which has no
+In iOS 27 a shortcut carries its own triggers, so add them to **Brightwheel Attendance
+In** and **Brightwheel Check Out** — not to Brightwheel Attendance, which has no
 direction of its own.
 
 Any pair of triggers works, as long as one means "going in" and the other "going

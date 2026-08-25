@@ -164,7 +164,7 @@ SETUP = [
 
 def build(direction=None, env=None):
     """The shortcut that does the work. Direction arrives as Shortcut Input."""
-    name = "Brightwheel Check"
+    name = "Brightwheel Attendance"
     glyph, color = 59692, 4292093695
 
     i = iter(uuids(180))
@@ -847,7 +847,7 @@ def build_wrapper(direction):
 
     Run Shortcut resolves its target by name: the workflowIdentifier below is
     freshly minted and matches nothing, and an imported copy still finds
-    "Brightwheel Check" and passes its input. Verified on device.
+    "Brightwheel Attendance" and passes its input. Verified on device.
     """
     checking_in = direction == "in"
     title = "Brightwheel Check In" if checking_in else "Brightwheel Check Out"
@@ -861,7 +861,7 @@ def build_wrapper(direction):
         comment(
             f"Brightwheel — {title}\n\n"
             f"Attach the arrival or departure trigger to this shortcut. All it "
-            f"does is tell Brightwheel Check to check the children {word}.\n\n"
+            f"does is tell Brightwheel Attendance to check the children {word}.\n\n"
             "The direction lives here rather than in the shortcut that does the "
             "work, so which trigger fired decides it. Nothing is worked out from "
             "the time of day, which means changing a trigger's hours cannot make "
@@ -875,10 +875,10 @@ def build_wrapper(direction):
         act("is.workflow.actions.gettext", UUID=u_text,
             CustomOutputName="Direction", WFTextActionText=word),
         act("is.workflow.actions.runworkflow",
-            WFWorkflowName="Brightwheel Check",
+            WFWorkflowName="Brightwheel Attendance",
             WFWorkflow={"isSelf": False,
                         "workflowIdentifier": next(i),
-                        "workflowName": "Brightwheel Check"},
+                        "workflowName": "Brightwheel Attendance"},
             WFInput=attach(out(u_text, "Direction"))),
     ]
     return title, {

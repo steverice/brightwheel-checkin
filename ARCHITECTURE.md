@@ -165,7 +165,7 @@ be seeded by running it by hand at a moment its action happened to be wanted. Th
 shared store syncs through iCloud; what it holds is a session token, not the
 password.
 
-**Direction is structural, carried by two thin wrappers.** `Brightwheel Check`
+**Direction is structural, carried by two thin wrappers.** `Brightwheel Attendance`
 holds all the logic and takes its direction from Shortcut Input; `Brightwheel
 Check In` and `Brightwheel Check Out` are four actions each — a Text action and a
 Run Shortcut — and are what the triggers attach to.
@@ -184,7 +184,7 @@ is freshly minted and matches nothing on any device; a probe pair confirmed on
 device that an imported copy still finds its target and passes input. So the
 wrappers need no on-device picking, unlike a trigger's placemark.
 
-Running `Brightwheel Check` on its own stops with a notification, since its input
+Running `Brightwheel Attendance` on its own stops with a notification, since its input
 is neither `in` nor `out`. That also makes it safe to have in the library: saying
 its name to Siri cannot check anyone anywhere.
 
