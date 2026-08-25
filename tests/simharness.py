@@ -149,9 +149,19 @@ class Simulator:
         device's window first — otherwise a second booted simulator silently
         gets configured instead.
         """
+        _run("open", "-a", "Simulator")
         _osa('tell application "Simulator" to activate')
-        time.sleep(0.5)
-        self._window_rect()          # raises this device's window
+        # The Window menu only carries these items once a device window exists,
+        # and Simulator can still be windowless right after a boot.
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            try:
+                self._window_rect()      # also raises this device's window
+                break
+            except SimulatorError:
+                time.sleep(2)
+        else:
+            raise SimulatorError("Simulator never opened a window for this device")
         time.sleep(0.3)
         _osa('tell application "System Events" to tell process "Simulator" to '
              'click menu item "Point Accurate" of menu 1 of menu bar item '
