@@ -3,13 +3,16 @@
 Signed iOS Shortcuts that check both children in or out of Brightwheel without
 opening the app, fired unattended by location triggers:
 
-- **Brightwheel Attendance** — does the work. Never run directly.
+- **Brightwheel Attendance** — does the work. Run it by hand and it asks which way.
 - **Brightwheel Check In** — carries the morning trigger; calls Check with `in`
 - **Brightwheel Check Out** — carries the afternoon trigger; calls Check with `out`
 
 The two small ones exist so that **which trigger fired decides the direction**.
 Nothing works it out from the time of day, so editing a trigger's hours on the
 device cannot make it send the wrong direction.
+
+Run Attendance on its own — from the app, the Home Screen, or Siri — and it asks
+whether to check in or out. Cancelling the menu sends nothing.
 
 Requires iOS 27 (Store Content / Get Stored Content, and the iOS 27 trigger
 model). `ARCHITECTURE.md` covers why the code looks the way it does, and what was

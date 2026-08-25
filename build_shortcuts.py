@@ -217,9 +217,9 @@ def build(direction=None, env=None):
         "Brightwheel — Check\n\n"
         "Checks First Child and Second Child in or out at Your School (room Your Room) by "
         "talking to the Brightwheel API directly, without opening the app.\n\n"
-        "Do not run this one directly. It is started by Brightwheel Check In or "
-        "Brightwheel Check Out, which is how it knows which direction to go; run "
-        "on its own it stops and says so.\n\n"
+        "Brightwheel Check In and Brightwheel Check Out start this one and tell "
+        "it which direction to go; those are the two that carry the automation "
+        "triggers. Run this on its own and it simply asks.\n\n"
         "Built to be run unattended by an arrival trigger, so it does not stop "
         "to ask anything on the normal path. Everything it needs is collected "
         "once, when you import it. When it should run is decided by the "
@@ -264,29 +264,57 @@ def build(direction=None, env=None):
     G_VALID, G_DIR = next(i), next(i)
     EXT = {"Type": "ExtensionInput"}
 
+    U_EXT, U_MIN, U_MOUT = next(i), next(i), next(i)
+    G_MENU = next(i)
+
     C_VALID = gate(EXT, None, "^(in|out)$")
     A.append(comment(
-        "Stop unless a direction was handed in.\n"
-        "- Condition counts whether the input is exactly in or out\n"
-        "- Nothing has been sent to Brightwheel at this point"
+        "Work out which direction this run goes.\n"
+        "- Condition counts whether a direction was handed in\n"
+        "- Brightwheel Check In and Check Out hand one in\n"
+        "- Run on its own there is none, so it asks instead"
     ))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_VALID, WFControlFlowMode=0,
-                 WFCondition=0, WFNumberValue="1",
+                 WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(out(C_VALID, "Count"))))
-    A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel"),
-                 WFNotificationActionBody=ts(
-                     "Nothing was sent. Run Brightwheel Check In or Brightwheel "
-                     "Check Out instead — they are what tell this which way "
-                     "round to go.")))
-    A.append(act("is.workflow.actions.exit"))
+    A.append(act("is.workflow.actions.gettext", UUID=U_EXT,
+                 WFTextActionText=ts(EXT)))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Direction",
+                 WFInput=attach(out(U_EXT, "Text"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_VALID, WFControlFlowMode=1))
+    A.append(comment(
+        "Ask, when nothing was handed in.\n"
+        "- Each choice sets Direction to the same in or out a wrapper would\n"
+        "- Cancelling the menu stops the shortcut, so nothing is sent"
+    ))
+    A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
+                 GroupingIdentifier=G_MENU, WFControlFlowMode=0,
+                 WFMenuPrompt="Check the children in or out?",
+                 WFMenuItems=["Check In", "Check Out"]))
+    A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
+                 GroupingIdentifier=G_MENU, WFControlFlowMode=1,
+                 WFMenuItemTitle="Check In"))
+    A.append(act("is.workflow.actions.gettext", UUID=U_MIN,
+                 WFTextActionText="in"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Direction",
+                 WFInput=attach(out(U_MIN, "Text"))))
+    A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
+                 GroupingIdentifier=G_MENU, WFControlFlowMode=1,
+                 WFMenuItemTitle="Check Out"))
+    A.append(act("is.workflow.actions.gettext", UUID=U_MOUT,
+                 WFTextActionText="out"))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Direction",
+                 WFInput=attach(out(U_MOUT, "Text"))))
+    A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
+                 GroupingIdentifier=G_MENU, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_VALID, WFControlFlowMode=2))
 
     # Wanted In is 1 for a check-in and 0 for a check-out, which later gets
     # compared against whether the child is already checked in.
-    C_DIR = gate(EXT, None, "^in$")
+    C_DIR = gate("Direction", None, "^in$")
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Wanted In",
                  WFInput=attach(out(C_DIR, "Count"))))
     A.append(comment(

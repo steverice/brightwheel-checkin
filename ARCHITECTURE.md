@@ -184,9 +184,14 @@ is freshly minted and matches nothing on any device; a probe pair confirmed on
 device that an imported copy still finds its target and passes input. So the
 wrappers need no on-device picking, unlike a trigger's placemark.
 
-Running `Brightwheel Attendance` on its own stops with a notification, since its input
-is neither `in` nor `out`. That also makes it safe to have in the library: saying
-its name to Siri cannot check anyone anywhere.
+Run on its own, `Brightwheel Attendance` has no input and asks with a Choose from
+Menu instead, whose two options set the same `in` / `out` a wrapper would. So the
+same shortcut serves the automations and manual use, with one direction path
+rather than two.
+
+That keeps it Siri-safe without refusing to run. Saying its name cannot check
+anyone anywhere by itself — it can only open a menu, and cancelling sends
+nothing. A wrapper never reaches the menu, because it hands in a direction.
 
 **Debug builds are isolated by construction.** `./build.sh --debug` bakes `.env`
 values in and emits no import questions. Such a build contains a real password,
