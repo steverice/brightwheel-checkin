@@ -49,8 +49,8 @@ Inside `build_shortcuts.py`:
 
 **Build:** `build.sh` runs the generator into a target directory, then for each
 shortcut runs `validate-shortcut` against iOS 27, signs it with `sign-shortcut`,
-and copies the signed file back beside its XML. Any validator error except one
-named waiver aborts the build.
+and copies the signed file back beside its XML. Any validator error except two
+named waivers aborts the build.
 
 **Runtime**, for a check shortcut:
 
@@ -84,7 +84,8 @@ also sidesteps empty strings satisfying "has any value".
 | `"event_date"` | a check-in record was really created |
 
 The same actions work fine in `build_scanner()`, where Detect Dictionary parses
-clipboard **text**. The failure is specific to an already-parsed HTTP response.
+the **text** handed back by Scan Code. The failure is specific to an
+already-parsed HTTP response, not to the actions themselves.
 
 **Idempotency, failing open.** Each run reads the child's latest check-in event
 and skips anyone already in the target state, so a repeated trigger cannot record

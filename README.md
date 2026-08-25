@@ -21,8 +21,8 @@ learned about building Shortcuts programmatically.
 
 Either command generates all three shortcuts, validates them against iOS 27,
 signs them, and writes both the unsigned `.xml` and the signed `.shortcut` to the
-target directory. It fails on any validator error except one named waiver, so a
-red build is a real problem.
+target directory. It fails on any validator error except two named waivers, so
+a red build is a real problem.
 
 **Never edit a shortcut on the phone.** `build_shortcuts.py` is the source of
 truth and the next build overwrites everything else. The only values meant to be
