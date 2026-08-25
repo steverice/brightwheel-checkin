@@ -53,7 +53,8 @@ class Suite:
         paths = testbuild.build(self.mock.base)
         print(f"  built and signed {len(paths)} shortcuts against the mock")
 
-        # Attendance first: the wrappers call it by name.
+        # Order is irrelevant — Run Shortcut resolves by name at run time,
+        # not at import — but all three must exist before anything runs.
         for name in (ATTENDANCE, CHECK_IN, CHECK_OUT):
             fresh = self.sim.install(paths[name], expect_name=name)
             print(f"  {'installed' if fresh else 'already present'}: {name}")

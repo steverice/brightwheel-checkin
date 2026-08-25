@@ -223,6 +223,10 @@ is freshly minted and matches nothing on any device; a probe pair confirmed on
 device that an imported copy still finds its target and passes input. So the
 wrappers need no on-device picking, unlike a trigger's placemark.
 
+Resolution happens when the shortcut **runs**, not when it is imported, so the
+three can be installed in any order — a wrapper imported first is not broken, it
+just has nothing to call until `Brightwheel Attendance` arrives.
+
 Run on its own, `Brightwheel Attendance` has no input and asks with a Choose from
 Menu instead, whose two options set the same `in` / `out` a wrapper would. So the
 same shortcut serves the automations and manual use, with one direction path

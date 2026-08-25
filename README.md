@@ -63,8 +63,10 @@ needs a real camera — and what had to be worked out to drive the simulator.
 
 ## Install
 
-AirDrop `dist/*.shortcut` to the phone, **Brightwheel Attendance first** so the other
-two have something to call.
+AirDrop `dist/*.shortcut` to the phone. **Order does not matter** — Run Shortcut
+resolves its target by name when it runs, not when it is imported, so a wrapper
+imported on its own works as soon as Brightwheel Attendance exists. All three
+have to be there before a trigger fires.
 
 **Delete the old copies first.** A same-name import is silently skipped with no
 warning, which looks exactly like a code change that did nothing.
