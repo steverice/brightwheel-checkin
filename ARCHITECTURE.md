@@ -392,18 +392,30 @@ Automations are no longer separate objects: a shortcut carries one or more
 triggers at the top, which is why the Automation tab's "+" now starts a shortcut.
 Triggers are added to the shortcut itself.
 
-They cannot be generated. `WFArriveLocationTrigger` is authorable and its
-`enter_location_between` variant takes `WFArriveLocation`, `WFArriveStartTime`
-and `WFArriveEndTime`, but `WFArriveLocation` is a
-`redacted-local-location-token` — a device-specific placemark that has to come
-from the on-device picker — and an incomplete trigger header imports as an
-*invalid* automation. So **attach triggers last**: re-importing a rebuilt
-shortcut replaces it and loses them.
+They cannot be generated, and a placeholder is not worth emitting. Every
+variant of the location triggers requires the placemark — the ToolKit catalog
+lists `WFArriveLocation` as the first parameter of both
+`enter_location` and `enter_location_between`, and `WFLeaveLocation` likewise —
+and it is a `redacted-local-location-token`, a device-specific value only the
+on-device picker can produce.
 
-A share link confirms the split. Both triggers came through in
-`WFWorkflowTriggers` with their `WFArriveStartTime` / `WFArriveEndTime` and
-`WFArriveTimeRange` intact, and **without** any `WFArriveLocation` — the time
-range travels, the placemark does not.
+A share link shows the split: both triggers came through in `WFWorkflowTriggers`
+with their `WFArriveStartTime` / `WFArriveEndTime` and `WFArriveTimeRange`
+intact and **without** any `WFArriveLocation`. The time range travels, the
+placemark does not.
+
+**Verified on iOS 27** by building that exact shape — an arrival trigger with a
+time range and no placemark — signing it and importing it on a simulator: the
+shortcut imports cleanly and **the trigger is silently discarded**.
+`ZTRIGGERCOUNT` is 0, `ZTRIGGER` and `ZUNIFIEDTRIGGER` are empty, and the
+Automation list says "No Automations". It does not import as a broken
+automation you could then fix; there is simply no automation, so a generated
+stub would save nobody a step. So **attach triggers last**: re-importing a
+rebuilt shortcut replaces it and loses them.
+
+A trigger stub is only possible at all for the 4 of 42 catalogued triggers that
+take no parameters — external drive connected, file modified, folder changed,
+and Wi-Fi disconnect-from-any. Nothing location- or time-based is among them.
 
 Triggers also report **no output** (`outputTypeIdentifiers: ["none"]`), so a
 shortcut cannot tell which one woke it. That is a real absence, not missing
