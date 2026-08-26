@@ -3,7 +3,9 @@
 
 Two things separate a test build from `./build.sh`:
 
-  * `--env-file tests/fixtures/test.env` bakes obviously-fake credentials in
+  * `--roster tests/fixtures/roster.json` and
+    `--env-file tests/fixtures/test.env` bake obviously-fake children and
+    credentials in
     and drops the import questions, so the sheet is a single "Add Shortcut"
     tap. It also seeds the school code, which is what keeps the run away from
     Scan Code — an action the simulator does not have.
@@ -21,6 +23,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TEST_ENV = Path(__file__).parent / "fixtures" / "test.env"
+TEST_ROSTER = Path(__file__).parent / "fixtures" / "roster.json"
 OUT = REPO / "dist-test"
 NAMES = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 
@@ -33,7 +36,8 @@ def build(api_base, dest=OUT):
 
     subprocess.run(
         [sys.executable, str(REPO / "build_shortcuts.py"), str(dest),
-         "--env-file", str(TEST_ENV), "--api-base", api_base],
+         "--env-file", str(TEST_ENV), "--roster", str(TEST_ROSTER),
+         "--api-base", api_base],
         check=True, capture_output=True, text=True)
 
     signed_dir = Path(os.environ.get(

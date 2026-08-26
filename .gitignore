@@ -4,9 +4,13 @@
 
 brightwheel-checkin-shortcut-handoff.md
 
-# dist/ is intentionally NOT ignored. The generated .xml and signed .shortcut
-# are committed so an installable build is always available from the repo, and
-# so the XML diff shows what a generator change actually did.
+# Local config.
+/roster.json
+
+# Build output. Not committed: a built shortcut has the roster baked into it,
+# so the artifact is personal to whoever built it. Run ./build.sh and get your
+# own.
+dist/
 
 # Debug build inputs and outputs. `.env` holds a real password, the school-wide
 # secret and the check-in code; a debug build has all of them baked in.

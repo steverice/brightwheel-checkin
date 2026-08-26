@@ -26,7 +26,9 @@ documentation* below for how to extract one.
 ```
 build_shortcuts.py   Generator. Builds all three shortcuts as plist dicts.
 build.sh             Pipeline: generate -> validate -> sign -> stage.
-dist/                Committed build output: unsigned .xml + signed .shortcut.
+dist/                Gitignored build output: unsigned .xml + signed .shortcut.
+roster.json          Gitignored. Who this build is for: guardian, room, children.
+roster.example.json  The shape of a roster, with placeholder ids.
 dist-debug/          Gitignored. Same shortcuts with credentials baked in.
 dist-test/           Gitignored. Test builds, pointed at the mock API.
 test.sh              Pipeline: build against a mock -> install -> run -> assert.
@@ -46,6 +48,7 @@ Inside `build_shortcuts.py`:
 | `act()` / `comment()` | Bare action constructors. |
 | `gate()` | Text → Match Text → Count. The presence primitive; see below. Pass `name=None` to read a named variable instead of an action output. |
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
+| `load_roster()` | Reads `roster.json` into module state before `build()` runs. Identifiers live there rather than in the source. |
 | `build()` | `Brightwheel Attendance` — everything except the direction. |
 | `build_wrapper()` | The two trigger carriers, parameterised by direction. |
 | `--api-base` / `--env-file` | Overrides used only by the integration tests, so a test build cannot reach the real API. See `TESTING.md`. |

@@ -31,6 +31,16 @@ itself only from iOS 27. See the support matrix in `TESTING.md`.
 
 ## Build
 
+First, say who this is for:
+
+```bash
+cp roster.example.json roster.json   # then fill in your own ids
+```
+
+`roster.json` holds the guardian, room and children ids the requests are built
+around, plus the names used in notifications. It is gitignored. Find the ids in a Brightwheel API response — the
+roster endpoint in the table below returns all of them.
+
 ```bash
 ./build.sh           # -> dist/, asks Setup questions at import
 ./build.sh --debug   # -> dist-debug/, values baked in, asks nothing
@@ -43,8 +53,7 @@ a red build is a real problem.
 
 **Never edit a shortcut on the phone.** `build_shortcuts.py` is the source of
 truth and the next build overwrites everything else. The only values meant to be
-changed on the device are the Setup answers. **Commit `dist/` alongside the
-generator change that produced it.**
+changed on the device are the Setup answers.
 
 ### Debug builds
 
@@ -198,6 +207,3 @@ Success is detected by **`event_date`**, not `"checkins"` — the empty-body err
 contains `"checkins"` too, and testing for it once reported success while nothing
 was posted.
 
-`dist/` **is** committed. The built shortcuts carry no live credentials: every
-Setup value ships as the placeholder `not set` and is filled in at import. Re-check
-that if the Setup defaults ever change.

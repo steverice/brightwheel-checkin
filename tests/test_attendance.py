@@ -8,6 +8,7 @@ only says what the shortcut believes.
 
 Run with ./test.sh. See TESTING.md for what the harness had to work around.
 """
+import json
 import subprocess
 import sys
 import time
@@ -18,7 +19,6 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
-import build_shortcuts as gen                      # noqa: E402
 from certs import ensure_certs                     # noqa: E402
 from mock_brightwheel import MockBrightwheel, Scenario  # noqa: E402
 from simharness import Simulator                   # noqa: E402
@@ -28,8 +28,11 @@ PORT = 8788
 CHECK_IN = "Brightwheel Check In"
 CHECK_OUT = "Brightwheel Check Out"
 ATTENDANCE = "Brightwheel Attendance"
-KIDS = {name: oid for name, oid in gen.CHILDREN}
-CHILD_A, CHILD_B = gen.CHILD_A, gen.CHILD_B
+# The suite runs against a fixture roster of obvious placeholders, so nothing
+# here names a real child or school.
+ROSTER = json.loads((Path(__file__).parent / "fixtures" / "roster.json").read_text())
+CHILD_A, CHILD_B = (c["id"] for c in ROSTER["children"])
+SCHOOL_ID = ROSTER["school_id"]
 ARTIFACTS = Path(__file__).parent / "artifacts"
 
 
@@ -166,7 +169,7 @@ def test_checks_both_children_in(s):
             f"checked_in should be true for a check-in, got {entry['checked_in']!r}"
         assert body["secret"] == "test-school-secret", \
             f"school secret not sent: {body.get('secret')!r}"
-        assert body["school_id"] == gen.SCHOOL, \
+        assert body["school_id"] == SCHOOL_ID, \
             f"school_id not sent: {body.get('school_id')!r}"
         assert body["checkin_code"] == "1234", \
             f"checkin_code not sent: {body.get('checkin_code')!r}"

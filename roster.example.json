@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "Copy to roster.json and fill in.",
+    "Find the ids in a Brightwheel API response, e.g. GET /guardians/{id}/students.",
+    "school_id is only used to seed baked builds (--debug / --env-file);",
+    "a normal run reads the school from the scanned QR code instead."
+  ],
+  "guardian_id": "00000000-0000-0000-0000-000000000000",
+  "room_id": "00000000-0000-0000-0000-000000000000",
+  "school_id": "00000000-0000-0000-0000-000000000000",
+  "school_name": "Your School",
+  "room_name": "Your Room",
+  "children": [
+    {
+      "name": "First Child",
+      "id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "name": "Second Child",
+      "id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

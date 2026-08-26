@@ -14,15 +14,57 @@ from pathlib import Path
 
 OBJ = "￼"  # U+FFFC placeholder for an inline variable
 
-# --- Static, non-secret identifiers -------------------------------------
-ACTOR = "00000000-0000-0000-0000-000000000000"
-CHILD_A = "00000000-0000-0000-0000-000000000000"
-CHILD_B = "00000000-0000-0000-0000-000000000000"
-ROOM = "00000000-0000-0000-0000-000000000000"
-SCHOOL = "00000000-0000-0000-0000-000000000000"
-# The school QR secret and the 4-digit guardian check-in code are deliberately
-# NOT here. They are collected as import-time setup questions so that no live
-# credential is ever written into this repo or into the signed .shortcut.
+# --- Who this build is for --------------------------------------------
+#
+# Identifiers are not secret in the credential sense, but they do identify real
+# children and a real school, so they live in a gitignored `roster.json` rather
+# than in this file. `roster.example.json` shows the shape, and
+# `--roster PATH` points at another one (the tests use a fixture full of
+# obvious placeholders).
+#
+# These are filled in by load_roster() before build() runs.
+ACTOR = ROOM = SCHOOL = None
+SCHOOL_NAME = ROOM_NAME = None
+CHILDREN = []
+
+DEFAULT_ROSTER = Path(__file__).parent / "roster.json"
+
+
+def load_roster(path=DEFAULT_ROSTER):
+    """Read the roster and publish it as module state build() can see.
+
+    `school_id` is only used to seed a baked build; on a normal run the school
+    comes from the scanned QR code, which is why these shortcuts work at a
+    different school without a rebuild.
+    """
+    global ACTOR, ROOM, SCHOOL, SCHOOL_NAME, ROOM_NAME, CHILDREN
+    path = Path(path)
+    if not path.exists():
+        raise SystemExit(
+            f"{path} not found. Copy roster.example.json to roster.json and "
+            f"fill in your own guardian, room and children ids.")
+    data = json.loads(path.read_text())
+    missing = [k for k in ("guardian_id", "room_id", "children")
+               if not data.get(k)]
+    if missing:
+        raise SystemExit(f"{path} is missing: {', '.join(missing)}")
+
+    ACTOR = data["guardian_id"]
+    ROOM = data["room_id"]
+    SCHOOL = data.get("school_id", "")
+    SCHOOL_NAME = data.get("school_name", "your school")
+    ROOM_NAME = data.get("room_name", "")
+    CHILDREN = [(c["name"], c["id"]) for c in data["children"]]
+    return data
+
+
+def child_list_phrase():
+    """"A and B", or "A, B and C" — for the description comment."""
+    names = [n for n, _ in CHILDREN]
+    if len(names) <= 1:
+        return names[0] if names else "nobody"
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
 
 BASE = "https://schools.mybrightwheel.com/api/v1"
 # Kept so an overridden BASE can be reported as such. The integration tests
@@ -30,8 +72,6 @@ BASE = "https://schools.mybrightwheel.com/api/v1"
 DEFAULT_BASE = BASE
 CLIENT_NAME = "ios"
 CLIENT_VERSION = "3.103.0"
-
-CHILDREN = [("First Child", CHILD_A), ("Second Child", CHILD_B)]
 
 
 ENV_KEYS = {
@@ -219,7 +259,8 @@ def build(direction=None, env=None):
 
     A.append(comment(
         "Brightwheel — Check\n\n"
-        "Checks First Child and Second Child in or out at Your School (room Your Room) by "
+        f"Checks {child_list_phrase()} in or out at {SCHOOL_NAME}"
+        f"{f' (room {ROOM_NAME})' if ROOM_NAME else ''} by "
         "talking to the Brightwheel API directly, without opening the app.\n\n"
         "Brightwheel Check In and Brightwheel Check Out start this one and tell "
         "it which direction to go; those are the two that carry the automation "
@@ -961,13 +1002,17 @@ if __name__ == "__main__":
     ap.add_argument("--env-file", metavar="PATH",
                     help="bake this env file in instead of .env; use for test "
                          "builds so real credentials never reach the artifact")
+    ap.add_argument("--roster", metavar="PATH", default=DEFAULT_ROSTER,
+                    help="who to check in: guardian, room and children ids "
+                         "(default roster.json; see roster.example.json)")
     ap.add_argument("--api-base", metavar="URL", default=BASE,
                     help="point the shortcuts at a different API root; used by "
                          "the integration tests to reach the mock Brightwheel")
     args = ap.parse_args()
 
-    # build() reads BASE at call time, so overriding it here is enough.
+    # build() reads these at call time, so setting them here is enough.
     BASE = args.api_base
+    load_roster(args.roster)
 
     env = None
     if args.env_file:

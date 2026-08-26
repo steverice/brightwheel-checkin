@@ -35,9 +35,9 @@ screen coordinates.
 
 ## It cannot reach the real Brightwheel
 
-Test builds are generated with `--api-base` pointing at the local mock and
-`--env-file tests/fixtures/test.env`, which bakes in obviously fake
-credentials. There is no code path from a test to the live API, and so no way
+Test builds are generated with `--api-base` pointing at the local mock, plus
+`--env-file tests/fixtures/test.env` and `--roster tests/fixtures/roster.json`,
+which bake in obviously fake credentials and a fake roster. There is no code path from a test to the live API, and so no way
 for a test run to check a real child in or out, or to make Brightwheel send a
 real 2FA code. The suite refuses to be useful for that on purpose.
 
@@ -125,6 +125,7 @@ build_shortcuts.py --api-base https://localhost:8788/api/v1 --env-file …
 | `tests/certs.py` | Throwaway CA so the simulator trusts localhost |
 | `tests/testbuild.py` | Builds and signs the shortcuts under test |
 | `tests/fixtures/test.env` | Deliberately fake credentials |
+| `tests/fixtures/roster.json` | Deliberately fake children — "Alpha" and "Beta" at "Test School" |
 
 `dist-test/`, `tests/tls/` and `tests/artifacts/` are generated and gitignored.
 A failing test saves a screenshot into `tests/artifacts/`.
