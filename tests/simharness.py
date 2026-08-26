@@ -406,24 +406,22 @@ class Simulator:
         else:
             raise SimulatorError(f"could not open {path.name}: {r.stderr.strip()}")
 
-        # Wait for the sheet rather than sleeping a fixed amount: on a freshly
-        # erased device the first launch of Shortcuts is slow enough to miss.
+        # Wait for the sheet, then keep confirming until the shortcut actually
+        # lands. A single tap is not reliable: the first click on an unfocused
+        # Simulator window sometimes only raises it, and after an erase the
+        # sheet can take several seconds to draw.
         deadline = time.time() + timeout
-        while time.time() < deadline:
-            if self.tap_affirmative():
-                break
-            time.sleep(1.0)
-        else:
-            self.screenshot(f"install-failed-{name}.png")
-            raise SimulatorError(f"no Add Shortcut button appeared for {name}")
-
-        deadline = time.time() + timeout
+        tapped = False
         while time.time() < deadline:
             if name in self.library():
                 return True
-            time.sleep(1)
-        self.screenshot(f"install-missing-{name}.png")
-        raise SimulatorError(f"{name} did not appear in the library")
+            if self.tap_affirmative():
+                tapped = True
+            time.sleep(1.5)
+        self.screenshot(f"install-failed-{name}.png")
+        raise SimulatorError(
+            f"{name} did not install"
+            f"{'' if tapped else ' (no Add Shortcut button ever appeared)'}")
 
     def run_shortcut(self, name):
         url = "shortcuts://run-shortcut?name=" + urllib.parse.quote(name)
