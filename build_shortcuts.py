@@ -6,6 +6,7 @@ the display wording, and the icon differ. README.md has the endpoint
 contract.
 """
 import argparse
+import base64
 import json
 import plistlib
 import subprocess
@@ -959,8 +960,20 @@ def build_wrapper(direction):
     glyph = 62022 if checking_in else 62021
     color = 4292093695 if checking_in else 4282601983
 
-    i = iter(uuids(6))
+    i = iter(uuids(24))
     u_text = next(i)
+    u_seen, u_gt, u_gm, u_gc = next(i), next(i), next(i), next(i)
+    u_b64, u_dec, u_mark = next(i), next(i), next(i)
+    g_setup = next(i)
+
+    # Each wrapper explains its own trigger, because each needs a different one
+    # and because Brightwheel Attendance works perfectly well without either of
+    # them. Setup instructions for an optional extra do not belong in the
+    # shortcut that extra is optional to.
+    diagram = (Path(__file__).parent / "assets" /
+               f"setup-check-{'in' if checking_in else 'out'}.png")
+    diagram_b64 = base64.b64encode(diagram.read_bytes()).decode()
+
     A = [
         comment(
             f"Brightwheel — {title}\n\n"
@@ -976,6 +989,59 @@ def build_wrapper(direction):
             "Edits made here are lost the next time the shortcut is rebuilt, so "
             "change the generator instead."
         ),
+        # --- first run only: how to attach the trigger ---
+        #
+        # Scoped to this shortcut rather than the shared store, so Check In and
+        # Check Out each explain themselves once and neither speaks for the
+        # other. Stored content comes back empty the first time, and an empty
+        # string still satisfies "has any value", so presence is measured with a
+        # match count rather than tested.
+        act("is.workflow.actions.getstoredcontent", UUID=u_seen,
+            WFStoredContentKey="BrightwheelSetupShown",
+            WFStoredContentGlobalValue=False),
+        act("is.workflow.actions.gettext", UUID=u_gt,
+            WFTextActionText=ts(out(u_seen, "Stored Content"))),
+        act("is.workflow.actions.text.match", UUID=u_gm,
+            WFMatchTextPattern=r"\S", text=ts(out(u_gt, "Text"))),
+        act("is.workflow.actions.count", UUID=u_gc, WFCountType="Items",
+            WFInput=attach(out(u_gm, "Matches")),
+            Input=attach(out(u_gm, "Matches"))),
+        comment(
+            "Show the setup guide the first time this shortcut runs.\n"
+            "- Condition counts whether anything is stored yet\n"
+            "- Nothing is stored until the guide has been shown once\n"
+            "- Attaching the trigger is the one step that cannot be done for "
+            "you, because the placemark only exists on your device"),
+        act("is.workflow.actions.conditional", UUID=next(i),
+            GroupingIdentifier=g_setup, WFControlFlowMode=0,
+            WFCondition=0, WFNumberValue="1",
+            WFInput=cond_input(out(u_gc, "Count"))),
+        act("is.workflow.actions.gettext", UUID=u_b64,
+            CustomOutputName="Setup Diagram", WFTextActionText=diagram_b64),
+        act("is.workflow.actions.base64encode", UUID=u_dec,
+            WFEncodeMode="Decode",
+            WFInput=attach(out(u_b64, "Setup Diagram"))),
+        act("is.workflow.actions.showresult",
+            Text=ts(out(u_dec, "Base64 Encoded"))),
+        # Something has to follow Show Content. Left last, the image becomes the
+        # shortcut's own output, and handing an image back to the caller needs
+        # consent — "Allow ... to output 1 image?" on the very run that is
+        # trying to be helpful.
+        act("is.workflow.actions.nothing"),
+        act("is.workflow.actions.gettext", UUID=u_mark,
+            CustomOutputName="Setup Mark", WFTextActionText="shown"),
+        act("is.workflow.actions.setstoredcontent",
+            WFStoredContentKey="BrightwheelSetupShown",
+            WFStoredContentGlobalValue=False,
+            WFInput=ts(out(u_mark, "Setup Mark"))),
+        act("is.workflow.actions.conditional", UUID=next(i),
+            GroupingIdentifier=g_setup, WFControlFlowMode=2),
+
+        comment(
+            "Hand the direction to Brightwheel Attendance.\n"
+            "- Attendance does all the work; this shortcut only says which way\n"
+            "- Which trigger fired decides it, so editing a trigger's hours "
+            "cannot make it send the wrong direction"),
         act("is.workflow.actions.gettext", UUID=u_text,
             CustomOutputName="Direction", WFTextActionText=word),
         act("is.workflow.actions.runworkflow",

@@ -37,7 +37,11 @@ OUTPUT_DIR="${CLAUDE_PLUGIN_OPTION_OUTPUT_DIR:-$HOME/Documents/Shortcuts Playgro
 #      far more than that. Both numbers came out of real shortcuts built on a
 #      device, and both were rendered on a simulator to confirm. Waived by
 #      number rather than by rule, so a genuine typo in a glyph still fails.
-WAIVED="Shortcuts Playground prompt text|is\.workflow\.actions\.scanbarcode|Scan QR or Barcode missing imageFile|WFWorkflowIconGlyphNumber (62021|62022) is not in the official"
+#   4. "Unit conversion detected". The wrappers carry the setup diagram as a
+#      base64 string, and ~100k characters of it trip the heuristic that
+#      looks for unit words in action text. There is no measurement action
+#      in either wrapper.
+WAIVED="Shortcuts Playground prompt text|is\.workflow\.actions\.scanbarcode|Scan QR or Barcode missing imageFile|WFWorkflowIconGlyphNumber (62021|62022) is not in the official|Unit conversion detected"
 
 rm -rf "$DIST"
 mkdir -p "$DIST"

@@ -117,6 +117,10 @@ out": arriving in the morning and leaving in the afternoon, or arriving twice
 with different time ranges. The shortcut does not care which; it only knows which
 wrapper called it.
 
+**Each wrapper shows you how, once.** The first time you run Brightwheel Check
+In or Check Out by hand, it displays a diagram pointing at the action it needs —
+Arrive for one, Leave for the other — and then never shows it again.
+
 - **Attach triggers last.** Re-importing a rebuilt shortcut loses them, and they
   cannot be generated into the file.
 - Set Location Services → Shortcuts to **Always**, or the geofence silently never

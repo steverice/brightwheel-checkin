@@ -29,6 +29,8 @@ build.sh             Pipeline: generate -> validate -> sign -> stage.
 dist/                Gitignored build output: unsigned .xml + signed .shortcut.
 roster.json          Gitignored. Who this build is for: guardian, room, children.
 roster.example.json  The shape of a roster, with placeholder ids.
+assets/              The first-run setup diagrams, and the screenshots behind them.
+make_diagrams.py     Redraws those diagrams. Needed only to regenerate them.
 dist-debug/          Gitignored. Same shortcuts with credentials baked in.
 dist-test/           Gitignored. Test builds, pointed at the mock API.
 test.sh              Pipeline: build against a mock -> install -> run -> assert.
@@ -50,7 +52,7 @@ Inside `build_shortcuts.py`:
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
 | `load_roster()` | Reads `roster.json` into module state before `build()` runs. Identifiers live there rather than in the source. |
 | `build()` | `Brightwheel Attendance` — everything except the direction. |
-| `build_wrapper()` | The two trigger carriers, parameterised by direction. |
+| `build_wrapper()` | The two trigger carriers, parameterised by direction. Each also carries its own first-run setup guide. |
 | `--api-base` / `--env-file` | Overrides used only by the integration tests, so a test build cannot reach the real API. See `TESTING.md`. |
 
 ## Data flow
@@ -491,6 +493,47 @@ field over the whole catalog and the 15 colors. Pick one, then read
 is how `62020` (sunrise) and `62019` (sunset) were identified — searching for
 them by name through `resolve-icon` finds nothing, because its vocabulary is
 much smaller than the picker's.
+
+## Showing an image, and the first-run guide
+
+Each wrapper shows a diagram the first time it runs, explaining how to attach
+its own trigger — Arrive for Check In, Leave for Check Out. It lives in the
+wrappers rather than in Attendance on purpose: **Attendance is complete on its
+own**, and the wrappers are optional extras that automate it, so setup
+instructions for an optional extra do not belong in the shortcut that extra is
+optional to. Two wrappers also means two different guides, which is what the
+job actually needs.
+
+There is no image parameter on any alert. Show Alert takes a title and a
+message and nothing else. What works is carrying the PNG as base64 in a Text
+action and decoding it at runtime:
+
+    Text (base64)  ->  Base64 Encode [mode: Decode]  ->  Show Content
+
+Three things that are easy to get wrong:
+
+- **Use Show Content (`is.workflow.actions.showresult`), not Quick Look.**
+  Quick Look renders the image but titles the sheet with the raw base64 string.
+  Show Content has no title bar at all.
+- **Something must follow Show Content.** Left as the last action, the image
+  becomes the shortcut's own output, and handing an image back to the caller
+  needs consent — *"Allow … to output 1 image?"* — on the very run that is
+  trying to be helpful. Any following action displaces it;
+  `is.workflow.actions.nothing` says so explicitly.
+- **Store Content's `WFInput` must be a `WFTextTokenString` carrying exactly
+  one object placeholder.** A literal string imports as an empty Content
+  parameter, so the marker that records "already shown" has to come from a Text
+  action rather than being written inline. Silent if you get it wrong: the gate
+  never closes and the guide shows every run.
+
+The marker is stored with `WFStoredContentGlobalValue: False`, scoping it to
+the shortcut, so each wrapper explains itself once and neither speaks for the
+other. Presence is measured with a match count, because an empty string still
+satisfies "has any value".
+
+Quantized to 64 colors the diagrams are ~85 KB each, ~110 KB as base64, which
+takes a wrapper from 4 KB to about 113 KB. Flat UI art loses nothing at 64
+colors.
 
 ## Practical notes
 
