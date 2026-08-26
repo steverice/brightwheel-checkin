@@ -426,6 +426,44 @@ Arrival triggers also require Settings → Privacy & Security → Location Servi
 Shortcuts set to **Always**. "While Using the App" makes a geofence silently
 never fire.
 
+## Icons
+
+An icon is a glyph number plus a color, and **nothing else**. There is no
+custom-image escape hatch: `WFWorkflowIconImageData` exists as a key in
+WorkflowKit, but setting it does nothing. With a glyph number alongside it the
+glyph wins; with the image alone the shortcut imports with `ZGLYPHNUMBER = 0`
+and draws an empty tile. The `ZSHORTCUTICON` table has columns for background
+color, glyph number and the owning shortcut — there is nowhere for an image to
+go.
+
+There is also no authored description. The whole `WFWorkflow*` key set has no
+Description, Subtitle or Summary; the "About This Shortcut" block on the import
+sheet is derived from the actions, which is where "Can Run When Locked" comes
+from. So the import sheet shows a name, an icon, and the setup questions —
+nothing else you can write.
+
+`data/shortcuts-official-glyph-mapping.json` is not trustworthy: it calls
+`59692` `circledDownArrow`, and it renders as a chevron. Rather than guess,
+measure — install one shortcut per candidate number on a simulator and look.
+This run of ten, read off an iOS 27 library:
+
+| Number | Renders as | | Number | Renders as |
+|---|---|---|---|---|
+| 59690 | ✓ checkmark | | 59695 | ⏩ fast-forward |
+| 59691 | $ in a circle | | 59696 | ‹ chevron-left |
+| 59692 | ⌄ chevron-down | | 59697 | i info |
+| 59693 | ⤓ download tray | | 59698 | π |
+| 59694 | € euro | | 59699 | ▶ play |
+
+Consecutive numbers are unrelated to each other, so there is no neighbourhood to
+search — sweeping to find a *specific* idea is wasteful. To pick a particular
+icon, choose it in the on-device icon picker and then read
+`ZSHORTCUTICON.ZGLYPHNUMBER` straight out of `Shortcuts.sqlite`; an iCloud share
+link works too, since the record JSON exposes `icon_glyph` without a download.
+
+What the shortcuts use today measures out sensibly: `59692` (chevron-down) for
+Check In and `59707` (chevron-up) for Check Out.
+
 ## Practical notes
 
 - **Comment discipline is enforced.** The validator requires a Comment
