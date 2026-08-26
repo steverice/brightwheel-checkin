@@ -211,8 +211,10 @@ password.
 
 **Direction is structural, carried by two thin wrappers.** `Brightwheel Attendance`
 holds all the logic and takes its direction from Shortcut Input; `Brightwheel
-Check In` and `Brightwheel Check Out` are four actions each — a Text action and a
-Run Shortcut — and are what the triggers attach to.
+Check In` and `Brightwheel Check Out` do two things — say which way, and call
+Attendance — and are what the triggers attach to. They are 18 actions rather
+than 2 only because each also carries the first-run setup guide described
+below; the working part is still a Text action and a Run Shortcut.
 
 The alternatives were worse. A location trigger reports **no output**
 (`outputTypeIdentifiers: ["none"]`, against a catalog that records real outputs

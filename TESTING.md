@@ -204,6 +204,21 @@ for it or turn it off on the device.
 down — nothing happens and no error is raised. The runner re-issues the run
 once if no traffic has appeared and no prompt is on screen.
 
+## What the suite does not cover
+
+Worth stating so nobody reads a green run as broader than it is.
+
+**The first-run setup guide.** Every test's first assertion is that a run
+reached the mock, and the priming run absorbs the diagram sheet along with the
+consent prompts — so a regression that stopped the guide appearing, or made it
+appear on *every* run, would pass. Both behaviors were checked by hand on a
+simulator instead. The harness can automate it (`blue_buttons()` is how the
+sheet was detected); nobody has written the test.
+
+**Icons.** Nothing asserts a glyph or color. That is deliberate — an icon
+regression is visible the moment the app opens, and pinning glyph numbers in a
+test would only restate the generator.
+
 ## What the simulator cannot tell you
 
 - **Scan Code does not exist there.** A simulator has no camera, and a shortcut
