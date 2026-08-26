@@ -463,9 +463,17 @@ link works too, since the record JSON exposes `icon_glyph` without a download.
 
 What the shortcuts use today, all measured on a simulator rather than taken
 from a name: Attendance is `62329` — a ring of petals, close to the Brightwheel
-logo — on pink, `3980825855`. The wrappers keep directional chevrons — the only true mirrored pair in the
-set — `59692` (down) on green `4292093695` for Check In, `59707` (up) on red
-`4282601983` for Check Out, matching Brightwheel's own colors.
+logo — on pink, `3980825855`. The wrappers are a plane landing, `62466` on green `4292093695`, for Check In,
+and taking off, `62467` on red `4282601983`, for Check Out — Brightwheel's own
+colors. Chevrons (`59692` / `59707`) were the semantically purest pair but too
+insubstantial to read as deliberate at tile size.
+
+Sunrise (`62020`) and sunset (`62019`) were the other candidate and were
+rejected on a subtlety worth recording: each carries **two signals that point
+opposite ways**. Sunrise draws an up arrow, so it reads as *out* graphically
+while meaning *morning* semantically. No assignment of that pair is truthful in
+both registers. Time-of-day iconography is the wrong register here anyway,
+for the same reason the direction is never inferred from the clock.
 
 Color values are palette keys, not RGB: `4292093695` renders green, not the
 yellow or magenta its bytes suggest. `resolve-icon --color <name>` maps a name
