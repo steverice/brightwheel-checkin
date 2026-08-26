@@ -18,15 +18,24 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = pathlib.Path(__file__).parent
 ASSETS = HERE / "assets"
 
-# The action row to ring, measured in the source screenshots.
+# The action row to ring. Both screenshots are the same screen — they differ
+# only in the label inside this row — so the rectangle is measured once and
+# shared. Ringing them from two hand-measured rectangles is what made the two
+# diagrams disagree: one ring cut into the card, the other sat around it.
+#
+# Measured, not eyeballed: the card is the white rounded rect, found by scanning
+# for near-white at x=1000 (clear of the icon and the text) and along y=795.
+# Outset by 4px so the stroke sits outside the card instead of over its edge.
+ROW = (56, 699, 1149, 889)
+
 PLAN = {
     "check-in": {
-        "capture": "capture-arrive.png", "row": (62, 714, 1146, 871),
+        "capture": "capture-arrive.png",
         "title": "Run this when you arrive",
         "action": "Arrive",
     },
     "check-out": {
-        "capture": "capture-leave.png", "row": (62, 705, 1146, 885),
+        "capture": "capture-leave.png",
         "title": "Run this when you leave",
         "action": "Leave",
     },
@@ -68,7 +77,7 @@ def draw(kind, spec):
     canvas.paste(crop, (40, top))
     d.rounded_rectangle((40, top, 40 + WIDTH, top + crop.height), radius=14,
                         outline=(205, 205, 205), width=2)
-    x0, y0, x1, y1 = spec["row"]
+    x0, y0, x1, y1 = ROW
     d.rounded_rectangle((40 + int((x0 - CROP[0]) * scale),
                          top + int((y0 - CROP[1]) * scale),
                          40 + int((x1 - CROP[0]) * scale),
