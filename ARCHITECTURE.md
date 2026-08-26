@@ -463,13 +463,22 @@ link works too, since the record JSON exposes `icon_glyph` without a download.
 
 What the shortcuts use today, all measured on a simulator rather than taken
 from a name: Attendance is `62329` — a ring of petals, close to the Brightwheel
-logo — on pink, `3980825855`. The wrappers keep directional chevrons, `59692`
-(down) for Check In and `59707` (up) for Check Out.
+logo — on pink, `3980825855`. The wrappers keep directional chevrons — the only true mirrored pair in the
+set — `59692` (down) on green `4292093695` for Check In, `59707` (up) on red
+`4282601983` for Check Out, matching Brightwheel's own colors.
 
 Color values are palette keys, not RGB: `4292093695` renders green, not the
 yellow or magenta its bytes suggest. `resolve-icon --color <name>` maps a name
-to the right integer, and that one *was* correct — pink resolved to
-`3980825855` and rendered pink.
+to the right integer, and it has been right every time it was checked — pink,
+green and red all rendered as named.
+
+**The fastest way to choose an icon is the device's own picker**, not a sweep.
+Open a shortcut → the name control → Choose Icon: it has a "Search Symbols"
+field over the whole catalog and the 15 colors. Pick one, then read
+`ZSHORTCUTICON.ZGLYPHNUMBER` out of `Shortcuts.sqlite` to learn its number. That
+is how `62020` (sunrise) and `62019` (sunset) were identified — searching for
+them by name through `resolve-icon` finds nothing, because its vocabulary is
+much smaller than the picker's.
 
 ## Practical notes
 

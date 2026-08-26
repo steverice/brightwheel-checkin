@@ -950,8 +950,11 @@ def build_wrapper(direction):
     checking_in = direction == "in"
     title = "Brightwheel Check In" if checking_in else "Brightwheel Check Out"
     word = "in" if checking_in else "out"
+    # Chevron down for in, chevron up for out — the only true mirrored pair in
+    # the glyph set. Green and red to match Brightwheel's own colors. All four
+    # values checked on a simulator; the palette numbers are keys, not RGB.
     glyph = 59692 if checking_in else 59707
-    color = 4292093695 if checking_in else 4251333119
+    color = 4292093695 if checking_in else 4282601983
 
     i = iter(uuids(6))
     u_text = next(i)
