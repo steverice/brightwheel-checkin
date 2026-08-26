@@ -209,7 +209,10 @@ SETUP = [
 def build(direction=None, env=None):
     """The shortcut that does the work. Direction arrives as Shortcut Input."""
     name = "Brightwheel Attendance"
-    glyph, color = 59692, 4292093695
+    # 62329 is a ring of petals — close to the Brightwheel logo — on pink.
+    # Both taken from a share link's icon_glyph / a resolved palette value and
+    # then checked on a simulator, because the bundled glyph names are wrong.
+    glyph, color = 62329, 3980825855
 
     i = iter(uuids(180))
     U = {k: next(i) for k in ("code", "email", "password")}

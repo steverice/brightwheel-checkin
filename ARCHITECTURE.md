@@ -461,8 +461,15 @@ icon, choose it in the on-device icon picker and then read
 `ZSHORTCUTICON.ZGLYPHNUMBER` straight out of `Shortcuts.sqlite`; an iCloud share
 link works too, since the record JSON exposes `icon_glyph` without a download.
 
-What the shortcuts use today measures out sensibly: `59692` (chevron-down) for
-Check In and `59707` (chevron-up) for Check Out.
+What the shortcuts use today, all measured on a simulator rather than taken
+from a name: Attendance is `62329` — a ring of petals, close to the Brightwheel
+logo — on pink, `3980825855`. The wrappers keep directional chevrons, `59692`
+(down) for Check In and `59707` (up) for Check Out.
+
+Color values are palette keys, not RGB: `4292093695` renders green, not the
+yellow or magenta its bytes suggest. `resolve-icon --color <name>` maps a name
+to the right integer, and that one *was* correct — pink resolved to
+`3980825855` and rendered pink.
 
 ## Practical notes
 
