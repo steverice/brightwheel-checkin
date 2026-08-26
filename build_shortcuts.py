@@ -950,12 +950,13 @@ def build_wrapper(direction):
     checking_in = direction == "in"
     title = "Brightwheel Check In" if checking_in else "Brightwheel Check Out"
     word = "in" if checking_in else "out"
-    # A plane landing for in, taking off for out: a matched pair that reads as
-    # direction and nothing else. Sunrise/sunset was the other candidate and was
+    # A plane arriving for in, departing for out: a matched pair that reads as
+    # direction and nothing else. (Not 62466/62467, which are a plane on a
+    # runway rather than the arriving/departing pair.) Sunrise/sunset was the other candidate and was
     # dropped — its arrow and its sun point opposite ways, so no assignment of
     # it is truthful. Green and red match Brightwheel's own colors. All four
     # values checked on a simulator; the palette numbers are keys, not RGB.
-    glyph = 62466 if checking_in else 62467
+    glyph = 62022 if checking_in else 62021
     color = 4292093695 if checking_in else 4282601983
 
     i = iter(uuids(6))

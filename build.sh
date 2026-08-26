@@ -32,7 +32,12 @@ OUTPUT_DIR="${CLAUDE_PLUGIN_OPTION_OUTPUT_DIR:-$HOME/Documents/Shortcuts Playgro
 #      the iOS live scanner, which takes WFScanCodeActionMode and no image at
 #      all. Both are contradicted by a working shortcut exported off an iOS 27
 #      phone; the docs describe the macOS scan-an-image variant.
-WAIVED="Shortcuts Playground prompt text|is\.workflow\.actions\.scanbarcode|Scan QR or Barcode missing imageFile"
+#   3. Glyphs 62021 and 62022 (a plane departing / arriving). The validator
+#      checks against a 507-entry mapping; the device's own icon picker offers
+#      far more than that. Both numbers came out of real shortcuts built on a
+#      device, and both were rendered on a simulator to confirm. Waived by
+#      number rather than by rule, so a genuine typo in a glyph still fails.
+WAIVED="Shortcuts Playground prompt text|is\.workflow\.actions\.scanbarcode|Scan QR or Barcode missing imageFile|WFWorkflowIconGlyphNumber (62021|62022) is not in the official"
 
 rm -rf "$DIST"
 mkdir -p "$DIST"

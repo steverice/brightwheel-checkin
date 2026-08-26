@@ -463,9 +463,13 @@ link works too, since the record JSON exposes `icon_glyph` without a download.
 
 What the shortcuts use today, all measured on a simulator rather than taken
 from a name: Attendance is `62329` — a ring of petals, close to the Brightwheel
-logo — on pink, `3980825855`. The wrappers are a plane landing, `62466` on green `4292093695`, for Check In,
-and taking off, `62467` on red `4282601983`, for Check Out — Brightwheel's own
-colors. Chevrons (`59692` / `59707`) were the semantically purest pair but too
+logo — on pink, `3980825855`. The wrappers are a plane arriving, `62022` on green `4292093695`, for Check In,
+and departing, `62021` on red `4282601983`, for Check Out — Brightwheel's own
+colors. (Not `62466`/`62467`, which are a plane on a runway, a heavier and
+less legible pair.) Both numbers are waived in `build.sh`: the validator checks
+against a 507-entry mapping and the device's picker offers far more, so it
+rejects real glyphs. The waiver names the two numbers rather than disabling the
+rule. Chevrons (`59692` / `59707`) were the semantically purest pair but too
 insubstantial to read as deliberate at tile size.
 
 Sunrise (`62020`) and sunset (`62019`) were the other candidate and were
