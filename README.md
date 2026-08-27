@@ -214,3 +214,7 @@ Success is detected by **`event_date`**, not `"checkins"` — the empty-body err
 contains `"checkins"` too, and testing for it once reported success while nothing
 was posted.
 
+
+## License
+
+MIT — see [LICENSE](LICENSE).
