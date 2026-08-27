@@ -30,6 +30,14 @@ not replaced** — the harness skips installing over it.
   mouse events, so without this the cursor moves and nothing is pressed.
 - Nothing else. The certificate, the mock, and the test build are all generated.
 
+**Other simulators can stay booted.** The harness brings its own device's
+window to the front and verifies it arrived, because every Simulator menu it
+touches applies to the frontmost window. A visionOS device in front has no
+"Show Device Bezels" item at all, which used to kill the run on a missing menu
+item rather than on anything real. Window settings are now applied only if the
+frontmost window offers them; the hardware keyboard is not optional, so a
+missing one there is still an error, and it names the likely cause.
+
 Leave the Simulator window alone while the suite runs — the taps go to real
 screen coordinates.
 

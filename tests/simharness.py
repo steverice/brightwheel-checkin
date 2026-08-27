@@ -142,12 +142,65 @@ class Simulator:
              check=False)
 
     # -- window geometry ------------------------------------------------
+    WINDOW_MENU = 'menu 1 of menu bar item "Window" of menu bar 1'
+
+    @staticmethod
+    def _menu_item(item):
+        """(exists, mark_char) for a menu item; (False, None) when it is absent.
+
+        Menu contents depend on the frontmost window, and a menu item that is
+        not there raises rather than returning empty — so absence has to be
+        caught rather than tested.
+        """
+        try:
+            v = _osa('tell application "System Events" to tell process '
+                     f'"Simulator" to return value of attribute '
+                     f'"AXMenuItemMarkChar" of {item}')
+        except SimulatorError:
+            return False, None
+        return True, (None if v in ("", "missing value") else v)
+
+    @staticmethod
+    def _menu_click(item):
+        """Click a menu item. False when this window's menu has no such item."""
+        try:
+            _osa('tell application "System Events" to tell process "Simulator" '
+                 f'to click {item}')
+            return True
+        except SimulatorError:
+            return False
+
+    def focus_window(self, timeout=20):
+        """Make this device's window frontmost, and confirm it got there.
+
+        Raising is not the same as arriving. Another booted simulator can stay
+        in front, and then every menu below belongs to the wrong device — a
+        visionOS window has no "Show Device Bezels" at all, so the harness used
+        to die on a missing menu item rather than on anything real.
+        """
+        name, _version = self.device_label()
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self._window_rect()          # matches by title, and AXRaises it
+            try:
+                front = _osa('tell application "System Events" to tell process '
+                             '"Simulator" to return name of window 1')
+            except SimulatorError:
+                front = ""
+            if name in front:
+                return front
+            time.sleep(0.5)
+        raise SimulatorError(
+            f"could not bring {name} to the front; another simulator window "
+            f"is holding focus (frontmost was {front!r})")
+
     def prepare_window(self):
         """Point Accurate + no bezels makes device px -> screen points exact.
 
-        The Window menu applies to the frontmost window, so raise this
-        device's window first — otherwise a second booted simulator silently
-        gets configured instead.
+        Every menu here applies to the frontmost window, so this device's
+        window is brought to the front and *verified* first. The settings are
+        then applied tolerantly: another device kind may not offer them, and a
+        missing item is worth a note rather than a crash.
         """
         _run("open", "-a", "Simulator")
         _osa('tell application "Simulator" to activate')
@@ -162,19 +215,16 @@ class Simulator:
                 time.sleep(2)
         else:
             raise SimulatorError("Simulator never opened a window for this device")
+        self.focus_window()
         time.sleep(0.3)
-        _osa('tell application "System Events" to tell process "Simulator" to '
-             'click menu item "Point Accurate" of menu 1 of menu bar item '
-             '"Window" of menu bar 1')
+        if not self._menu_click(f'menu item "Point Accurate" of {self.WINDOW_MENU}'):
+            print("note: no Point Accurate for this window; "
+                  "taps fall back to the window's own scale")
         time.sleep(0.8)
-        marked = _osa(
-            'tell application "System Events" to tell process "Simulator" to '
-            'return value of attribute "AXMenuItemMarkChar" of menu item '
-            '"Show Device Bezels" of menu 1 of menu bar item "Window" of menu bar 1')
-        if marked and marked != "missing value":
-            _osa('tell application "System Events" to tell process "Simulator" to '
-                 'click menu item "Show Device Bezels" of menu 1 of menu bar item '
-                 '"Window" of menu bar 1')
+        bezels = f'menu item "Show Device Bezels" of {self.WINDOW_MENU}'
+        exists, marked = self._menu_item(bezels)
+        if exists and marked:
+            self._menu_click(bezels)
             time.sleep(1.0)
         self.ensure_hardware_keyboard()
 
@@ -329,10 +379,15 @@ class Simulator:
         """
         item = ('menu item "Connect Hardware Keyboard" of menu 1 of menu item '
                 '"Keyboard" of menu 1 of menu bar item "I/O" of menu bar 1')
-        marked = _osa('tell application "System Events" to tell process '
-                      f'"Simulator" to return value of attribute '
-                      f'"AXMenuItemMarkChar" of {item}')
-        clicks = 2 if (marked and marked != "missing value") else 1
+        exists, marked = self._menu_item(item)
+        if not exists:
+            # Unlike the Window-menu settings this one is not optional: without
+            # it synthesized keystrokes reach nothing. Say which window owns the
+            # menu, because that is the actual problem.
+            raise SimulatorError(
+                "no Connect Hardware Keyboard item — the frontmost Simulator "
+                "window is probably another device; call focus_window() first")
+        clicks = 2 if marked else 1
         for _ in range(clicks):
             _osa('tell application "System Events" to tell process "Simulator" '
                  f'to click {item}')
