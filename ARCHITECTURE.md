@@ -373,6 +373,11 @@ distinguish "worked" from "looked like it worked".
   reported both children checked out while nothing was posted, because the
   empty-body error is `422 {"checkins":"cannot process empty checkins"}`. Pick a
   token that appears *only* on success and verify it against real error bodies.
+- **Global stored content outlives the shortcut that wrote it.** Deleting a
+  shortcut leaves everything it put in the shared store behind; six throwaway
+  probes were deleted and all fourteen of their global keys survived. "Delete
+  and re-import to reset" is therefore not true for anything stored globally,
+  which is where the session token and the school code live.
 - **A same-name import is silently skipped.** iOS keeps the old version with no
   warning, which is indistinguishable from a code change that did nothing. Delete
   before importing.
