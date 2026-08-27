@@ -125,9 +125,10 @@ Arrive for one, Leave for the other — and then never shows it again.
   cannot be generated into the file.
 - Set Location Services → Shortcuts to **Always**, or the geofence silently never
   fires.
-- Leave **Confirm Before Run** off. There is no "Run Immediately" button in
-  iOS 27 — the trigger carries a toggle instead, and off is what lets it run
-  unattended.
+- **Confirm Before Run** already defaults to off, which is what lets a trigger
+  run unattended — so there is nothing to change. iOS 27 has no "Run
+  Immediately" button; it is a toggle on the trigger, and turning it on means a
+  prompt you have to answer before anything is sent.
 
 ## Signing in
 

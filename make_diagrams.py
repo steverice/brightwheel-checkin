@@ -86,19 +86,19 @@ def draw(kind, spec):
     picker, scale = panel(spec["capture"], CROP)
     result, _ = panel(spec["result"], RESULT_CROP)
 
+    # No step for Confirm Before Run. It already defaults to off — checked on a
+    # simulator, untouched, straight after adding the trigger — so unattended
+    # runs need nothing done to it, and whether you want a prompt is your call
+    # rather than a setup step. The lower panel still shows the toggle.
     steps = ["1.  Tap Edit on this shortcut.",
              "2.  Tap the search field at the bottom.",
              f'3.  Search "{spec["action"]}" and tap it under Automation.',
-             "4.  Pick the school, and set the time range.",
-             # Not "Choose Run Immediately": iOS 27 has no such button. The
-             # editor shows a Confirm Before Run toggle, and leaving it off is
-             # what makes the automation run unattended. The lower panel shows
-             # that toggle, so the words and the picture agree.
-             "5.  Leave Confirm Before Run off."]
+             "4.  Pick the school, and set the time range."]
 
     # Lay the page out first so the canvas is exactly as tall as its contents.
     # It used to be a hard-coded 1320, which silently clipped anything added.
-    top = 164
+    head_y = 164
+    top = head_y + 46
     steps_y = top + picker.height + 40
     caption_y = steps_y + len(steps) * 44 + 24
     result_y = caption_y + 46
@@ -111,6 +111,8 @@ def draw(kind, spec):
     d.text((40, 100), "One-time setup. This shortcut only.",
            font=font(30), fill=(110, 110, 110))
 
+    d.text((44, head_y), "How to set it up:", font=font(30, True),
+           fill=(20, 20, 20))
     canvas.paste(picker, (40, top))
     d.rounded_rectangle((40, top, 40 + WIDTH, top + picker.height), radius=14,
                         outline=(205, 205, 205), width=2)
