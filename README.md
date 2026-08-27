@@ -1,7 +1,17 @@
 # Brightwheel Attendance-In / Check-Out Shortcuts
 
 Signed iOS Shortcuts that check both children in or out of Brightwheel without
-opening the app, fired unattended by location triggers:
+opening the app, fired unattended by location triggers.
+
+> ## Requires iOS 27
+>
+> These do not work on iOS 26 or earlier. The shortcut stops at its first
+> action, with "the shortcut could not be run because an action could not be
+> found". Store Content and the live `Scan Code` action were both added in
+> iOS 27, and only from iOS 27 does a shortcut carry its own triggers.
+> `TESTING.md` has the version-by-version support matrix.
+
+The three shortcuts:
 
 - **Brightwheel Attendance** — does the work. Run it by hand and it asks which way.
 - **Brightwheel Check In** — carries the morning trigger; calls Check with `in`
@@ -15,11 +25,6 @@ Run Attendance on its own — from the app, the Home Screen, or Siri — and it 
 whether to check in or out. Cancelling the menu sends nothing.
 
 `ARCHITECTURE.md` covers why it is built this way.
-
-Requires iOS 27. On iOS 26.5 the
-shortcut stops at its first action, because both Store Content and the live
-`Scan Code` action only exist in iOS 27. Triggers also live on the shortcut
-itself only from iOS 27. See the support matrix in `TESTING.md`.
 
 > **Setup questions are broken on current iOS 27 betas.** From `24A5408d`
 > onwards, answering the import questions and tapping **Add Shortcut** does
@@ -38,8 +43,9 @@ cp roster.example.json roster.json   # then fill in your own ids
 ```
 
 `roster.json` holds the guardian, room and children ids the requests are built
-around, plus the names used in notifications. It is gitignored. Find the ids in a Brightwheel API response — the
-roster endpoint in the table below returns all of them.
+around, plus the names used in notifications. It is gitignored. Find the ids in
+a Brightwheel API response — the roster endpoint in the table below returns all
+of them.
 
 ```bash
 ./build.sh           # -> dist/, asks Setup questions at import
@@ -211,9 +217,23 @@ HTTP status codes:
 | Success | `{"checkins":[{… "event_date": …}]}` |
 
 Success is detected by **`event_date`**, not `"checkins"` — the empty-body error
-contains `"checkins"` too, and testing for it once reported success while nothing
-was posted.
+contains `"checkins"` too, so matching on it reports success while nothing was
+posted.
 
+## Disclaimer
+
+**Use at your own risk.** This is a personal project. It is not affiliated with,
+endorsed by, or supported by Brightwheel.
+
+It works by calling Brightwheel's private API — the one their own app uses,
+which is undocumented and can change or stop working without notice. No
+representation is made that using it is permitted under Brightwheel's terms of
+service, your school's policies, or any agreement you have with either. Check
+for yourself before you run it.
+
+Attendance records are the school's record of where your child is. You are
+responsible for anything these shortcuts record on your behalf, including
+anything they record wrongly.
 
 ## License
 
