@@ -17,13 +17,9 @@ OBJ = "￼"  # U+FFFC placeholder for an inline variable
 
 # --- Who this build is for --------------------------------------------
 #
-# Identifiers are not secret in the credential sense, but they do identify real
-# children and a real school, so they live in a gitignored `roster.json` rather
-# than in this file. `roster.example.json` shows the shape, and
-# `--roster PATH` points at another one (the tests use a fixture full of
-# obvious placeholders).
-#
-# These are filled in by load_roster() before build() runs.
+# Identifiers live in a gitignored `roster.json` rather than in this file.
+# `roster.example.json` shows the shape, and `--roster PATH` points at another
+# one. Filled in by load_roster() before build() runs.
 ACTOR = ROOM = SCHOOL = None
 SCHOOL_NAME = ROOM_NAME = None
 CHILDREN = []
@@ -240,8 +236,8 @@ def build(direction=None, env=None):
         pattern turns the same helper into "does this response say X".
 
         This is also why nothing here parses JSON with Detect Dictionary and Get
-        Dictionary Value. That pair does not produce a working
-        branch. Matching the raw response text is the primitive that works.
+        Dictionary Value; that pair does not produce a working branch. Matching
+        the raw response text is the primitive that works.
         """
         t, m, c = next(i), next(i), next(i)
         # src may be an action UUID (with name), a variable name (name=None),

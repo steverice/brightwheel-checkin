@@ -1,21 +1,13 @@
+# Local config and build output.
+/roster.json
+.env
+dist/
+dist-debug/
+
 # Local scratch: proxy captures and working notes.
 *.chlz
 *.chls
-
 brightwheel-checkin-shortcut-handoff.md
-
-# Local config.
-/roster.json
-
-# Build output. Not committed: a built shortcut has the roster baked into it,
-# so the artifact is personal to whoever built it. Run ./build.sh and get your
-# own.
-dist/
-
-# Debug build inputs and outputs. `.env` holds a real password, the school-wide
-# secret and the check-in code; a debug build has all of them baked in.
-.env
-dist-debug/
 
 # macOS
 .DS_Store
@@ -24,8 +16,7 @@ dist-debug/
 __pycache__/
 *.pyc
 
-# Integration-test scratch: generated certs, signed test builds, and
-# screenshots saved when an assertion fails.
+# Integration-test scratch.
 dist-test/
 tests/tls/
 tests/artifacts/
