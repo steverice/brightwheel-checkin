@@ -387,6 +387,13 @@ distinguish "worked" from "looked like it worked".
   than a colored token is displaying an implicit connection to the previous
   action, not a broken wire. Inserting an action between such a pair silently
   redirects the input.
+- **A control-flow block must be closed by its own action identifier.** A
+  `repeat.each` opened with `WFControlFlowMode=0` and closed with a
+  `conditional` at mode 2 does not error, does not warn, and does not run its
+  body even once — the actions between the markers are simply skipped. It looks
+  exactly like a loop whose collection was empty. Closing a Repeat with a
+  Repeat, and an If with an If, is the rule; `build_shortcuts.py:901` is the
+  worked example.
 - **Dictionary actions return empty rather than failing.** See the prohibition
   above; this is the specific reason they cost four separate debugging rounds.
 
