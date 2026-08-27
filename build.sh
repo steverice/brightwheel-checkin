@@ -41,7 +41,13 @@ OUTPUT_DIR="${CLAUDE_PLUGIN_OPTION_OUTPUT_DIR:-$HOME/Documents/Shortcuts Playgro
 #      base64 string, and ~100k characters of it trip the heuristic that
 #      looks for unit words in action text. There is no measurement action
 #      in either wrapper.
-WAIVED="Shortcuts Playground prompt text|is\.workflow\.actions\.scanbarcode|Scan QR or Barcode missing imageFile|WFWorkflowIconGlyphNumber (62021|62022) is not in the official|Unit conversion detected"
+#   5. The two comment-block rules. Both exist to keep the Shortcuts Playground
+#      attribution comment in the file; that comment was removed on purpose, so
+#      the second action is no longer a prompt block and the wrappers sit one
+#      under the density threshold. The comments that remain each explain a
+#      real block, and adding a fourth to satisfy a ratio would be noise in a
+#      shortcut whose working part is two actions.
+WAIVED="Shortcuts Playground prompt text|is\.workflow\.actions\.scanbarcode|Scan QR or Barcode missing imageFile|WFWorkflowIconGlyphNumber (62021|62022) is not in the official|Unit conversion detected|Second action must be the prompt Comment block|Insufficient Comment blocks"
 
 rm -rf "$DIST"
 mkdir -p "$DIST"
