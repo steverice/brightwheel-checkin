@@ -200,8 +200,9 @@ field reports the result: `1` = in, `2` = out.
 `X-Parse-Session-Token` reach the application layer on every route used,
 including sign-in.
 
-`GET /guardians/{id}/students_for_checkin` returns `400 E2036` for every
-parameter combination tried, so the activities endpoint is used for state.
+`GET /guardians/{id}/students_for_checkin` needs `school_id`, `secret` and
+`time_zone`; without `secret` it answers `400 E2036`. With them it returns each
+child's room and current `checked_in` state in one call.
 
 ### Error signatures
 
