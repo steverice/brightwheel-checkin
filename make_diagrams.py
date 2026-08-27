@@ -2,9 +2,17 @@
 """Draw the first-run setup diagrams the wrappers show.
 
 Each wrapper explains how to attach its own trigger, so there are two: Check In
-points at the Arrive action, Check Out at Leave. The screenshots underneath
-were captured from an iOS 27 simulator (assets/capture-*.png); recapture them
-if the Shortcuts action picker changes, then re-run this.
+points at the Arrive action, Check Out at Leave.
+
+Each diagram is a before/after pair. The top panel is the action picker with
+the row to tap ringed; the bottom panel is the same trigger once it has a
+location and a time range, so there is something to compare your own screen
+against. Knowing what to search for is only half of it — "have I finished?" is
+the question the steps alone cannot answer.
+
+All four screenshots came off an iOS 27 simulator (assets/capture-*.png, and
+capture-*-set.png for the configured ones). Recapture them if the Shortcuts UI
+changes, then re-run this.
 
     python3 make_diagrams.py
 
@@ -31,16 +39,21 @@ ROW = (56, 699, 1149, 889)
 PLAN = {
     "check-in": {
         "capture": "capture-arrive.png",
+        "result": "capture-arrive-set.png",
         "title": "Run this when you arrive",
         "action": "Arrive",
     },
     "check-out": {
         "capture": "capture-leave.png",
+        "result": "capture-leave-set.png",
         "title": "Run this when you leave",
         "action": "Leave",
     },
 }
 CROP = (40, 150, 1166, 950)
+# The configured trigger plus its three toggles, with the shortcut's own title
+# bar and the Comment below it cropped away.
+RESULT_CROP = (45, 390, 1160, 1170)
 WIDTH = 860
 
 
@@ -61,21 +74,45 @@ def font(size, bold=False):
     return ImageFont.load_default()
 
 
-def draw(kind, spec):
-    shot = Image.open(ASSETS / spec["capture"]).convert("RGB")
-    crop = shot.crop(CROP)
+def panel(name, box):
+    """A screenshot region, cropped and scaled to the diagram width."""
+    shot = Image.open(ASSETS / name).convert("RGB")
+    crop = shot.crop(box)
     scale = WIDTH / crop.width
-    crop = crop.resize((WIDTH, int(crop.height * scale)), Image.LANCZOS)
+    return crop.resize((WIDTH, int(crop.height * scale)), Image.LANCZOS), scale
 
-    canvas = Image.new("RGB", (940, 1320), (255, 255, 255))
+
+def draw(kind, spec):
+    picker, scale = panel(spec["capture"], CROP)
+    result, _ = panel(spec["result"], RESULT_CROP)
+
+    steps = ["1.  Tap Edit on this shortcut.",
+             "2.  Tap the search field at the bottom.",
+             f'3.  Search "{spec["action"]}" and tap it under Automation.',
+             "4.  Pick the school, and set the time range.",
+             # Not "Choose Run Immediately": iOS 27 has no such button. The
+             # editor shows a Confirm Before Run toggle, and leaving it off is
+             # what makes the automation run unattended. The lower panel shows
+             # that toggle, so the words and the picture agree.
+             "5.  Leave Confirm Before Run off."]
+
+    # Lay the page out first so the canvas is exactly as tall as its contents.
+    # It used to be a hard-coded 1320, which silently clipped anything added.
+    top = 164
+    steps_y = top + picker.height + 40
+    caption_y = steps_y + len(steps) * 44 + 24
+    result_y = caption_y + 46
+    foot_y = result_y + result.height + 34
+    height = foot_y + 96
+
+    canvas = Image.new("RGB", (940, height), (255, 255, 255))
     d = ImageDraw.Draw(canvas)
     d.text((40, 36), spec["title"], font=font(46, True), fill=(20, 20, 20))
     d.text((40, 100), "One-time setup. This shortcut only.",
            font=font(30), fill=(110, 110, 110))
 
-    top = 164
-    canvas.paste(crop, (40, top))
-    d.rounded_rectangle((40, top, 40 + WIDTH, top + crop.height), radius=14,
+    canvas.paste(picker, (40, top))
+    d.rounded_rectangle((40, top, 40 + WIDTH, top + picker.height), radius=14,
                         outline=(205, 205, 205), width=2)
     x0, y0, x1, y1 = ROW
     d.rounded_rectangle((40 + int((x0 - CROP[0]) * scale),
@@ -84,18 +121,20 @@ def draw(kind, spec):
                          top + int((y1 - CROP[1]) * scale)),
                         radius=16, outline=(230, 60, 70), width=6)
 
-    steps = ["1.  Tap Edit on this shortcut.",
-             "2.  Tap the search field at the bottom.",
-             f'3.  Search "{spec["action"]}" and tap it under Automation.',
-             "4.  Pick the school, and set the time range.",
-             "5.  Choose Run Immediately."]
-    y = top + crop.height + 40
+    y = steps_y
     for line in steps:
         d.text((44, y), line, font=font(30), fill=(35, 35, 35))
         y += 44
-    d.text((44, y + 16), "Location Services for Shortcuts must be Always,",
+
+    d.text((44, caption_y), "When it is set up, it looks like this:",
+           font=font(30, True), fill=(20, 20, 20))
+    canvas.paste(result, (40, result_y))
+    d.rounded_rectangle((40, result_y, 40 + WIDTH, result_y + result.height),
+                        radius=14, outline=(205, 205, 205), width=2)
+
+    d.text((44, foot_y), "Location Services for Shortcuts must be Always,",
            font=font(26), fill=(120, 120, 120))
-    d.text((44, y + 50), "or the geofence never fires.",
+    d.text((44, foot_y + 34), "or the geofence never fires.",
            font=font(26), fill=(120, 120, 120))
 
     # 64 colors is lossless enough for flat UI art and a third of the bytes,
