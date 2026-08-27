@@ -36,17 +36,19 @@ ASSETS = HERE / "assets"
 # Outset by 4px so the stroke sits outside the card instead of over its edge.
 ROW = (56, 699, 1149, 889)
 
+TITLE = "One-time automation setup"
+
 PLAN = {
     "check-in": {
         "capture": "capture-arrive.png",
         "result": "capture-arrive-set.png",
-        "title": "Make this run when you arrive",
+        "subtitle": "Automatically check in when you arrive at school",
         "action": "Arrive",
     },
     "check-out": {
         "capture": "capture-leave.png",
         "result": "capture-leave-set.png",
-        "title": "Make this run when you leave",
+        "subtitle": "Automatically check out when you leave school",
         "action": "Leave",
     },
 }
@@ -107,13 +109,10 @@ def draw(kind, spec):
 
     canvas = Image.new("RGB", (940, height), (255, 255, 255))
     d = ImageDraw.Draw(canvas)
-    d.text((40, 36), spec["title"], font=font(46, True), fill=(20, 20, 20))
-    # "Make this run ..." rather than "Run this ...", which parsed as an order
-    # to run the shortcut right now — the opposite of the point. The subtitle
-    # says the setup is expected: a wrapper with no trigger does nothing you
-    # could not do by running Brightwheel Attendance by hand.
-    d.text((40, 100), "One-time setup, and the whole point of this shortcut.",
-           font=font(30), fill=(110, 110, 110))
+    # The title names the task; the subtitle names the result. Both wrappers
+    # share the title, and only the subtitle changes direction.
+    d.text((40, 36), TITLE, font=font(46, True), fill=(20, 20, 20))
+    d.text((40, 100), spec["subtitle"], font=font(30), fill=(110, 110, 110))
 
     d.text((44, head_y), "How to set it up:", font=font(30, True),
            fill=(20, 20, 20))
