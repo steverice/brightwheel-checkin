@@ -11,8 +11,18 @@ against. Knowing what to search for is only half of it — "have I finished?" is
 the question the steps alone cannot answer.
 
 All four screenshots came off an iOS 27 simulator (assets/capture-*.png, and
-capture-*-set.png for the configured ones). Recapture them if the Shortcuts UI
-changes, then re-run this.
+capture-*-set.png for the configured ones). They are stored **already cropped
+to the region used**, and are pasted whole — a full 1206x2622 screenshot is
+four times the bytes for the same picture, and these live in git.
+
+To recapture, take a full screenshot on an iPhone 17 Pro simulator and cut out
+the same region before saving it here:
+
+    picker  crop (40, 150, 1166, 950)  -> 1126x800
+    result  crop (45, 390, 1160, 1170) -> 1115x780
+
+then re-run this. ROW below is in the picker's cropped coordinates, so it
+shifts with that box.
 
     python3 make_diagrams.py
 
@@ -32,9 +42,10 @@ ASSETS = HERE / "assets"
 # diagrams disagree: one ring cut into the card, the other sat around it.
 #
 # Measured, not eyeballed: the card is the white rounded rect, found by scanning
-# for near-white at x=1000 (clear of the icon and the text) and along y=795.
-# Outset by 4px so the stroke sits outside the card instead of over its edge.
-ROW = (56, 699, 1149, 889)
+# for near-white at x=1000 (clear of the icon and the text) and along y=795 of
+# the full screenshot. Outset by 4px so the stroke sits outside the card instead
+# of over its edge, then shifted by the picker crop's origin (40, 150).
+ROW = (16, 549, 1109, 739)
 
 TITLE = "One-time automation setup"
 
@@ -52,10 +63,6 @@ PLAN = {
         "action": "Leave",
     },
 }
-CROP = (40, 150, 1166, 950)
-# The configured trigger plus its three toggles, with the shortcut's own title
-# bar and the Comment below it cropped away.
-RESULT_CROP = (45, 390, 1160, 1170)
 WIDTH = 860
 
 
@@ -76,17 +83,16 @@ def font(size, bold=False):
     return ImageFont.load_default()
 
 
-def panel(name, box):
-    """A screenshot region, cropped and scaled to the diagram width."""
+def panel(name):
+    """A capture, scaled to the diagram width. Stored pre-cropped, so whole."""
     shot = Image.open(ASSETS / name).convert("RGB")
-    crop = shot.crop(box)
-    scale = WIDTH / crop.width
-    return crop.resize((WIDTH, int(crop.height * scale)), Image.LANCZOS), scale
+    scale = WIDTH / shot.width
+    return shot.resize((WIDTH, int(shot.height * scale)), Image.LANCZOS), scale
 
 
 def draw(kind, spec):
-    picker, scale = panel(spec["capture"], CROP)
-    result, _ = panel(spec["result"], RESULT_CROP)
+    picker, scale = panel(spec["capture"])
+    result, _ = panel(spec["result"])
 
     # No step for Confirm Before Run. It already defaults to off — checked on a
     # simulator, untouched, straight after adding the trigger — so unattended
@@ -120,10 +126,10 @@ def draw(kind, spec):
     d.rounded_rectangle((40, top, 40 + WIDTH, top + picker.height), radius=14,
                         outline=(205, 205, 205), width=2)
     x0, y0, x1, y1 = ROW
-    d.rounded_rectangle((40 + int((x0 - CROP[0]) * scale),
-                         top + int((y0 - CROP[1]) * scale),
-                         40 + int((x1 - CROP[0]) * scale),
-                         top + int((y1 - CROP[1]) * scale)),
+    d.rounded_rectangle((40 + int(x0 * scale),
+                         top + int(y0 * scale),
+                         40 + int(x1 * scale),
+                         top + int(y1 * scale)),
                         radius=16, outline=(230, 60, 70), width=6)
 
     y = steps_y
