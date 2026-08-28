@@ -379,6 +379,11 @@ design document cannot be checked by anyone else.
   `WFMathOperand` both as action-output attachments, `WFMathOperation` `-`, read
   back as `Calculation Result`. This is how to compare two counts; the
   paste-and-match trick below only works for single digits.
+- **A numeric `If` accepts a Math output directly.** Feeding
+  `Calculation Result` to `WFCondition=2, WFNumberValue="0"` branches correctly:
+  a difference of 1 took the greater-than branch, 0 took the else branch. So two
+  runtime counts can be compared as Count -> Count -> Math subtract -> If, with
+  no intermediate `gate()`.
 - **Format Date emits an IANA timezone name.** `WFDateFormatStyle` `Custom` with
   the pattern in **`WFDateFormat`**: `VV` gives `America/Los_Angeles`, `VVVV`
   gives `Los Angeles Time`, `zzzz` gives `Pacific Daylight Time`, `ZZZZZ` gives

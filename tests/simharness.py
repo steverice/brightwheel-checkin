@@ -442,7 +442,7 @@ class Simulator:
         return cleared
 
     # -- shortcuts ------------------------------------------------------
-    def install(self, path, expect_name=None, timeout=40):
+    def install(self, path, expect_name=None, timeout=75):
         """Open a .shortcut as a host file URL and confirm the import sheet.
 
         The library name comes from the *filename*, not from WFWorkflowName.
@@ -472,7 +472,10 @@ class Simulator:
                 return True
             if self.tap_affirmative():
                 tapped = True
-            time.sleep(1.5)
+            # The import writes through CoreData; re-reading too eagerly can
+            # miss a confirm that did land, and the sheet for a large shortcut
+            # can still be drawing when the first tap goes out.
+            time.sleep(2.5)
         self.screenshot(f"install-failed-{name}.png")
         raise SimulatorError(
             f"{name} did not install"
