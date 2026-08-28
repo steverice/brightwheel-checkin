@@ -36,8 +36,7 @@ def build(api_base, dest=OUT):
 
     subprocess.run(
         [sys.executable, str(REPO / "build_shortcuts.py"), str(dest),
-         "--env-file", str(TEST_ENV), "--roster", str(TEST_ROSTER),
-         "--api-base", api_base],
+         "--env-file", str(TEST_ENV), "--api-base", api_base],
         check=True, capture_output=True, text=True)
 
     signed_dir = Path(os.environ.get(
