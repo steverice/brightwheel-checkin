@@ -360,6 +360,31 @@ same job with primitives that are proven.
 match exactly, and there must be one case per item. A mismatch imports without
 complaint and misroutes at runtime.
 
+## Measured on a simulator
+
+Findings from device probes, recorded here because a claim that lives only in a
+design document cannot be checked by anyone else.
+
+- **`Get Group` works for `WFGroupIndex` 1 through 5**, and returns **one value
+  per match** — a list, newline-joined when coerced to text — not just the first
+  match's group. Group 4 returning different values for two students is what
+  proves it tracks matches rather than merely accepting the index.
+- **`Match Text` honors `^` as start-of-string.** An anchored pattern returned 1
+  match where the unanchored one returned 4 on the same body.
+- **`Repeat with Each` iterates a `Matches` output**, and the repeat item coerces
+  to the matched substring, so `Match Text` *on the item* isolates one record.
+- **`Get Group` against a single repeat item does not work.** It stores nothing
+  and raises no error.
+- **`is.workflow.actions.math` subtracts two runtime values**: `WFInput` and
+  `WFMathOperand` both as action-output attachments, `WFMathOperation` `-`, read
+  back as `Calculation Result`. This is how to compare two counts; the
+  paste-and-match trick below only works for single digits.
+- **Format Date emits an IANA timezone name.** `WFDateFormatStyle` `Custom` with
+  the pattern in **`WFDateFormat`**: `VV` gives `America/Los_Angeles`, `VVVV`
+  gives `Los Angeles Time`, `zzzz` gives `Pacific Daylight Time`, `ZZZZZ` gives
+  `-07:00`. `DATE_TIME.md` says to set `WFDateFormat` to `Custom` and put the
+  pattern in `WFDateFormatString`; that shape returns **empty**, silently.
+
 ## Silent failures to design against
 
 Shortcuts rarely errors. It does the wrong thing quietly, so build checks that
