@@ -34,6 +34,24 @@ CHECKIN_BODIES = {
 }
 
 
+# Failure bodies for GET .../students_for_checkin. Measured against the live
+# API on 2026-08-27 — note the stale-secret text here has NO trailing period,
+# where the /checkins/ version does. The shipped detector matches the prefix,
+# so both work; a pattern tightened to the full sentence would break this one.
+ROSTER_ERRORS = {
+    "missing_params": ({"type": "invalid_request_error",
+                        "message": "Request is missing required parameters",
+                        "_errors": [{"title": "Could not apply filter",
+                                     "code": "E2036"}]}, 400),
+    "bad_secret": ({"secret": "The given secret does not exist or is expired",
+                    "_errors": [{"title": "Problem scanning QR code",
+                                 "code": "E2038"}]}, 403),
+    "unknown_guardian": ({"_errors": [{"title": "Not found", "code": "E1204"}]}, 404),
+    "expired_token": ({"error": "This resource requires authentication",
+                       "code": "E1200"}, 401),
+}
+
+
 @dataclass
 class Scenario:
     """What the fake Brightwheel should do this run."""
@@ -57,6 +75,25 @@ class Scenario:
     # When set, only this secret is accepted and anything else is answered as
     # a stale code regardless of checkin_outcomes.
     required_secret: str | None = None
+
+    # The roster students_for_checkin should report: [(id, first_name, room_id)].
+    # `checked_in` is derived from `states`, so a successful POST changes what
+    # the next roster read says — the same idempotency the real API gives us.
+    roster: list = field(default_factory=list)
+
+    # Which constructed shape to return. "normal" builds a well-formed body;
+    # the rest exist so a guard can be shown to fire. These payloads do not
+    # occur in any capture — that is the point of having them.
+    #   error             an E1200 body instead of a roster      -> guard 1
+    #   restructured      students present, room_states renamed  -> guard 2
+    #   empty_room_states first child has []                     -> guard 3
+    #   two_rooms         first child gains a non-default room   -> guard 4
+    #   room_missing_flag that extra room omits is_default_room  -> guard 4
+    #   unreadable_state  first child's checked_in is absent
+    roster_shape: str = "normal"
+
+    # The guardian id the roster path must carry; anything else answers E1204.
+    guardian_id: str = "usr_guardian"
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -111,7 +148,14 @@ class _Handler(BaseHTTPRequestHandler):
         
         if path.endswith("/users/me"):
             if sc.token_valid:
-                resp = {"object_id": "usr_guardian", "email": "test@example.invalid"}
+                # Several object_ids, as the real body has, so an unanchored
+                # guardian-id pattern fails the suite instead of passing it.
+                # The wanted one is first, which is what makes ^ load-bearing.
+                resp = {"object_id": sc.guardian_id,
+                        "email": "test@example.invalid",
+                        "profile_photo": {"object_id": "photo_decoy"},
+                        "authentication_methods": [{"object_id": "auth_decoy"}],
+                        "school_invites": [{"school": {"object_id": "school_decoy"}}]}
             else:
                 resp = {"error": "This resource requires authentication",
                         "code": "E1200"}
@@ -131,6 +175,9 @@ class _Handler(BaseHTTPRequestHandler):
                 resp = {"error": "Please start over", "code": "E2053"}
                 status = 401
 
+        elif path.endswith("/students_for_checkin"):
+            resp, status = self._roster(sc, path)
+
         elif "/students/" in path and path.endswith("/activities"):
             child = path.split("/students/", 1)[1].split("/", 1)[0]
             state = sc.states.get(child, "out")
@@ -149,6 +196,66 @@ class _Handler(BaseHTTPRequestHandler):
 
         self._send(resp, status)
         self._record(raw, parsed, resp, status)
+
+    def _roster(self, sc, path):
+        """GET /guardians/{id}/students_for_checkin.
+
+        Required parameters are enforced the way the live API enforces them,
+        because "the roster call failed" is a case the guards exist for and a
+        mock that always succeeds cannot exercise them.
+        """
+        import urllib.parse as _up
+        query = dict(_up.parse_qsl(self.path.split("?", 1)[1])) if "?" in self.path else {}
+
+        if not sc.token_valid:
+            return ROSTER_ERRORS["expired_token"]
+        for key in ("school_id", "secret", "time_zone"):
+            if not query.get(key):
+                return ROSTER_ERRORS["missing_params"]
+        if sc.required_secret is not None and query["secret"] != sc.required_secret:
+            return ROSTER_ERRORS["bad_secret"]
+        who = path.split("/guardians/", 1)[1].split("/", 1)[0]
+        if who != sc.guardian_id:
+            return ROSTER_ERRORS["unknown_guardian"]
+
+        if sc.roster_shape == "error":
+            return ROSTER_ERRORS["expired_token"]
+
+        def entry(cid, name, room):
+            state = sc.states.get(cid, "out") == "in"
+            student = {"object_id": cid, "billing_status": None,
+                       "first_name": name, "last_name": "Test",
+                       "profile_photo": {"object_id": f"photo_{cid}"},
+                       "raw_passcode": None, "user_type": "student"}
+            rs = {"room": {"object_id": room, "name": "Test Room"},
+                  "checked_in": state, "is_default_room": True}
+            return {"student": student, "room_states": [rs]}
+
+        students = [entry(*c) for c in sc.roster]
+        shape = sc.roster_shape
+
+        if students:
+            first = students[0]
+            if shape == "empty_room_states":
+                first["room_states"] = []
+            elif shape in ("two_rooms", "room_missing_flag"):
+                extra = {"room": {"object_id": "room_aftercare", "name": "Aftercare"},
+                         "checked_in": not first["room_states"][0]["checked_in"]}
+                if shape == "two_rooms":
+                    extra["is_default_room"] = False
+                first["room_states"].insert(0, extra)
+            elif shape == "unreadable_state":
+                first["room_states"][0].pop("checked_in")
+
+        body = {"school": {"uuid": "sch_uuid", "object_id": "sch_object",
+                           "name": "Test School", "signatures_required": False},
+                "students": students}
+        if shape == "restructured":
+            # students present, but the child shape changed: every count the
+            # guards derive goes to zero together.
+            for s in body["students"]:
+                s["room_state"] = s.pop("room_states")[0]
+        return body, 200
 
     def _checkin(self, sc, parsed):
         parsed = parsed or {}
