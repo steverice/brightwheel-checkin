@@ -379,6 +379,21 @@ design document cannot be checked by anyone else.
   `WFMathOperand` both as action-output attachments, `WFMathOperation` `-`, read
   back as `Calculation Result`. This is how to compare two counts; the
   paste-and-match trick below only works for single digits.
+- **`Get Contents of URL` hands Match Text a re-serialization, not the bytes on
+  the wire.** A JSON response is parsed into a dictionary, and coercing that to
+  text writes the keys back out in the dictionary's own order. Measured against
+  a body whose wire order began `object_id, billing_status, first_name`: the
+  device saw `billing_status, profile_photo, last_name, user_type,
+  raw_passcode, object_id, first_name`, putting `profile_photo.object_id`
+  *before* the student's own. It was stable across three runs in one process,
+  which is not a contract.
+
+  So a pattern may depend on a key's **name**, never on its **position**, and
+  never on two keys being adjacent. Single-pair patterns like
+  `"state"\s*:\s*"1"` are safe and are why nothing noticed until a pattern
+  needed several fields from one record. Anything that has to pair fields must
+  bound itself with brace structure — `[^{}]*` inside one object, or a nested
+  object skipped explicitly — rather than with distance.
 - **A numeric `If` accepts a Math output directly.** Feeding
   `Calculation Result` to `WFCondition=2, WFNumberValue="0"` branches correctly:
   a difference of 1 took the greater-than branch, 0 took the else branch. So two
