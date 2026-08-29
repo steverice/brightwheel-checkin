@@ -190,9 +190,10 @@ def build(direction=None, env=None):
         measured rather than tested. Counting matches handles both, and a
         pattern turns the same helper into "does this response say X".
 
-        This is also why nothing here parses JSON with Detect Dictionary and Get
-        Dictionary Value; that pair does not produce a working branch. Matching
-        the raw response text is the primitive that works.
+        It is the branch that Get Dictionary Value cannot serve, not the read.
+        The roster is parsed with it, and so is the wording dictionary above —
+        but every one of those values is used as text. The moment a dictionary
+        value has to decide a branch, it has to come back through here.
         """
         t, m, c = next(i), next(i), next(i)
         # src may be an action UUID (with name), a variable name (name=None),
@@ -256,8 +257,8 @@ def build(direction=None, env=None):
     #
     # Run with no input, this stops. That also makes the shortcut safe to have
     # in the library: saying its name to Siri cannot check anyone anywhere.
-    U_DIRT, U_DIRF, U_VT, U_VF, U_AT, U_AF = (next(i) for _ in range(6))
-    G_VALID, G_DIR = next(i), next(i)
+    U_WORDS, U_CIV, U_VERB, U_ALREADY = (next(i) for _ in range(4))
+    G_VALID = next(i)
     EXT = {"Type": "ExtensionInput"}
 
     U_EXT, U_MIN, U_MOUT = next(i), next(i), next(i)
@@ -333,46 +334,38 @@ def build(direction=None, env=None):
     C_DIR = gate("Direction", None, "^in$")
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Wanted In",
                  WFInput=attach(out(C_DIR, "Count"))))
+    # One dictionary keyed by direction, instead of an If that set the same
+    # three variables twice. The lookups are unconditional, so each value is a
+    # named action output and needs no Set Variable to survive the branch it
+    # used to be written in: eleven actions became four.
+    #
+    # All three are read as text — into the request body and into notification
+    # wording — never as an If input, which is the case a Dictionary Value
+    # cannot serve (see gate() above).
     A.append(comment(
         "Set the wording and the value Brightwheel expects.\n"
-        "- Condition checks whether this run is a check-in\n"
+        "- The key is the direction, so in and out read the same three fields\n"
         "- Checked In Value goes into the request as true or false\n"
         "- Verb and Already Word are only used in notifications"
     ))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_DIR, WFControlFlowMode=0,
-                 WFCondition=2, WFNumberValue="0",
-                 WFInput=cond_input(var("Wanted In"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_DIRT,
-                 WFTextActionText="true"))
-    A.append(act("is.workflow.actions.setvariable",
-                 WFVariableName="Checked In Value",
-                 WFInput=attach(out(U_DIRT, "Text"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_VT,
-                 WFTextActionText="checked in"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Verb",
-                 WFInput=attach(out(U_VT, "Text"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_AT,
-                 WFTextActionText="already checked in"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Already Word",
-                 WFInput=attach(out(U_AT, "Text"))))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_DIR, WFControlFlowMode=1))
-    A.append(act("is.workflow.actions.gettext", UUID=U_DIRF,
-                 WFTextActionText="false"))
-    A.append(act("is.workflow.actions.setvariable",
-                 WFVariableName="Checked In Value",
-                 WFInput=attach(out(U_DIRF, "Text"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_VF,
-                 WFTextActionText="checked out"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Verb",
-                 WFInput=attach(out(U_VF, "Text"))))
-    A.append(act("is.workflow.actions.gettext", UUID=U_AF,
-                 WFTextActionText="already checked out"))
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Already Word",
-                 WFInput=attach(out(U_AF, "Text"))))
-    A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                 GroupingIdentifier=G_DIR, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.dictionary", UUID=U_WORDS,
+                 WFItems=dict_field([
+                     kv_dict("in", [
+                         kv("value", ts("true")),
+                         kv("verb", ts("checked in")),
+                         kv("already", ts("already checked in"))]),
+                     kv_dict("out", [
+                         kv("value", ts("false")),
+                         kv("verb", ts("checked out")),
+                         kv("already", ts("already checked out"))]),
+                 ])))
+    for u_w, field, outname in ((U_CIV, "value", "Checked In Value"),
+                                (U_VERB, "verb", "Verb"),
+                                (U_ALREADY, "already", "Already Word")):
+        A.append(act("is.workflow.actions.getvalueforkey", UUID=u_w,
+                     CustomOutputName=outname, WFGetDictionaryValueType="Value",
+                     WFDictionaryKey=ts(var("Direction"), f".{field}"),
+                     WFInput=attach(out(U_WORDS, "Dictionary"))))
 
     A.append(comment(
         "--- SETUP ---\n"
@@ -574,7 +567,8 @@ def build(direction=None, env=None):
                  WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(var("Needs Sign In"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel — nobody ", var("Verb")),
+                 WFNotificationActionTitle=ts("Brightwheel — nobody ",
+                                              out(U_VERB, "Verb")),
                  WFNotificationActionBody=ts(
                      "Could not sign in after five tries, so nothing was sent. "
                      "Run this shortcut by hand and enter a code, or leave the "
@@ -873,7 +867,8 @@ def build(direction=None, env=None):
                      WFCondition=condition, WFNumberValue=number,
                      WFInput=cond_input(out(count_uuid, count_name))))
         A.append(act("is.workflow.actions.notification",
-                     WFNotificationActionTitle=ts("Brightwheel — nobody ", var("Verb")),
+                     WFNotificationActionTitle=ts("Brightwheel — nobody ",
+                                              out(U_VERB, "Verb")),
                      WFNotificationActionBody=ts(message)))
         A.append(act("is.workflow.actions.setvariable", WFVariableName="Roster OK",
                      WFInput=attach(out(U_ZERO2, "Number"))))
@@ -1002,7 +997,7 @@ def build(direction=None, env=None):
                  WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
                      "• ", var("Child Name"), " was ",
-                     var("Already Word"), " — no change")))
+                     out(U_ALREADY, "Already Word"), " — no change")))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SKIP, WFControlFlowMode=1))
 
@@ -1014,7 +1009,7 @@ def build(direction=None, env=None):
                      '"room":{"object_id":"',
                      var("Child Room"),
                      '"},"checked_in":',
-                     var("Checked In Value"),
+                     out(U_CIV, "Checked In Value"),
                      ',',
                      '"target":{"object_id":"',
                      var("Child Id"),
@@ -1053,7 +1048,7 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
-                     "✅ ", var("Child Name"), " ", var("Verb"))))
+                     "✅ ", var("Child Name"), " ", out(U_VERB, "Verb"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_RES, WFControlFlowMode=1))
     C_STALE = gate(U_RESP, "Contents of URL",
@@ -1082,7 +1077,7 @@ def build(direction=None, env=None):
                  GroupingIdentifier=G_STALE, WFControlFlowMode=1))
     A.append(act("is.workflow.actions.notification",
                  WFNotificationActionTitle=ts(
-                     "⚠️ ", var("Child Name"), " not ", var("Verb")),
+                     "⚠️ ", var("Child Name"), " not ", out(U_VERB, "Verb")),
                  WFNotificationActionBody=ts(
                      out(U_RTEXT, "Text"),
                      "\n\nIf this says the session expired, run this shortcut "
