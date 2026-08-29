@@ -762,7 +762,8 @@ def build(direction=None, env=None):
     # One call returns the roster and each child's current state together, so
     # they cannot disagree, and it replaces the per-child activities read.
     U_TZ, U_ROST, U_MATCH = next(i), next(i), next(i)
-    G_STALE2, G_G1, G_G2, G_G3, G_G4, G_RUN = (next(i) for _ in range(6))
+    G_STALE2, G_G1, G_G3, G_RUN = (next(i) for _ in range(4))
+    G_ROOMS, G_ROOM0, G_ROOM2 = (next(i) for _ in range(3))
 
     # The device's own zone. time_zone is required by the endpoint, and while
     # its value looked inert in testing that test could not tell an inert
@@ -836,15 +837,11 @@ def build(direction=None, env=None):
                  WFInput=attach(out(U_MATCH, "Students")),
                  Input=attach(out(U_MATCH, "Students"))))
 
-    # The guards still count key names in the body text, which is safe because
+    # One guard still counts a key name in the body text, which is safe because
     # a single key-value pair does not depend on order. Each well-formed child
-    # contributes exactly one "room_states" and one "checked_in".
-    u_km, u_ck = next(i), next(i)
-    A.append(act("is.workflow.actions.text.match", UUID=u_km,
-                 WFMatchTextPattern=r'"room_states"\s*:',
-                 text=ts(out(U_ROST, "Contents of URL"))))
-    A.append(act("is.workflow.actions.count", UUID=u_ck, WFCountType="Items",
-                 WFInput=attach(out(u_km, "Matches")), Input=attach(out(u_km, "Matches"))))
+    # contributes exactly one "checked_in"; a room entry that has lost the key
+    # is the one malformation the per-child loop below cannot see, because such
+    # a child still has exactly one room.
     u_sm, u_cs = next(i), next(i)
     A.append(act("is.workflow.actions.text.match", UUID=u_sm,
                  WFMatchTextPattern=r'"checked_in"\s*:',
@@ -889,28 +886,64 @@ def build(direction=None, env=None):
                      WFMathOperand=attach(out(b_uuid, b_name))))
         guard(group, u, "Calculation Result", 2, "0", message, blurb)
 
-    diff_guard(G_G2, u_cm, "Count", u_ck, "Count",
-               "The roster came back in a shape this shortcut could not read, "
-               "so nothing was sent. Check the children in by hand.",
-               "Does every child have a room entry?\n"
-               "- Condition counts children minus room entries\n"
-               "- A shortfall means the reply changed shape")
     diff_guard(G_G3, u_cm, "Count", u_cs, "Count",
-               "A child in the roster has no room, so nothing was sent rather "
-               "than checking in only some of them.",
-               "Does every child have a room state?\n"
-               "- Condition counts children minus room states\n"
-               "- A child with none cannot be sent, so nobody is")
-    diff_guard(G_G4, u_cs, "Count", u_cm, "Count",
-               "A child is listed in more than one room, so nothing was sent "
-               "rather than guessing which one to use.",
-               "Is any child in more than one room?\n"
-               "- Condition counts room states minus children\n"
-               "- The room to send would be a guess, so nobody is")
+               "A room in the roster has no check-in state, so nothing was "
+               "sent rather than checking in only some of them.",
+               "Does every room entry carry a state?\n"
+               "- Condition counts children minus check-in states\n"
+               "- A room that has lost the key reads as nobody to send for")
+
+    # Per child, exactly one room. The counts above compare totals, and two
+    # children can cancel each other out: one with an empty room_states and one
+    # listed in two rooms leaves every total correct while both children are
+    # wrong. The first would be sent with an empty room id, the second with a
+    # guess. Counting a child's own entries is the only check that cannot be
+    # cancelled by another child.
+    #
+    # A second pass rather than a test inside the sending loop, because the run
+    # is all-or-nothing: by the child that looks wrong, the ones before it have
+    # already been sent.
+    #
+    # Two conditions rather than one "is not equal to". Only less-than and
+    # greater-than are proven here, and a multi-condition row imports empty
+    # (see ARCHITECTURE.md). Two branches also carry two messages, which says
+    # more than one about a count being wrong.
+    A.append(comment(
+        "Look at each child's own rooms in turn.\n"
+        "- One pass that sends nothing, so a bad child stops the whole run\n"
+        "- Both checks below fire per child, so two bad children say so twice"))
+    A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
+                 GroupingIdentifier=G_ROOMS, WFControlFlowMode=0,
+                 WFInput=attach(out(U_MATCH, "Students"))))
+    # "Repeat Item 2" for the same reason the sending loop uses it: one
+    # enclosing Repeat, and the conditionals in between do not renumber.
+    u_rooms, u_nr = next(i), next(i)
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=u_rooms,
+                 CustomOutputName="Child Rooms",
+                 WFGetDictionaryValueType="Value",
+                 WFDictionaryKey="room_states",
+                 WFInput=attach(var("Repeat Item 2"))))
+    A.append(act("is.workflow.actions.count", UUID=u_nr, WFCountType="Items",
+                 WFInput=attach(out(u_rooms, "Child Rooms")),
+                 Input=attach(out(u_rooms, "Child Rooms"))))
+    guard(G_ROOM0, u_nr, "Count", 0, "1",
+          "A child in the roster has no room, so nothing was sent rather than "
+          "checking in only some of them.",
+          "Does this child have a room at all?\n"
+          "- Condition counts this child's own room entries\n"
+          "- None means there is no room to send them to")
+    guard(G_ROOM2, u_nr, "Count", 2, "1",
+          "A child is listed in more than one room, so nothing was sent rather "
+          "than guessing which one to use.",
+          "Is this child in more than one room?\n"
+          "- Condition counts this child's own room entries\n"
+          "- The room to send would be a guess, so nobody is")
+    A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
+                 GroupingIdentifier=G_ROOMS, WFControlFlowMode=2))
 
     A.append(comment(
-        "Only send if all four checks above agreed.\n"
-        "- Condition counts whether the roster survived every check\n"
+        "Only send if every check above agreed.\n"
+        "- Condition counts whether the roster survived all of them\n"
         "- Anything else has already said why, and sends nothing"))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_RUN, WFControlFlowMode=0,

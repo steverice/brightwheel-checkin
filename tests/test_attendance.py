@@ -328,9 +328,9 @@ def test_reads_the_roster_at_runtime(s):
 
 
 def test_a_failed_roster_stops_loudly(s):
-    """Guard 1 and 2: an error body must not read as an empty roster.
+    """An error body must not read as an empty roster.
 
-    Both counts the guards derive are zero on a failed call, so without a
+    Every count the guards derive is zero on a failed call, so without a
     positive test the run does nothing at all and says nothing — which looks
     exactly like the trigger never firing.
     """
@@ -342,7 +342,7 @@ def test_a_failed_roster_stops_loudly(s):
 
 
 def test_a_restructured_roster_stops(s):
-    """Guard 2: students present, child shape changed, every count zero."""
+    """Students present, child shape changed: nobody has a room to send to."""
     s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="restructured",
                          states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
@@ -351,7 +351,7 @@ def test_a_restructured_roster_stops(s):
 
 
 def test_a_child_in_two_rooms_stops(s):
-    """Guard 4: the extraction takes room_states[0], so multiplicity is refused.
+    """The extraction takes room_states[0], so multiplicity is refused.
 
     Proceeding would check the child into the room they are not in, which the
     right teacher sees as an absence.
@@ -364,7 +364,28 @@ def test_a_child_in_two_rooms_stops(s):
 
 
 def test_a_dropped_child_stops(s):
-    """Guard 3: one child unparseable means the run stops, not half-runs."""
+    """One child with no room means the run stops, rather than half-runs."""
+
+
+def test_two_children_cancelling_out_stops(s):
+    """One child in two rooms and one with no room must still stop the run.
+
+    The case every whole-roster count agrees on. Two children, two
+    "room_states" keys and two "checked_in" keys, so children-minus-states and
+    states-minus-children are both zero, and no comparison of totals can see
+    that both children are wrong.
+
+    The two-room child is first and needs sending, so without a per-child check
+    the run reaches a real POST into a guessed room before it ever looks at the
+    child who has none. That POST is what this asserts against: reversing the
+    two children ends the run on a failed lookup instead, which is the right
+    outcome for the wrong reason and proves nothing.
+    """
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="cancelling",
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "two children failing in opposite directions must stop the run"
     s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="empty_room_states",
                          states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
@@ -400,6 +421,7 @@ TESTS = [
     test_a_restructured_roster_stops,
     test_a_child_in_two_rooms_stops,
     test_a_dropped_child_stops,
+    test_two_children_cancelling_out_stops,
     test_a_rotated_secret_on_the_roster_call_recovers,
 ]
 

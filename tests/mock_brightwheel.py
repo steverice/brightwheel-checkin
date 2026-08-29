@@ -84,12 +84,23 @@ class Scenario:
     # Which constructed shape to return. "normal" builds a well-formed body;
     # the rest exist so a guard can be shown to fire. These payloads do not
     # occur in any capture — that is the point of having them.
-    #   error             an E1200 body instead of a roster      -> guard 1
-    #   restructured      students present, room_states renamed  -> guard 2
-    #   empty_room_states first child has []                     -> guard 3
-    #   two_rooms         first child gains a non-default room   -> guard 4
-    #   room_missing_flag that extra room omits is_default_room  -> guard 4
-    #   unreadable_state  first child's checked_in is absent
+    #   error             an E1200 body instead of a roster      -> no children
+    #   restructured      students present, room_states renamed  -> no room
+    #   empty_room_states first child has []                     -> no room
+    #   two_rooms         first child gains a non-default room   -> two rooms
+    #   room_missing_flag that extra room omits is_default_room  -> two rooms
+    #   unreadable_state  first child's checked_in is absent     -> no state
+    #   cancelling        first child has two rooms, second []   -> per child
+    #
+    # cancelling is the shape the aggregate counts cannot see. Children and
+    # "checked_in" keys both still total two, so every whole-roster comparison
+    # agrees; only counting each child's own rooms catches it.
+    #
+    # The order matters. The two-room child comes first and its extra room says
+    # not checked in, so a check-in run reaches a real POST into a guessed room
+    # before the empty child is read at all. Put the empty child first and
+    # room_states.1 fails on it, ending the run before anything is sent — the
+    # right outcome by accident, which no longer tests anything.
     roster_shape: str = "normal"
 
     # The guardian id the roster path must carry; anything else answers E1204.
@@ -253,6 +264,16 @@ class _Handler(BaseHTTPRequestHandler):
             first = students[0]
             if shape == "empty_room_states":
                 first["room_states"] = []
+            elif shape == "cancelling":
+                # The extra room copies the state rather than inverting it, so
+                # this child still needs sending and the run has something
+                # wrong to do.
+                first["room_states"].insert(0, {
+                    "room": {"object_id": "room_aftercare", "name": "Aftercare"},
+                    "checked_in": first["room_states"][0]["checked_in"],
+                    "is_default_room": False})
+                if len(students) > 1:
+                    students[1]["room_states"] = []
             elif shape in ("two_rooms", "room_missing_flag"):
                 extra = {"room": {"object_id": "room_aftercare", "name": "Aftercare"},
                          "checked_in": not first["room_states"][0]["checked_in"]}

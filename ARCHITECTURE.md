@@ -48,7 +48,7 @@ Inside `build_shortcuts.py`:
 | `act()` / `comment()` | Bare action constructors. |
 | `gate()` | Text → Match Text → Count. The presence primitive; see below. Pass `name=None` to read a named variable instead of an action output. |
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
-| `guard()` / `diff_guard()` | Emit one roster check: notify, clear `Roster OK`, and let the run fall through without sending. |
+| `guard()` / `diff_guard()` | Emit one roster check: notify, clear `Roster OK`, and let the run fall through without sending. `guard()` also serves the per-child pass. |
 | `build()` | `Brightwheel Attendance` — everything except the direction. |
 | `build_wrapper()` | The two trigger carriers, parameterised by direction. Each also carries its own first-run setup guide. |
 | `--api-base` / `--env-file` | Overrides used only by the integration tests, so a test build cannot reach the real API. See `TESTING.md`. |
@@ -390,6 +390,12 @@ design document cannot be checked by anyone else.
   pair out of that, which is order-independent and so unaffected by the
   re-serialization below.
 
+  A list will not coerce to text, but it **does count**. `room_states` off a
+  repeat item feeds `Count` directly and gives that child's own number of
+  rooms, which is what the per-child guards use. A **missing** key counts 0
+  rather than erroring — `test_a_restructured_roster_stops` renames the key
+  away and the count guard is what stops the run.
+
   This does not reopen the prohibition on the check path's *branching*: the
   documented failures were presence tests, a dictionary parsed out of a plain
   string, and a lookup keyed by a runtime value. Reading a fixed key path off a
@@ -438,27 +444,39 @@ off each item. The one exception is the current state: a boolean does not
 coerce to text, so `room_states.1` is read instead and the single
 `"checked_in":true` pair matched out of it, which no key order can disturb.
 
-### Four guards, all before anything is sent
+### Guards, all before anything is sent
 
-Counting key names in the body text stays safe here because a single key-value
-pair does not depend on order. Each is compared against the length of the
-`students` list.
+Two of these count key names in the body text, which stays safe because a
+single key-value pair does not depend on order, and compare the result against
+the length of the `students` list. The other two count one child's own rooms.
 
 | guard | fires when |
 |---|---|
 | any children at all | the list is empty — an error body looks like this |
-| every child has a room entry | `"room_states"` count is short: the reply changed shape |
-| every child has a room state | `"checked_in"` count is short: a child has no room |
-| no child in two rooms | `"checked_in"` count is long: the room to send would be a guess |
+| every room entry carries a state | `"checked_in"` count is short: a room lost the key |
+| this child has a room | their own `room_states` is empty or absent |
+| this child is in one room | their own `room_states` holds more than one |
 
-The second exists because the others compare the response against itself: a
-reply that keeps `students` but restructures each child drives every count to
-zero together, and they would all agree. That failure is silent — the loop runs
-zero times and every per-child notification lives inside it — which is why it
-gets its own check.
+The last two run in **their own pass** over the children, before the sending
+pass. A check inside the sending loop cannot be all-or-nothing: by the child
+that looks wrong, the ones ahead of it have already been sent.
 
-All four **stop the run**. A partial check-in is worse than none, because the
-parent believes it worked.
+They are per-child because totals can cancel. One child with an empty
+`room_states` and one listed in two rooms leaves the children, the
+`"room_states"` keys and the `"checked_in"` keys all totalling the same, so
+every whole-roster comparison agrees while both children are wrong — the first
+would be sent with an empty room id, the second into a guessed room. Two
+earlier guards subtracted totals in each direction and neither could see it.
+`tests/mock_brightwheel.py` has the shape as `cancelling`, ordered so the
+two-room child is sent first; reverse the two and the run dies on the empty
+child's failed lookup instead, which passes for the wrong reason.
+
+Counting a child's own entries subsumed both of those subtractions, so they are
+gone: a child whose `room_states` key was renamed away counts zero and fires
+the same guard as a child whose array is empty.
+
+All of them **stop the run**. A partial check-in is worse than none, because
+the parent believes it worked.
 
 ### Order matters inside the pass
 
