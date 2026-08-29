@@ -358,11 +358,11 @@ class Simulator:
         return self.tap_affirmative()
 
     def ensure_hardware_keyboard(self):
-        """Connect the hardware keyboard, re-applying it even if already ticked.
+        """Connect the hardware keyboard, re-applying it even if already checked.
 
         Synthesized keystrokes only reach the device through the hardware
         keyboard. An erase resets the device side of this while the Simulator
-        menu can still show it ticked, and the giveaway is the software
+        menu can still show it checked, and the giveaway is the software
         keyboard appearing — at which point typing silently goes nowhere. So
         cycle the setting rather than trusting the tick.
         """

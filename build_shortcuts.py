@@ -245,7 +245,7 @@ def build(env=None):
     # silently disagree with them and send the wrong direction.
     #
     # Run with no input, this asks. That is what makes the shortcut safe to
-    # have in the library: saying its name to Siri opens a menu, and cancelling
+    # have in the library: saying its name to Siri opens a menu, and canceling
     # the menu sends nothing.
     U_WORDS, U_CIV, U_VERB, U_ALREADY = (next(i) for _ in range(4))
     G_VALID = next(i)
@@ -274,7 +274,7 @@ def build(env=None):
     A.append(comment(
         "Ask, when nothing was handed in.\n"
         "- Each choice sets Direction to the same in or out a wrapper would\n"
-        "- Cancelling the menu stops the shortcut, so nothing is sent"
+        "- Canceling the menu stops the shortcut, so nothing is sent"
     ))
     A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
                  GroupingIdentifier=G_MENU, WFControlFlowMode=0,
@@ -387,7 +387,7 @@ def build(env=None):
     # Sign-in is two steps and needs a 6-digit code (see README). A background
     # automation cannot answer the prompt, but this branch only runs when the
     # token has already expired, so that run was failing regardless. Running the
-    # shortcut by hand afterwards completes it.
+    # shortcut by hand afterward completes it.
     U_GT, U_PROBE = next(i), next(i)
     U_START, U_CODE, U_SESS = next(i), next(i), next(i)
     U_TMATCH, U_TGRP, U_ZERO = next(i), next(i), next(i)
@@ -444,7 +444,7 @@ def build(env=None):
         "- Each pass asks Brightwheel to send a fresh code, then asks you for it\n"
         "- Leaving the box empty, or typing resend, sends another code instead "
         "of trying to use what was typed\n"
-        "- Cancelling the code prompt stops the whole shortcut\n"
+        "- Canceling the code prompt stops the whole shortcut\n"
         "- A pass that gets a token clears Needs Sign In, so later passes do "
         "nothing"
     ))
@@ -757,7 +757,7 @@ def build(env=None):
     # The device's own zone. time_zone is required by the endpoint, and while
     # its value looked inert in testing that test could not tell an inert
     # parameter from a day boundary nobody had crossed. UTC would put the
-    # boundary at teatime; the local zone puts it at local midnight.
+    # boundary in the middle of the afternoon; the local zone puts it at local midnight.
     A.append(act("is.workflow.actions.date", UUID=U_TZ))
     u_tzf, u_tzt = next(i), next(i)
     A.append(act("is.workflow.actions.format.date", UUID=u_tzf,
@@ -813,7 +813,7 @@ def build(env=None):
                  GroupingIdentifier=G_STALE2, WFControlFlowMode=2))
 
     # The roster is read as a dictionary, not matched as text. Get Contents of
-    # URL parses JSON, so what a Match Text would see is a re-serialisation
+    # URL parses JSON, so what a Match Text would see is a re-serialization
     # whose key order is Shortcuts' own — measured on device, the student's
     # object_id came after the photo's. Key *names* survive that; positions and
     # adjacency do not, which is fatal to any pattern pairing several fields.
@@ -887,7 +887,7 @@ def build(env=None):
     # listed in two rooms leaves every total correct while both children are
     # wrong. The first would be sent with an empty room id, the second with a
     # guess. Counting a child's own entries is the only check that cannot be
-    # cancelled by another child.
+    # canceled by another child.
     #
     # A second pass rather than a test inside the sending loop, because the run
     # is all-or-nothing: by the child that looks wrong, the ones before it have

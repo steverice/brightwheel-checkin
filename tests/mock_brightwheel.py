@@ -89,9 +89,9 @@ class Scenario:
     #   empty_room_states first child has []                     -> no room
     #   two_rooms         first child gains a non-default room   -> two rooms
     #   unreadable_state  first child's checked_in is absent     -> no state
-    #   cancelling        first child has two rooms, second []   -> per child
+    #   canceling        first child has two rooms, second []   -> per child
     #
-    # cancelling is the shape the aggregate counts cannot see. Children and
+    # canceling is the shape the aggregate counts cannot see. Children and
     # "checked_in" keys both still total two, so every whole-roster comparison
     # agrees; only counting each child's own rooms catches it.
     #
@@ -254,7 +254,7 @@ class _Handler(BaseHTTPRequestHandler):
             first = students[0]
             if shape == "empty_room_states":
                 first["room_states"] = []
-            elif shape == "cancelling":
+            elif shape == "canceling":
                 # The extra room copies the state rather than inverting it, so
                 # this child still needs sending and the run has something
                 # wrong to do.

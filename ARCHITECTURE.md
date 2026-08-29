@@ -450,7 +450,7 @@ a per-child activities read. The guardian id comes from the `/users/me` probe
 that already runs; the time zone comes from the device.
 
 **Read as a dictionary, not matched as text.** `Get Contents of URL` parses
-JSON, so the text a pattern would see is a re-serialisation in Shortcuts' own
+JSON, so the text a pattern would see is a re-serialization in Shortcuts' own
 key order — see the silent failures below. `Get Dictionary Value` addresses keys
 by name, which survives that, so the loop walks the `students` list and reads
 `student.object_id`, `student.first_name` and `room_states.1.room.object_id`
@@ -478,11 +478,11 @@ that looks wrong, the ones ahead of it have already been sent.
 
 They are per-child because totals can cancel. One child with an empty
 `room_states` and one listed in two rooms leaves the children, the
-`"room_states"` keys and the `"checked_in"` keys all totalling the same, so
+`"room_states"` keys and the `"checked_in"` keys all totaling the same, so
 every whole-roster comparison agrees while both children are wrong — the first
 would be sent with an empty room id, the second into a guessed room. Two
 earlier guards subtracted totals in each direction and neither could see it.
-`tests/mock_brightwheel.py` has the shape as `cancelling`, ordered so the
+`tests/mock_brightwheel.py` has the shape as `canceling`, ordered so the
 two-room child is sent first; reverse the two and the run dies on the empty
 child's failed lookup instead, which passes for the wrong reason.
 
@@ -570,13 +570,13 @@ automation you could then fix; there is simply no automation, so a generated
 stub would save nobody a step. So **attach triggers last**: re-importing a
 rebuilt shortcut replaces it and loses them.
 
-A trigger stub is only possible at all for the 4 of 42 catalogued triggers that
+A trigger stub is only possible at all for the 4 of 42 cataloged triggers that
 take no parameters — external drive connected, file modified, folder changed,
 and Wi-Fi disconnect-from-any. Nothing location- or time-based is among them.
 
 Triggers also report **no output** (`outputTypeIdentifiers: ["none"]`), so a
 shortcut cannot tell which one woke it. That is a real absence, not missing
-metadata: 13 of the 42 catalogued triggers *do* declare an output, including
+metadata: 13 of the 42 cataloged triggers *do* declare an output, including
 message, email, notification and file triggers.
 
 Arrival triggers also require Settings → Privacy & Security → Location Services →
@@ -612,7 +612,7 @@ This run of ten, read off an iOS 27 library:
 | 59693 | ⤓ download tray | | 59698 | π |
 | 59694 | € euro | | 59699 | ▶ play |
 
-Consecutive numbers are unrelated to each other, so there is no neighbourhood to
+Consecutive numbers are unrelated to each other, so there is no neighborhood to
 search — sweeping to find a *specific* idea is wasteful. To pick a particular
 icon, choose it in the on-device icon picker and then read
 `ZSHORTCUTICON.ZGLYPHNUMBER` straight out of `Shortcuts.sqlite`; an iCloud share

@@ -274,7 +274,7 @@ def test_setup_questions_commit_their_answers(s):
     """
     name = s.unique_name("Setup Canary")
     path = testbuild.build_setup_probe(name)
-    marker = "246813"          # digits: immune to the keyboard's autocapitalisation
+    marker = "246813"          # digits: immune to the keyboard's autocapitalization
 
     s.sim.terminate_shortcuts()
     time.sleep(1.2)
@@ -384,7 +384,7 @@ def test_a_room_with_no_state_stops(s):
         "a room with no check-in state must not check anybody in"
 
 
-def test_two_children_cancelling_out_stops(s):
+def test_two_children_canceling_out_stops(s):
     """One child in two rooms and one with no room must still stop the run.
 
     The case every whole-roster count agrees on. Two children, two
@@ -398,7 +398,7 @@ def test_two_children_cancelling_out_stops(s):
     two children ends the run on a failed lookup instead, which is the right
     outcome for the wrong reason and proves nothing.
     """
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="cancelling",
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="canceling",
                          states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
     assert not s.mock.checkins, \
@@ -434,7 +434,7 @@ TESTS = [
     test_a_child_in_two_rooms_stops,
     test_a_dropped_child_stops,
     test_a_room_with_no_state_stops,
-    test_two_children_cancelling_out_stops,
+    test_two_children_canceling_out_stops,
     test_a_rotated_secret_on_the_roster_call_recovers,
 ]
 

@@ -233,7 +233,7 @@ an empty answer. Tap the field first. The software keyboard being visible is
 *not* a sign that the hardware keyboard is disconnected — it can be connected
 and showing anyway, so that is not a useful diagnostic.
 
-**Autocapitalisation is on**, so `zzemail` arrives as `Zzemail`. The canary
+**Autocapitalization is on**, so `zzemail` arrives as `Zzemail`. The canary
 types digits to sidestep it; anything asserting on typed letters has to account
 for it or turn it off on the device.
 
@@ -272,7 +272,7 @@ test would only restate the generator.
 
 ## Two dead ends, so nobody spends the afternoon again
 
-**Writing rows into `Shortcuts.sqlite` directly.** It gets tantalisingly close —
+**Writing rows into `Shortcuts.sqlite` directly.** It gets tantalizingly close —
 `siriactionsd` picks the row up and hashes it — but library membership lives in
 a CRDT blob in `ZLIBRARY.ZDATA` (it starts with the magic `crdt`), so an
 injected shortcut never appears and cannot be run by name. Use the import sheet.

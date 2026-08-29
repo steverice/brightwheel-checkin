@@ -164,7 +164,7 @@ nothing, and only a resend arrives. The loop runs five passes and calls
 `/sessions/start` each time, so the prompt doubles as a resend control: **leave
 the box empty, or type `resend`**, and another code is sent. Only a strict
 `^[0-9]{6}$` answer is exchanged, so a typo or padded paste also falls through to
-a resend. Cancelling stops the shortcut.
+a resend. Canceling stops the shortcut.
 
 ## The school code
 
