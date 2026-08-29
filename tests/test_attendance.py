@@ -151,8 +151,8 @@ def test_skips_children_already_in_the_wanted_state(s):
     s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "in", CHILD_B: "in"}))
     s.run_and_settle(CHECK_IN)
 
-    assert sorted(s.activity_ids()) == sorted([CHILD_A, CHILD_B]), \
-        f"expected both children's state to be read, got {s.activity_ids()}"
+    assert _roster_requests(s), \
+        "the run should have read the roster to learn the current state"
     assert s.mock.checkins == [], \
         f"expected no check-in to be sent, got {len(s.mock.checkins)}"
 
@@ -378,8 +378,10 @@ def test_a_rotated_secret_on_the_roster_call_recovers(s):
     Detection lived only on the check-in response, so without a branch here the
     self-heal dies silently and the run looks like a dead trigger.
     """
+    # The school has rotated: the code the shortcut holds is no longer the one
+    # the API accepts, so the roster call is the first thing to be rejected.
     sc = Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"},
-                  required_secret="test-school-secret")
+                  required_secret="a-freshly-rotated-secret")
     s.mock.load(sc)
     s.run_and_settle(CHECK_IN, timeout=120)
     assert len(_roster_requests(s)) > 1, \
