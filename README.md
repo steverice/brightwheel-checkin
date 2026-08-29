@@ -36,16 +36,8 @@ whether to check in or out. Cancelling the menu sends nothing.
 
 ## Build
 
-First, say who this is for:
-
-```bash
-cp roster.example.json roster.json   # then fill in your own ids
-```
-
-`roster.json` holds the guardian, room and children ids the requests are built
-around, plus the names used in notifications. It is gitignored. Find the ids in
-a Brightwheel API response — the roster endpoint in the table below returns all
-of them.
+Nothing to configure first — the shortcut asks Brightwheel who your children
+are when it runs.
 
 ```bash
 ./build.sh           # -> dist/, asks Setup questions at import
@@ -103,6 +95,19 @@ Only **Brightwheel Attendance** asks anything. Answer its three Setup questions:
 | Brightwheel account email | Used to sign in |
 | Brightwheel account password | Same |
 | Check-in code | 4-digit guardian code; authenticates as you |
+
+### Nothing about your family is in the build
+
+The children, the room each is in, and the guardian recorded as checking them
+in are all read from Brightwheel on every run — from `students_for_checkin`,
+plus the `/users/me` call the shortcut already makes to check its token. A built
+shortcut is therefore generic: the same file works for any family, and a new
+sibling or a room move needs no rebuild.
+
+It also means the run stops rather than guessing. If the roster comes back
+empty, in a shape it cannot read, missing a child's room, or listing a child in
+two rooms, nothing is sent and a notification says which. A partial check-in is
+worse than none, because you would believe it worked.
 
 **No session token is asked for** — nobody setting this up has one. The first run
 finds nothing stored, gets `E1200` from `/users/me`, signs in, and saves the
@@ -190,7 +195,8 @@ The endpoints these shortcuts use.
 | `POST /sessions` | Sign-in step 2; returns a top-level `token` |
 | `GET /students/{id}/activities?page_size=1&action_type=ac_checkin` | Current state. `action_type` filters server-side |
 | `POST /checkins/` | The check-in itself |
-| `GET /guardians/{id}/students` | Roster; confirms each child's `homeroom` |
+| `GET /guardians/{id}/students_for_checkin` | **The roster.** Each child's id, name, room, and whether they are checked in right now. Needs `school_id`, `secret` and `time_zone` |
+| `GET /guardians/{id}/students` | A fuller roster. Not used — it carries addresses and medical notes this has no business seeing |
 
 **`checked_in` is the desired state, not the current one.** `checked_in: true`
 checks a child **in**; `false` checks them **out**. The activity feed's `state`
@@ -200,9 +206,22 @@ field reports the result: `1` = in, `2` = out.
 `X-Parse-Session-Token` reach the application layer on every route used,
 including sign-in.
 
-`GET /guardians/{id}/students_for_checkin` needs `school_id`, `secret` and
-`time_zone`; without `secret` it answers `400 E2036`. With them it returns each
-child's room and current `checked_in` state in one call.
+`students_for_checkin` fails in three distinguishable ways, which is what makes
+its failures recoverable rather than silent:
+
+| condition | response |
+|---|---|
+| a required parameter missing | `400` `E2036` |
+| unknown guardian id | `404` `E1204` |
+| wrong or rotated `secret` | `403` `E2038`, body `{"secret":"The given secret does not exist or is expired"…}` |
+
+That last body has **no trailing period** where the `/checkins/` version does.
+The shortcut matches the prefix, so both work — tightening the pattern to the
+whole sentence would break the rotated-code recovery on this endpoint.
+
+`time_zone` is required but its value has never been seen to change the answer.
+The shortcut sends the device's own zone rather than a constant, so the day
+boundary lands at local midnight rather than in the middle of pickup.
 
 ### Error signatures
 

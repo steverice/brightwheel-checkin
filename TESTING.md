@@ -44,8 +44,9 @@ screen coordinates.
 ## It cannot reach the real Brightwheel
 
 Test builds are generated with `--api-base` pointing at the local mock, plus
-`--env-file tests/fixtures/test.env` and `--roster tests/fixtures/roster.json`,
-which bake in obviously fake credentials and a fake roster. There is no code path from a test to the live API, and so no way
+`--env-file tests/fixtures/test.env`, which bakes in obviously fake
+credentials. The children are no longer a build input at all — the shortcut
+asks the mock who they are. There is no code path from a test to the live API, and so no way
 for a test run to check a real child in or out, or to make Brightwheel send a
 real 2FA code. The suite refuses to be useful for that on purpose.
 
@@ -70,6 +71,32 @@ Assertions are on **recorded traffic**, not on notifications. "Nobody was
 checked in" is exactly "no POST reached `/checkins/`", which is a fact the mock
 holds; a notification only reports what the shortcut believes happened. The
 shortcut's own state is checked by reading Store Content back off the device.
+
+## The roster fixtures
+
+The shortcut reads its roster at run time, so the mock has to be able to answer
+badly as well as well. **None of these shapes occurs in any capture** — the
+evidence base is one family, one day, with both children in the same room, so
+mis-pairing and multi-room are invisible in real data. They exist here or
+nowhere.
+
+| fixture | what it proves |
+|---|---|
+| one child | the common case, and that nothing assumes two |
+| three children | that nothing assumes two the other way |
+| an error body | a failed roster stops loudly instead of doing nothing quietly |
+| a restructured child shape | the guard the other three cannot cover, because they compare the reply against itself |
+| a child with empty `room_states` | one unreadable child stops the run rather than half-running it |
+| a child in two rooms | the room to send would be a guess, so nothing is sent |
+| a second room block missing `is_default_room` | the guard counts a key the extraction actually depends on |
+| a rotated secret | the re-scan still fires when the roster call is what sees the rotation |
+
+Two fixtures earn their place by being wrong in a way that looks right: an
+error body and a restructured reply both drive every count the guards derive to
+zero, and zero equals zero.
+
+The mock's `/users/me` deliberately returns **several** `object_id` values, so
+an unanchored guardian-id pattern fails the suite instead of passing it.
 
 ## Support matrix
 
@@ -133,7 +160,7 @@ build_shortcuts.py --api-base https://localhost:8788/api/v1 --env-file …
 | `tests/certs.py` | Throwaway CA so the simulator trusts localhost |
 | `tests/testbuild.py` | Builds and signs the shortcuts under test |
 | `tests/fixtures/test.env` | Deliberately fake credentials |
-| `tests/fixtures/roster.json` | Deliberately fake children — "Alpha" and "Beta" at "Test School" |
+| `tests/fixtures/roster.json` | Deliberately fake children — "Alpha" and "Beta" at "Test School". No longer a build input: it is the dataset the mock serves |
 
 `dist-test/`, `tests/tls/` and `tests/artifacts/` are generated and gitignored.
 A failing test saves a screenshot into `tests/artifacts/`.

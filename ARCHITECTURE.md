@@ -27,8 +27,6 @@ documentation* below for how to extract one.
 build_shortcuts.py   Generator. Builds all three shortcuts as plist dicts.
 build.sh             Pipeline: generate -> validate -> sign -> stage.
 dist/                Gitignored build output: unsigned .xml + signed .shortcut.
-roster.json          Gitignored. Who this build is for: guardian, room, children.
-roster.example.json  The shape of a roster, with placeholder ids.
 assets/              The first-run setup diagrams, and the screenshots behind them.
 make_diagrams.py     Redraws those diagrams. Needed only to regenerate them.
 dist-debug/          Gitignored. Same shortcuts with credentials baked in.
@@ -50,7 +48,7 @@ Inside `build_shortcuts.py`:
 | `act()` / `comment()` | Bare action constructors. |
 | `gate()` | Text → Match Text → Count. The presence primitive; see below. Pass `name=None` to read a named variable instead of an action output. |
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
-| `load_roster()` | Reads `roster.json` into module state before `build()` runs. Identifiers live there rather than in the source. |
+| `guard()` / `diff_guard()` | Emit one roster check: notify, clear `Roster OK`, and let the run fall through without sending. |
 | `build()` | `Brightwheel Attendance` — everything except the direction. |
 | `build_wrapper()` | The two trigger carriers, parameterised by direction. Each also carries its own first-run setup guide. |
 | `--api-base` / `--env-file` | Overrides used only by the integration tests, so a test build cannot reach the real API. See `TESTING.md`. |
@@ -422,6 +420,52 @@ design document cannot be checked by anyone else.
   gives `Los Angeles Time`, `zzzz` gives `Pacific Daylight Time`, `ZZZZZ` gives
   `-07:00`. `DATE_TIME.md` says to set `WFDateFormat` to `Custom` and put the
   pattern in `WFDateFormatString`; that shape returns **empty**, silently.
+
+## The roster is read, not built in
+
+`Brightwheel Attendance` contains no children. It asks
+`GET /guardians/{id}/students_for_checkin`, which returns every child's id,
+name, room and current state in one call — replacing both a baked-in roster and
+a per-child activities read. The guardian id comes from the `/users/me` probe
+that already runs; the time zone comes from the device.
+
+**Read as a dictionary, not matched as text.** `Get Contents of URL` parses
+JSON, so the text a pattern would see is a re-serialisation in Shortcuts' own
+key order — see the silent failures below. `Get Dictionary Value` addresses keys
+by name, which survives that, so the loop walks the `students` list and reads
+`student.object_id`, `student.first_name` and `room_states.1.room.object_id`
+off each item. The one exception is the current state: a boolean does not
+coerce to text, so `room_states.1` is read instead and the single
+`"checked_in":true` pair matched out of it, which no key order can disturb.
+
+### Four guards, all before anything is sent
+
+Counting key names in the body text stays safe here because a single key-value
+pair does not depend on order. Each is compared against the length of the
+`students` list.
+
+| guard | fires when |
+|---|---|
+| any children at all | the list is empty — an error body looks like this |
+| every child has a room entry | `"room_states"` count is short: the reply changed shape |
+| every child has a room state | `"checked_in"` count is short: a child has no room |
+| no child in two rooms | `"checked_in"` count is long: the room to send would be a guess |
+
+The second exists because the others compare the response against itself: a
+reply that keeps `students` but restructures each child drives every count to
+zero together, and they would all agree. That failure is silent — the loop runs
+zero times and every per-child notification lives inside it — which is why it
+gets its own check.
+
+All four **stop the run**. A partial check-in is worse than none, because the
+parent believes it worked.
+
+### Order matters inside the pass
+
+A rotated school code makes the roster call fail, and that same body also fails
+the first guard. So the stale-code branch runs **first**, deletes the stored
+code, asks for a second pass, and ends that pass — it does not exit the
+shortcut, or the retry it just requested would never happen.
 
 ## Silent failures to design against
 
