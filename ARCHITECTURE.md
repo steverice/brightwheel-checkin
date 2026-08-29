@@ -379,6 +379,24 @@ design document cannot be checked by anyone else.
   `WFMathOperand` both as action-output attachments, `WFMathOperation` `-`, read
   back as `Calculation Result`. This is how to compare two counts; the
   paste-and-match trick below only works for single digits.
+- **Get Dictionary Value works on a parsed URL response, and dot paths work.**
+  Measured against the roster endpoint: `students` returns a list that `Count`
+  and `Repeat with Each` both handle, and inside the loop
+  `student.object_id`, `student.first_name` and `room_states.1.room.object_id`
+  all resolve off the repeat item. **Array indices in a dot path are 1-based** —
+  `room_states.1` is the first element and `room_states.0` returns nothing.
+
+  Two things it will not hand back as text: a **boolean** and a **list**. Both
+  coerce to nothing. Read the containing dictionary instead —
+  `room_states.1` coerces to `{"checked_in":true,…}` — and match the single
+  pair out of that, which is order-independent and so unaffected by the
+  re-serialization below.
+
+  This does not reopen the prohibition on the check path's *branching*: the
+  documented failures were presence tests, a dictionary parsed out of a plain
+  string, and a lookup keyed by a runtime value. Reading a fixed key path off a
+  response Shortcuts has already parsed is a different operation, and it is the
+  one that survives key reordering.
 - **`Get Contents of URL` hands Match Text a re-serialization, not the bytes on
   the wire.** A JSON response is parsed into a dictionary, and coercing that to
   text writes the keys back out in the dictionary's own order. Measured against
