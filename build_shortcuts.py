@@ -214,7 +214,7 @@ def build(direction=None, env=None):
         return c
 
     A.append(comment(
-        "Brightwheel — Check\n\n"
+        "Brightwheel — Attendance\n\n"
         "Checks your children in or out by talking to the Brightwheel API "
         "directly, without opening the app. Who the children are, which room "
         "they are in and who is checking them in all come from Brightwheel "
@@ -223,7 +223,7 @@ def build(direction=None, env=None):
         "Brightwheel Check In and Brightwheel Check Out start this one and tell "
         "it which direction to go; those are the two that carry the automation "
         "triggers. Run this on its own and it simply asks.\n\n"
-        "Built to be run unattended by an arrival trigger, so it does not stop "
+        "Built to be run unattended by a location trigger, so it does not stop "
         "to ask anything on the normal path. Everything it needs is collected "
         "once, when you import it. When it should run is decided by the "
         "trigger's own time range, not by this shortcut.\n\n"
@@ -561,7 +561,7 @@ def build(direction=None, env=None):
                  GroupingIdentifier=G_LOOP, WFControlFlowMode=2))
 
     A.append(comment(
-        "Give up after three attempts.\n"
+        "Give up after five attempts.\n"
         "- Condition checks whether the session is still unusable\n"
         "- Nothing has been sent to Brightwheel about the children yet"
     ))
@@ -640,9 +640,10 @@ def build(direction=None, env=None):
 
     A.append(comment(
         "--- WHO TO SEND FOR ---\n"
-        "This list drives the loop. Each name is matched to a Brightwheel id "
-        "inside it, so the name shown in notifications and the id sent to "
-        "Brightwheel always come from the same entry."
+        "Nobody is named in here. The children come from Brightwheel itself, a "
+        "little further down, which is why adding or moving one needs no "
+        "rebuild. What this sets is the flag that lets the whole send run a "
+        "second time if the school's code turns out to be stale."
     ))
     A.append(act("is.workflow.actions.number", UUID=U_ONE,
                  WFNumberActionNumber="1"))
@@ -891,7 +892,7 @@ def build(direction=None, env=None):
 
     diff_guard(G_G3, u_cm, "Count", u_cs, "Count",
                "A room in the roster has no check-in state, so nothing was "
-               "sent rather than checking in only some of them.",
+               "sent rather than sending for only some of them.",
                "Does every room entry carry a state?\n"
                "- Condition counts children minus check-in states\n"
                "- A room that has lost the key reads as nobody to send for")
@@ -931,7 +932,7 @@ def build(direction=None, env=None):
                  Input=attach(out(u_rooms, "Child Rooms"))))
     guard(G_ROOM0, u_nr, "Count", 0, "1",
           "A child in the roster has no room, so nothing was sent rather than "
-          "checking in only some of them.",
+          "sending for only some of them.",
           "Does this child have a room at all?\n"
           "- Condition counts this child's own room entries\n"
           "- None means there is no room to send them to")
@@ -955,11 +956,11 @@ def build(direction=None, env=None):
 
     # --- one pass over the children ---
     A.append(comment(
-        f"Work through the children in turn.\n"
-        "- Child Name is the current child, taken from the list above\n"
-        "- A short block below turns that name into their Brightwheel id\n"
-        f"- Brightwheel reports 1 for checked in and 2 for checked out, and a "
-        "reply for a single event carries exactly one of them"
+        "Work through the children in turn.\n"
+        "- Each child arrives whole, so their name, id and room are read "
+        "straight off them rather than looked up\n"
+        "- Their current state is the checked_in flag on the room they are in, "
+        "which came back with the roster and so cannot disagree with it"
     ))
     A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
                  GroupingIdentifier=G_KIDS, WFControlFlowMode=0,
@@ -1157,7 +1158,7 @@ def build(direction=None, env=None):
 # launches the scanner app. So this helper parses the decoded text instead,
 # defaulting to whatever Code Scanner left on the clipboard.
 def build_wrapper(direction):
-    """A trigger carrier. Two actions: the direction, and the call.
+    """A trigger carrier: a first-run setup guide, then the direction and the call.
 
     Direction lives here rather than in the shortcut that does the work, so it
     is structural — which wrapper ran decides it. Nothing infers it from the
@@ -1170,6 +1171,9 @@ def build_wrapper(direction):
     checking_in = direction == "in"
     title = "Brightwheel Check In" if checking_in else "Brightwheel Check Out"
     word = "in" if checking_in else "out"
+    # The trigger each wrapper wants, named rather than offered as a choice —
+    # the bundled diagram rings this exact row in the action picker.
+    trigger = "Arrive" if checking_in else "Leave"
     # A plane arriving for in, departing for out: a matched pair that reads as
     # direction and nothing else. (Not 62466/62467, which are a plane on a
     # runway rather than the arriving/departing pair.) Sunrise/sunset was the other candidate and was
@@ -1195,9 +1199,9 @@ def build_wrapper(direction):
 
     A = [
         comment(
-            f"Brightwheel — {title}\n\n"
-            f"Attach the arrival or departure trigger to this shortcut. All it "
-            f"does is tell Brightwheel Attendance to check the children {word}.\n\n"
+            f"{title}\n\n"
+            f"Attach the {trigger} trigger to this shortcut. All it does is "
+            f"tell Brightwheel Attendance to check the children {word}.\n\n"
             "The direction lives here rather than in the shortcut that does the "
             "work, so which trigger fired decides it. Nothing is worked out from "
             "the time of day, which means changing a trigger's hours cannot make "
