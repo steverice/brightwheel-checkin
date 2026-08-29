@@ -1,8 +1,17 @@
-# Local config and build output.
-/roster.json
+# Local config, and the debug build — which bakes real credentials in.
 .env
-dist/
 dist-debug/
+
+# Build output. The artifacts are generic now that the roster is read at run
+# time, so they are worth publishing — but as release assets, not as tracked
+# files: every build mints fresh UUIDs, so all six change completely each time
+# and the churn never deltas.
+dist/
+
+# The generator no longer reads this — the shortcut asks Brightwheel who the
+# children are — but the file may still be lying around from an older build,
+# and it names real children. Keep it out.
+/roster.json
 
 # Local scratch: proxy captures and working notes.
 *.chlz
