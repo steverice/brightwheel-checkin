@@ -236,16 +236,18 @@ def build(direction=None, env=None):
         "4. Sends the request for everyone else and posts a notification per child."
     ))
     A.append(comment(
-        "ALLOW_TOKEN_FILE — this shortcut saves the Brightwheel session token in "
-        "its own on-device storage and refreshes it automatically, because a "
-        "background automation cannot stop to ask you to paste a new one.\n\n"
-        "The four values below are filled in when you import the shortcut, so no "
-        "password, school secret or check-in code is stored in the shortcut file "
-        "itself. Your session token is never in the file either — it lives only in "
-        "this device's storage, scoped to this shortcut and not synced to iCloud.\n\n"
-        "If you ever share or export this shortcut, clear the four Text actions "
-        "below first. The school secret is shared with every family at the center, "
-        "and the check-in code authenticates as you."
+        "This shortcut saves the Brightwheel session token in its own on-device "
+        "storage and refreshes it automatically, because a background automation "
+        "cannot stop to ask you to paste a new one.\n\n"
+        "The three values below are filled in when you import the shortcut, so "
+        "neither your password nor your check-in code is stored in the shortcut "
+        "file itself. Your session token is never in the file either: it is kept "
+        "under this shortcut, so deleting the shortcut takes the token with it.\n\n"
+        "The school's code is the one thing kept outside this shortcut, so that "
+        "re-importing does not send you back for the QR code. \"Forget saved "
+        "sign-in and school code\" in the menu clears both.\n\n"
+        "If you ever share or export this shortcut, clear the three Text actions "
+        "below first. The check-in code authenticates as you."
     ))
 
     # ---- which direction ----
@@ -305,16 +307,17 @@ def build(direction=None, env=None):
                  WFTextActionText="out"))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Direction",
                  WFInput=attach(out(U_MOUT, "Text"))))
-    # The only way to clear either stored value from the device. Deleting the
-    # shortcut does not: both live in the shared store, which outlives it, so
-    # the reinstall everyone reaches for first resets nothing. Sends nothing,
-    # so it is safe to reach by accident or through Siri.
+    # The only way to clear the school code from the device. Deleting the
+    # shortcut takes the token with it, but the code lives in the shared store,
+    # which outlives it — so the reinstall everyone reaches for first still
+    # leaves a stale code behind. Sends nothing, so it is safe to reach by
+    # accident or through Siri.
     A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
                  GroupingIdentifier=G_MENU, WFControlFlowMode=1,
                  WFMenuItemTitle="Forget saved sign-in and school code"))
     A.append(act("is.workflow.actions.deletestoredcontent",
                  WFStoredContentKey="BrightwheelSessionToken",
-                 WFStoredContentGlobalValue=True))
+                 WFStoredContentGlobalValue=False))
     A.append(act("is.workflow.actions.deletestoredcontent",
                  WFStoredContentKey="BrightwheelSchoolCode",
                  WFStoredContentGlobalValue=True))
@@ -369,7 +372,7 @@ def build(direction=None, env=None):
 
     A.append(comment(
         "--- SETUP ---\n"
-        "These four values are requested when the shortcut is imported. To change "
+        "These three values are requested when the shortcut is imported. To change "
         "one later, edit the matching Text action, or re-import the shortcut."
     ))
     names = {"code": "Check-In Code",
@@ -406,13 +409,13 @@ def build(direction=None, env=None):
         "--- SESSION ---\n"
         "Use the token saved by the last sign-in. There is none the first time, "
         "so the first run signs in and saves one.\n\n"
-        "The token is kept in the shared store rather than this shortcut's own, "
-        "so signing in here also covers the other Brightwheel shortcut. That "
-        "store syncs through iCloud."
+        "The token is kept under this shortcut rather than in the shared store, "
+        "so deleting the shortcut clears it and a re-import signs in again. The "
+        "school's code is kept in the shared store instead, and outlives both."
     ))
     A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GT,
                  WFStoredContentKey="BrightwheelSessionToken",
-                 WFStoredContentGlobalValue=True))
+                 WFStoredContentGlobalValue=False))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
                  WFInput=attach(out(U_GT, "Stored Content"))))
 
@@ -540,7 +543,7 @@ def build(direction=None, env=None):
                  WFInput=cond_input(out(C_GOT, "Count"))))
     A.append(act("is.workflow.actions.setstoredcontent",
                  WFStoredContentKey="BrightwheelSessionToken",
-                 WFStoredContentGlobalValue=True,
+                 WFStoredContentGlobalValue=False,
                  WFInput=ts(out(U_TGRP, "Matched Text Group"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Session Token",
                  WFInput=attach(out(U_TGRP, "Matched Text Group"))))

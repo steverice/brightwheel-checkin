@@ -112,8 +112,10 @@ worse than none, because you would believe it worked.
 
 **No session token is asked for** — nobody setting this up has one. The first run
 finds nothing stored, gets `E1200` from `/users/me`, signs in, and saves the
-token to the shared stored-content namespace, so **one sign-in covers both
-shortcuts**. Later runs reuse it until it expires.
+token under Brightwheel Attendance, which is the only shortcut that signs in.
+Later runs reuse it until it expires. **Deleting Attendance takes the token with
+it**, so a re-import signs in again; the school's code is kept separately and
+survives, because re-scanning it means being back at the school.
 
 **Sign-in is interactive**, so run one shortcut by hand once before relying on a
 trigger — a background run cannot answer the code prompt.

@@ -205,18 +205,21 @@ Siri, which cannot be disabled and which a trigger's time range does not
 constrain. A stray *repeat* is still harmless thanks to idempotency, but a stray
 run of the *opposite* direction now writes real attendance.
 
-**One shared session token.** Stored content uses
-`WFStoredContentGlobalValue = true`, so whichever shortcut signs in first covers
-the other. With per-shortcut storage each needed its own interactive sign-in, and
-because a background trigger cannot answer the code prompt, the second could only
-be seeded by running it by hand at a moment its action happened to be wanted. The
-shared store syncs through iCloud; what it holds is a session token, not the
-password.
+**The token is scoped, the school code is shared.** `Brightwheel Attendance` is
+the only shortcut that signs in, so the token has nothing to be shared with:
+`BrightwheelSessionToken` uses `WFStoredContentGlobalValue = false` and is
+cleared when the shortcut is deleted. `BrightwheelSchoolCode` stays global on
+purpose, because re-establishing it means being back in front of the school's QR
+code, while re-establishing the token only means typing a password.
+
+The global flag was set on both when Check In and Check Out were each full
+shortcuts and whichever signed in first covered the other. That reason went away
+when the logic collapsed into one shortcut; the flag outlived it.
 
 **Direction is structural, carried by two thin wrappers.** `Brightwheel Attendance`
 holds all the logic and takes its direction from Shortcut Input; `Brightwheel
 Check In` and `Brightwheel Check Out` do two things — say which way, and call
-Attendance — and are what the triggers attach to. They are 18 actions rather
+Attendance — and are what the triggers attach to. They are 17 actions rather
 than 2 only because each also carries the first-run setup guide described
 below; the working part is still a Text action and a Run Shortcut.
 
@@ -508,7 +511,8 @@ distinguish "worked" from "looked like it worked".
   shortcut leaves everything it put in the shared store behind; six throwaway
   probes were deleted and all fourteen of their global keys survived. "Delete
   and re-import to reset" is therefore not true for anything stored globally,
-  which is where the session token and the school code live.
+  which is where the school code lives. The session token is scoped to the
+  shortcut for exactly this reason, so a re-import does clear that.
 - **A same-name import is silently skipped.** iOS keeps the old version with no
   warning, which is indistinguishable from a code change that did nothing. Delete
   before importing.
