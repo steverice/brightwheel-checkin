@@ -91,12 +91,12 @@ Repeat 2, but only while Send Needed:
 
 ## Key design decisions
 
-**Responses are matched as text, not parsed as JSON.** Nothing on the check path
-uses Detect Dictionary or Get Dictionary Value. Fed a Get Contents of URL output
-they never once produced a working branch — the `/users/me` probe read its own
-401 as "no error" and so never signed in. Presence is measured instead with
-`gate()`: Text → Match Text → Count → numeric If. Counting rather than testing
-also sidesteps empty strings satisfying "has any value".
+**Nothing branches on a dictionary value.** Fed a Get Contents of URL output,
+Detect Dictionary and Get Dictionary Value never once produced a working
+condition — the `/users/me` probe read its own 401 as "no error" and so never
+signed in. Presence is measured instead with `gate()`: Text → Match Text →
+Count → numeric If. Counting rather than testing also sidesteps empty strings
+satisfying "has any value".
 
 | Pattern | Means |
 |---|---|
@@ -107,19 +107,25 @@ also sidesteps empty strings satisfying "has any value".
 | `"secret"\s*:\s*"The given secret` | the stored school code has gone stale |
 | `"secret"\s*:\s*"([^"]+)"` / `"school_id"…` | pulling those out of the scanned code |
 
-There is now **no Detect Dictionary, Get Dictionary Value, or Dictionary action
-anywhere in the shortcut** — verified on the built output.
+**Reading a value is a different thing, and it works.** The built shortcut
+holds nine `Get Dictionary Value` actions and one `Dictionary`: the roster is
+parsed with them, and so is the in/out wording. Every value read that way is
+used as *text* — pasted into a request body, into a notification, or into a
+`gate()` pattern. The moment one has to decide a branch it goes back through
+`gate()`.
 
-That pair broke four separate things before it was fully removed: the auth probe
-read its own 401 as "no error"; the success test reported a check-in that never
-happened; the school code yielded an empty `school_id` and `E1205 "You must
-specify the school"`; and the roster lookup yielded an empty target and `E1204
-"The requested resource could not be found"`.
+That line is where it sits, and finding it was expensive. Branching on a
+dictionary value broke four separate things: the auth probe read its own 401 as
+"no error"; the success test reported a check-in that never happened; the school
+code yielded an empty `school_id` and `E1205 "You must specify the school"`; and
+the roster lookup yielded an empty target and `E1204 "The requested resource
+could not be found"`.
 
 Each time it was removed from the place that had just failed and left where it
-seemed harmless. The rule is **never**, not "not there". Its failure mode is what
-makes it dangerous: it does not error, it returns empty, and the empty value
-travels until something far away complains about the wrong thing.
+seemed harmless, which is why the rule has to name the operation rather than the
+action. The failure mode is what makes it dangerous: it does not error, it
+returns empty, and the empty value travels until something far away complains
+about the wrong thing.
 
 **The school code is scanned, not typed.** `scanbarcode` returns decoded text
 in-process, so the QR code became something the check shortcuts read directly
