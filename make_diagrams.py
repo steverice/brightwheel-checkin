@@ -18,11 +18,18 @@ four times the bytes for the same picture, and these live in git.
 To recapture, take a full screenshot on an iPhone 17 Pro simulator and cut out
 the same region before saving it here:
 
-    picker  crop (40, 150, 1166, 950)  -> 1126x800
-    result  crop (45, 390, 1160, 1170) -> 1115x780
+    picker  crop (40, 224, 1166, 950)  -> 1126x726
+    result  crop (45, 390, 1160, 1027) -> 1115x637
 
 then re-run this. ROW below is in the picker's cropped coordinates, so it
 shifts with that box.
+
+Both boxes are tight on purpose. The picker starts at the top of the search
+field, because the sheet's gray surround and its drag handle are not part of
+what you are matching, and the result stops at a row boundary just under
+Automation, cutting off Confirm Before Run. The page is rendered scaled to fit
+inside an alert, so anything that is not being compared against is costing the
+rest of it width.
 
     python3 make_diagrams.py
 
@@ -44,8 +51,8 @@ ASSETS = HERE / "assets"
 # Measured, not eyeballed: the card is the white rounded rect, found by scanning
 # for near-white at x=1000 (clear of the icon and the text) and along y=795 of
 # the full screenshot. Outset by 4px so the stroke sits outside the card instead
-# of over its edge, then shifted by the picker crop's origin (40, 150).
-ROW = (16, 549, 1109, 739)
+# of over its edge, then shifted by the picker crop's origin (40, 224).
+ROW = (16, 475, 1109, 665)
 
 TITLE = "One-time automation setup"
 
@@ -94,10 +101,10 @@ def draw(kind, spec):
     picker, scale = panel(spec["capture"])
     result, _ = panel(spec["result"])
 
-    # No step for Confirm Before Run. It already defaults to off — checked on a
-    # simulator, untouched, straight after adding the trigger — so unattended
-    # runs need nothing done to it, and whether you want a prompt is your call
-    # rather than a setup step. The lower panel still shows the toggle.
+    # No step for Confirm Before Run, and it is cropped out of the lower panel.
+    # It already defaults to off — checked on a simulator, untouched, straight
+    # after adding the trigger — so unattended runs need nothing done to it, and
+    # whether you want a prompt is your call rather than a setup step.
     steps = ["1.  Tap Edit on this shortcut.",
              "2.  Tap the search field at the bottom.",
              f'3.  Search "{spec["action"]}" and tap it under Automation.',
@@ -105,13 +112,15 @@ def draw(kind, spec):
 
     # Lay the page out first so the canvas is exactly as tall as its contents.
     # It used to be a hard-coded 1320, which silently clipped anything added.
-    head_y = 164
-    top = head_y + 46
-    steps_y = top + picker.height + 40
-    caption_y = steps_y + len(steps) * 44 + 24
-    result_y = caption_y + 46
-    foot_y = result_y + result.height + 34
-    height = foot_y + 96
+    #
+    # Neither panel is labeled. "How to set it up" and "When it is set up, it
+    # looks like this" were two lines saying what the order already says, and
+    # the sheet renders this whole page scaled to fit — every line costs width.
+    top = 156
+    steps_y = top + picker.height + 32
+    result_y = steps_y + len(steps) * 44 + 24
+    foot_y = result_y + result.height + 28
+    height = foot_y + 56
 
     canvas = Image.new("RGB", (940, height), (255, 255, 255))
     d = ImageDraw.Draw(canvas)
@@ -120,8 +129,6 @@ def draw(kind, spec):
     d.text((40, 36), TITLE, font=font(46, True), fill=(20, 20, 20))
     d.text((40, 100), spec["subtitle"], font=font(30), fill=(110, 110, 110))
 
-    d.text((44, head_y), "How to set it up:", font=font(30, True),
-           fill=(20, 20, 20))
     canvas.paste(picker, (40, top))
     d.rounded_rectangle((40, top, 40 + WIDTH, top + picker.height), radius=14,
                         outline=(205, 205, 205), width=2)
@@ -137,16 +144,16 @@ def draw(kind, spec):
         d.text((44, y), line, font=font(30), fill=(35, 35, 35))
         y += 44
 
-    d.text((44, caption_y), "When it is set up, it looks like this:",
-           font=font(30, True), fill=(20, 20, 20))
     canvas.paste(result, (40, result_y))
     d.rounded_rectangle((40, result_y, 40 + WIDTH, result_y + result.height),
                         radius=14, outline=(205, 205, 205), width=2)
 
-    d.text((44, foot_y), "Location Services for Shortcuts must be Always,",
-           font=font(26), fill=(120, 120, 120))
-    d.text((44, foot_y + 34), "or the geofence never fires.",
-           font=font(26), fill=(120, 120, 120))
+    # One line at 26 runs 906px wide against 856 of room; 24 fits with the
+    # sentence intact, which beats rewording it to save two points.
+    d.text((44, foot_y),
+           "Location Services for Shortcuts must be Always, "
+           "or the geofence never fires.",
+           font=font(24), fill=(120, 120, 120))
 
     # 64 colors is lossless enough for flat UI art and a third of the bytes,
     # which matters because this ends up base64'd inside the shortcut.
