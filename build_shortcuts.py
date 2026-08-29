@@ -828,28 +828,23 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_STALE2, WFControlFlowMode=2))
 
-    # One match per child: id, name, room, current state. The gaps are tempered
-    # so they cannot run past this child into the next one — with a plain .*? a
-    # child missing room_states borrows the following child's room and state,
-    # which is a check-in under the wrong name.
-    TEMPER = r'(?:(?!"student"\s*:).)*?'
-    A.append(act("is.workflow.actions.text.match", UUID=U_MATCH,
-                 WFMatchTextPattern=(
-                     r'"student"\s*:\s*\{\s*"object_id"\s*:\s*"([^"]+)"' + TEMPER +
-                     r'"first_name"\s*:\s*"([^"]*)"' + TEMPER +
-                     r'"room_states"\s*:\s*\[\s*\{\s*"room"\s*:\s*\{\s*'
-                     r'"object_id"\s*:\s*"([^"]+)"' + TEMPER +
-                     r'"checked_in"\s*:\s*(true|false)'),
-                 text=ts(out(U_ROST, "Contents of URL"))))
-
-    # Four guards. Nothing is sent unless all four agree the roster parsed
-    # completely, because every failure here is otherwise silent: an empty
-    # match set makes the loop below run zero times, and every notification in
-    # this shortcut lives inside that loop.
+    # The roster is read as a dictionary, not matched as text. Get Contents of
+    # URL parses JSON, so what a Match Text would see is a re-serialisation
+    # whose key order is Shortcuts' own — measured on device, the student's
+    # object_id came after the photo's. Key *names* survive that; positions and
+    # adjacency do not, which is fatal to any pattern pairing several fields.
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_MATCH,
+                 CustomOutputName="Students", WFGetDictionaryValueType="Value",
+                 WFDictionaryKey="students",
+                 WFInput=attach(out(U_ROST, "Contents of URL"))))
     u_cm = next(i)
     A.append(act("is.workflow.actions.count", UUID=u_cm, WFCountType="Items",
-                 WFInput=attach(out(U_MATCH, "Matches")),
-                 Input=attach(out(U_MATCH, "Matches"))))
+                 WFInput=attach(out(U_MATCH, "Students")),
+                 Input=attach(out(U_MATCH, "Students"))))
+
+    # The guards still count key names in the body text, which is safe because
+    # a single key-value pair does not depend on order. Each well-formed child
+    # contributes exactly one "room_states" and one "checked_in".
     u_km, u_ck = next(i), next(i)
     A.append(act("is.workflow.actions.text.match", UUID=u_km,
                  WFMatchTextPattern=r'"room_states"\s*:',
@@ -862,13 +857,11 @@ def build(direction=None, env=None):
                  text=ts(out(U_ROST, "Contents of URL"))))
     A.append(act("is.workflow.actions.count", UUID=u_cs, WFCountType="Items",
                  WFInput=attach(out(u_sm, "Matches")), Input=attach(out(u_sm, "Matches"))))
-    C_HASROSTER = gate(U_ROST, "Contents of URL", r'"students"\s*:\s*\[\s*\{')
 
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Roster OK",
                  WFInput=attach(out(U_ONE, "Number"))))
 
-    def guard(group, count_uuid, count_name, condition, number, message,
-              blurb="Stop before sending if the roster did not parse cleanly."):
+    def guard(group, count_uuid, count_name, condition, number, message, blurb):
         """Notify and clear Roster OK when a guard fires.
 
         A flag rather than Exit: this sits two blocks deep inside the attempt
@@ -887,38 +880,38 @@ def build(direction=None, env=None):
         A.append(act("is.workflow.actions.conditional", UUID=next(i),
                      GroupingIdentifier=group, WFControlFlowMode=2))
 
-    guard(G_G1, C_HASROSTER, "Count", 0, "1",
+    guard(G_G1, u_cm, "Count", 0, "1",
           "Brightwheel did not return a roster, so nothing was sent. Open the "
           "app to check, and run this by hand.",
-          "Did Brightwheel answer with a roster at all?\n"
-          "- Condition counts whether the body contains a list of students\n"
-          "- An error body has none, and would read as nobody to send for")
-    guard(G_G2, u_cm, "Count", 0, "1",
-          "The roster came back in a shape this shortcut could not read, so "
-          "nothing was sent. Check the children in by hand.",
-          "Did any child parse out of it?\n"
-          "- Condition counts the children read from the response\n"
-          "- Zero means the shape changed; the loop below would not run at all")
-    u_d3 = next(i)
-    A.append(act("is.workflow.actions.math", UUID=u_d3,
-                 WFInput=attach(out(u_ck, "Count")), WFMathOperation="-",
-                 WFMathOperand=attach(out(u_cm, "Count"))))
-    guard(G_G3, u_d3, "Calculation Result", 2, "0",
-          "A child in the roster could not be read, so nothing was sent rather "
-          "than checking in only some of them.",
-          "Did every child in the roster parse?\n"
-          "- Condition counts children listed minus children read\n"
-          "- Any shortfall means one was dropped, so nobody is sent")
-    u_d4 = next(i)
-    A.append(act("is.workflow.actions.math", UUID=u_d4,
-                 WFInput=attach(out(u_cs, "Count")), WFMathOperation="-",
-                 WFMathOperand=attach(out(u_ck, "Count"))))
-    guard(G_G4, u_d4, "Calculation Result", 2, "0",
-          "A child is listed in more than one room, so nothing was sent rather "
-          "than guessing which one to use.",
-          "Is any child listed in more than one room?\n"
-          "- Condition counts room entries minus children\n"
-          "- The room to send would be a guess, so nobody is sent")
+          "Did Brightwheel list any children?\n"
+          "- Condition counts the children in the reply\n"
+          "- An error reply has none, and would read as nobody to send for")
+
+    def diff_guard(group, a_uuid, a_name, b_uuid, b_name, message, blurb):
+        u = next(i)
+        A.append(act("is.workflow.actions.math", UUID=u,
+                     WFInput=attach(out(a_uuid, a_name)), WFMathOperation="-",
+                     WFMathOperand=attach(out(b_uuid, b_name))))
+        guard(group, u, "Calculation Result", 2, "0", message, blurb)
+
+    diff_guard(G_G2, u_cm, "Count", u_ck, "Count",
+               "The roster came back in a shape this shortcut could not read, "
+               "so nothing was sent. Check the children in by hand.",
+               "Does every child have a room entry?\n"
+               "- Condition counts children minus room entries\n"
+               "- A shortfall means the reply changed shape")
+    diff_guard(G_G3, u_cm, "Count", u_cs, "Count",
+               "A child in the roster has no room, so nothing was sent rather "
+               "than checking in only some of them.",
+               "Does every child have a room state?\n"
+               "- Condition counts children minus room states\n"
+               "- A child with none cannot be sent, so nobody is")
+    diff_guard(G_G4, u_cs, "Count", u_cm, "Count",
+               "A child is listed in more than one room, so nothing was sent "
+               "rather than guessing which one to use.",
+               "Is any child in more than one room?\n"
+               "- Condition counts room states minus children\n"
+               "- The room to send would be a guess, so nobody is")
 
     A.append(comment(
         "Only send if all four checks above agreed.\n"
@@ -939,7 +932,7 @@ def build(direction=None, env=None):
     ))
     A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
                  GroupingIdentifier=G_KIDS, WFControlFlowMode=0,
-                 WFInput=attach(out(U_MATCH, "Matches"))))
+                 WFInput=attach(out(U_MATCH, "Students"))))
     # "Repeat Item 2", not "Repeat Item": this loop sits inside the retry
     # Repeat, and a count-style outer loop shifts the numbering just as a
     # nested Repeat with Each does. Verified on device with a probe — with the
@@ -951,32 +944,42 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Match",
                  WFInput=attach(var("Repeat Item 2"))))
 
-    # Four reads off this one child's slice of the response. Each keeps its
-    # structural prefix: a bare "object_id" would match three times inside a
-    # single entry — the student, their photo and their room.
-    for varname, pattern, outname in (
-            ("Child Id",
-             r'^"student"\s*:\s*\{\s*"object_id"\s*:\s*"([^"]+)"', "Child Id Text"),
-            ("Child Name", r'"first_name"\s*:\s*"([^"]*)"', "Child Name Text"),
-            ("Child Room",
-             r'"room"\s*:\s*\{\s*"object_id"\s*:\s*"([^"]+)"', "Child Room Text")):
-        u_m, u_g, u_t = next(i), next(i), next(i)
-        A.append(act("is.workflow.actions.text.match", UUID=u_m,
-                     WFMatchTextPattern=pattern, text=ts(var("Child Match"))))
-        A.append(act("is.workflow.actions.text.match.getgroup", UUID=u_g,
-                     WFGroupIndex="1", matches=attach(out(u_m, "Matches"))))
+    # Read by key path off this child's entry. Array indices in a dot path are
+    # 1-based, so room_states.1 is the first (and, per the guards above, only)
+    # room entry.
+    for varname, key, outname in (
+            ("Child Id",   "student.object_id",              "Child Id Value"),
+            ("Child Name", "student.first_name",             "Child Name Value"),
+            ("Child Room", "room_states.1.room.object_id",   "Child Room Value")):
+        u_v, u_t = next(i), next(i)
+        A.append(act("is.workflow.actions.getvalueforkey", UUID=u_v,
+                     CustomOutputName=outname, WFGetDictionaryValueType="Value",
+                     WFDictionaryKey=key, WFInput=attach(var("Child Match"))))
         A.append(act("is.workflow.actions.gettext", UUID=u_t,
-                     CustomOutputName=outname,
-                     WFTextActionText=ts(out(u_g, "Matched Text Group"))))
+                     CustomOutputName=varname + " Text",
+                     WFTextActionText=ts(out(u_v, outname))))
         A.append(act("is.workflow.actions.setvariable", WFVariableName=varname,
-                     WFInput=attach(out(u_t, outname))))
+                     WFInput=attach(out(u_t, varname + " Text"))))
+
+    # The state is a boolean, and a boolean does not coerce to text. Read the
+    # room entry it lives in — that does coerce, to {"checked_in":true,...} —
+    # and match the one pair out of it, which no key order can disturb.
+    u_rs, u_rst = next(i), next(i)
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=u_rs,
+                 CustomOutputName="Room State", WFGetDictionaryValueType="Value",
+                 WFDictionaryKey="room_states.1", WFInput=attach(var("Child Match"))))
+    A.append(act("is.workflow.actions.gettext", UUID=u_rst,
+                 CustomOutputName="Room State Text",
+                 WFTextActionText=ts(out(u_rs, "Room State"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Room State Text",
+                 WFInput=attach(out(u_rst, "Room State Text"))))
 
     # Is the child checked in right now? 1 or 0, same shape as Wanted In.
     # It has to be a count: the comparison below pastes two values and matches
     # ^(01|10)$, so the literal "true" would give "true1", never match, and
     # every child would be skipped in both directions while the notification
     # said "no change".
-    C_IN = gate("Child Match", None, r'"checked_in"\s*:\s*true')
+    C_IN = gate("Room State Text", None, r'"checked_in"\s*:\s*true')
     # Two runtime numbers cannot be compared directly — an If tests a variable
     # against a literal, not against another variable. Pasting them together
     # gives 11 or 00 when they agree and 10 or 01 when they differ, which a
