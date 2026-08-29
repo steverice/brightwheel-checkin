@@ -5,9 +5,12 @@
 #   ./build.sh
 #
 # Writes both the unsigned .xml and the signed .shortcut into dist/, which is
-# gitignored because a build has roster.json baked into it. sign-shortcut also
-# archives a timestamped copy of the unsigned XML into the Shortcuts Playground
-# output directory; that archive is incidental and lives outside this repo.
+# gitignored. Not for privacy — the shortcut asks Brightwheel who the children
+# are, so a build carries none — but because every build mints fresh UUIDs, so
+# all six files change completely each time and the churn never deltas. The
+# built shortcuts ship as release assets instead. sign-shortcut also archives a
+# timestamped copy of the unsigned XML into the Shortcuts Playground output
+# directory; that archive is incidental and lives outside this repo.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -78,8 +81,8 @@ if [ "$DIST" = "dist-debug" ]; then
     echo "Do NOT commit or share these. Run ./build.sh with no arguments for a"
     echo "clean build before committing."
 else
-    echo "Artifacts in $DIST/. Not committed: a build has your roster baked in,"
-    echo "so it is personal to you. Rebuild rather than sharing the files."
+    echo "Artifacts in $DIST/. Not committed — every build mints fresh UUIDs,"
+    echo "so nothing here would ever delta. Share them from a release instead."
 fi
 echo "Reminder: delete the old shortcut on the phone before re-importing;"
 echo "a same-name import is silently skipped."
