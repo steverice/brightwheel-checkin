@@ -29,10 +29,14 @@ CHECK_IN = "Brightwheel Check In"
 CHECK_OUT = "Brightwheel Check Out"
 ATTENDANCE = "Brightwheel Attendance"
 # The suite runs against a fixture roster of obvious placeholders, so nothing
-# here names a real child or school.
+# here names a real child or school. Once the shortcut reads its roster at
+# runtime this file is no longer a build input — it is the dataset the mock
+# serves, which is why every Scenario below passes `roster=ROSTER_ROWS`.
 ROSTER = json.loads((Path(__file__).parent / "fixtures" / "roster.json").read_text())
 CHILD_A, CHILD_B = (c["id"] for c in ROSTER["children"])
 SCHOOL_ID = ROSTER["school_id"]
+ROOM_ID = ROSTER["room_id"]
+ROSTER_ROWS = [(c["id"], c["name"], ROOM_ID) for c in ROSTER["children"]]
 ARTIFACTS = Path(__file__).parent / "artifacts"
 
 
@@ -70,7 +74,7 @@ class Suite:
 
     def _prime(self):
         """One throwaway run so the consent prompts are answered up front."""
-        self.mock.load(Scenario(states={CHILD_A: "in", CHILD_B: "in"}))
+        self.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "in", CHILD_B: "in"}))
         self.run_and_settle(CHECK_IN, timeout=90)
         print(f"  consent primed ({len(self.mock.requests)} requests)")
 
@@ -144,18 +148,18 @@ class Suite:
 
 def test_skips_children_already_in_the_wanted_state(s):
     """The idempotency guard: no POST at all when nothing needs changing."""
-    s.mock.load(Scenario(states={CHILD_A: "in", CHILD_B: "in"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "in", CHILD_B: "in"}))
     s.run_and_settle(CHECK_IN)
 
-    assert sorted(s.activity_ids()) == sorted([CHILD_A, CHILD_B]), \
-        f"expected both children's state to be read, got {s.activity_ids()}"
+    assert _roster_requests(s), \
+        "the run should have read the roster to learn the current state"
     assert s.mock.checkins == [], \
         f"expected no check-in to be sent, got {len(s.mock.checkins)}"
 
 
 def test_checks_both_children_in(s):
     """The happy path, including the exact body Brightwheel is sent."""
-    s.mock.load(Scenario(states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
 
     posts = s.mock.checkins
@@ -178,7 +182,7 @@ def test_checks_both_children_in(s):
 
 def test_check_out_sends_checked_in_false(s):
     """Direction is structural: the wrapper decides, not the clock."""
-    s.mock.load(Scenario(states={CHILD_A: "in", CHILD_B: "in"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "in", CHILD_B: "in"}))
     s.run_and_settle(CHECK_OUT)
 
     posts = s.mock.checkins
@@ -199,7 +203,7 @@ def test_stale_school_code_causes_a_second_pass(s):
     part that lives in the shortcut: the stale reply is recognized, and a
     second pass happens.
     """
-    s.mock.load(Scenario(states={CHILD_A: "out", CHILD_B: "out"},
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"},
                          checkin_outcomes=["stale_secret", "stale_secret", "ok"]))
     s.run_and_settle(CHECK_IN, timeout=120)
 
@@ -220,7 +224,7 @@ def test_expired_token_signs_in_again(s):
     dialog whose Done button is iOS blue, and the generic prompt-clearing would
     submit it empty — which the shortcut treats as "send me another code".
     """
-    scenario = Scenario(token_valid=False, states={CHILD_A: "out", CHILD_B: "out"})
+    scenario = Scenario(token_valid=False, roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"})
     s.mock.load(scenario)
 
     s.sim.terminate_shortcuts()
@@ -306,6 +310,84 @@ test_setup_questions_commit_their_answers.expected_broken = (
     "(works on iOS 26.5 and on iOS 27 beta 24A5355p)")
 
 
+def _roster_requests(s):
+    return s.mock.matching(contains="students_for_checkin")
+
+
+def test_reads_the_roster_at_runtime(s):
+    """The shortcut asks the API who the children are, instead of being told.
+
+    This is the whole point of the change: a build with no children in it.
+    """
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert _roster_requests(s), "the shortcut never asked for a roster"
+    posts = s.mock.checkins
+    assert sorted(s.targets_of(posts)) == sorted([CHILD_A, CHILD_B]), \
+        f"expected both children from the roster, got {s.targets_of(posts)}"
+
+
+def test_a_failed_roster_stops_loudly(s):
+    """Guard 1 and 2: an error body must not read as an empty roster.
+
+    Both counts the guards derive are zero on a failed call, so without a
+    positive test the run does nothing at all and says nothing — which looks
+    exactly like the trigger never firing.
+    """
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="error",
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "a failed roster call must not check anybody in"
+
+
+def test_a_restructured_roster_stops(s):
+    """Guard 2: students present, child shape changed, every count zero."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="restructured",
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "a roster whose child shape changed must not check anybody in"
+
+
+def test_a_child_in_two_rooms_stops(s):
+    """Guard 4: the extraction takes room_states[0], so multiplicity is refused.
+
+    Proceeding would check the child into the room they are not in, which the
+    right teacher sees as an absence.
+    """
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="two_rooms",
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "a child with two room_states must not be checked into a guessed room"
+
+
+def test_a_dropped_child_stops(s):
+    """Guard 3: one child unparseable means the run stops, not half-runs."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="empty_room_states",
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "a child dropped from the parse must stop the run"
+
+
+def test_a_rotated_secret_on_the_roster_call_recovers(s):
+    """The roster call now sees the rotation before any POST does.
+
+    Detection lived only on the check-in response, so without a branch here the
+    self-heal dies silently and the run looks like a dead trigger.
+    """
+    # The school has rotated: the code the shortcut holds is no longer the one
+    # the API accepts, so the roster call is the first thing to be rejected.
+    sc = Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"},
+                  required_secret="a-freshly-rotated-secret")
+    s.mock.load(sc)
+    s.run_and_settle(CHECK_IN, timeout=120)
+    assert len(_roster_requests(s)) > 1, \
+        "a rotated secret should make the run ask for the roster again"
+
+
 TESTS = [
     test_skips_children_already_in_the_wanted_state,
     test_checks_both_children_in,
@@ -313,6 +395,12 @@ TESTS = [
     test_stale_school_code_causes_a_second_pass,
     test_expired_token_signs_in_again,
     test_setup_questions_commit_their_answers,
+    test_reads_the_roster_at_runtime,
+    test_a_failed_roster_stops_loudly,
+    test_a_restructured_roster_stops,
+    test_a_child_in_two_rooms_stops,
+    test_a_dropped_child_stops,
+    test_a_rotated_secret_on_the_roster_call_recovers,
 ]
 
 

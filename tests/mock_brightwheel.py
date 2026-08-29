@@ -147,7 +147,7 @@ class _Handler(BaseHTTPRequestHandler):
         status = 200
         
         if path.endswith("/users/me"):
-            if sc.token_valid:
+            if self._authenticated(sc):
                 # Several object_ids, as the real body has, so an unanchored
                 # guardian-id pattern fails the suite instead of passing it.
                 # The wanted one is first, which is what makes ^ load-bearing.
@@ -168,6 +168,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif path.endswith("/sessions"):
             supplied = (parsed or {}).get("2fa_code")
             if supplied == sc.two_fa_code:
+                self.server.signed_in = True
                 resp = {"token": sc.issued_token,
                         "user": {"object_id": "usr_guardian"},
                         "csrf": "csrf-token"}
@@ -197,6 +198,20 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(resp, status)
         self._record(raw, parsed, resp, status)
 
+    def _authenticated(self, sc):
+        """Is the token on this request good?
+
+        `token_valid=False` models a stale stored token, and it has to keep
+        failing until the run actually signs in — otherwise a token left in the
+        store by an earlier test authenticates and the sign-in branch is never
+        taken. Once this mock issues a token, that token works.
+        """
+        if sc.token_valid:
+            return True
+        if not getattr(self.server, "signed_in", False):
+            return False
+        return self.headers.get("X-Parse-Session-Token") == sc.issued_token
+
     def _roster(self, sc, path):
         """GET /guardians/{id}/students_for_checkin.
 
@@ -207,7 +222,7 @@ class _Handler(BaseHTTPRequestHandler):
         import urllib.parse as _up
         query = dict(_up.parse_qsl(self.path.split("?", 1)[1])) if "?" in self.path else {}
 
-        if not sc.token_valid:
+        if not self._authenticated(sc):
             return ROSTER_ERRORS["expired_token"]
         for key in ("school_id", "secret", "time_zone"):
             if not query.get(key):
@@ -299,6 +314,7 @@ class MockBrightwheel:
         self._srv.socket = ctx.wrap_socket(self._srv.socket, server_side=True)
         self._srv.requests = []
         self._srv.checkin_count = 0
+        self._srv.signed_in = False
         self._srv.scenario = self.scenario
         self._thread = threading.Thread(target=self._srv.serve_forever, daemon=True)
         self._thread.start()
@@ -316,6 +332,7 @@ class MockBrightwheel:
         self._srv.scenario = scenario
         self._srv.requests = []
         self._srv.checkin_count = 0
+        self._srv.signed_in = False
 
     @property
     def requests(self):

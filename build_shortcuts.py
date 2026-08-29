@@ -15,52 +15,11 @@ from pathlib import Path
 
 OBJ = "￼"  # U+FFFC placeholder for an inline variable
 
-# --- Who this build is for --------------------------------------------
-#
-# Identifiers live in a gitignored `roster.json` rather than in this file.
-# `roster.example.json` shows the shape, and `--roster PATH` points at another
-# one. Filled in by load_roster() before build() runs.
-ACTOR = ROOM = SCHOOL = None
-SCHOOL_NAME = ROOM_NAME = None
-CHILDREN = []
-
-DEFAULT_ROSTER = Path(__file__).parent / "roster.json"
-
-
-def load_roster(path=DEFAULT_ROSTER):
-    """Read the roster and publish it as module state build() can see.
-
-    `school_id` is only used to seed a baked build; on a normal run the school
-    comes from the scanned QR code, which is why these shortcuts work at a
-    different school without a rebuild.
-    """
-    global ACTOR, ROOM, SCHOOL, SCHOOL_NAME, ROOM_NAME, CHILDREN
-    path = Path(path)
-    if not path.exists():
-        raise SystemExit(
-            f"{path} not found. Copy roster.example.json to roster.json and "
-            f"fill in your own guardian, room and children ids.")
-    data = json.loads(path.read_text())
-    missing = [k for k in ("guardian_id", "room_id", "children")
-               if not data.get(k)]
-    if missing:
-        raise SystemExit(f"{path} is missing: {', '.join(missing)}")
-
-    ACTOR = data["guardian_id"]
-    ROOM = data["room_id"]
-    SCHOOL = data.get("school_id", "")
-    SCHOOL_NAME = data.get("school_name", "your school")
-    ROOM_NAME = data.get("room_name", "")
-    CHILDREN = [(c["name"], c["id"]) for c in data["children"]]
-    return data
-
-
-def child_list_phrase():
-    """"A and B", or "A, B and C" — for the description comment."""
-    names = [n for n, _ in CHILDREN]
-    if len(names) <= 1:
-        return names[0] if names else "nobody"
-    return f"{', '.join(names[:-1])} and {names[-1]}"
+# The school id seeds a debug build's stored school code, which is what keeps
+# the test suite away from Scan Code — an action a simulator does not have. It
+# is the only identifier the generator still needs; the children, the room and
+# the guardian all come from the API at run time now.
+SCHOOL = ""
 
 
 BASE = "https://schools.mybrightwheel.com/api/v1"
@@ -72,6 +31,7 @@ CLIENT_VERSION = "3.103.0"
 
 
 ENV_KEYS = {
+    "school_id": "BRIGHTWHEEL_SCHOOL_ID",
     "code": "BRIGHTWHEEL_CHECKIN_CODE",
     "secret": "BRIGHTWHEEL_SCHOOL_SECRET",
     "email": "BRIGHTWHEEL_EMAIL",
@@ -211,17 +171,12 @@ def build(direction=None, env=None):
     # then checked on a simulator, because the bundled glyph names are wrong.
     glyph, color = 62329, 3980825855
 
-    i = iter(uuids(180))
+    i = iter(uuids(260))
     U = {k: next(i) for k in ("code", "email", "password")}
     U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
     U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
     G0, G0A, G0B, G0C = next(i), next(i), next(i), next(i)
     G2, G3 = next(i), next(i)
-    kid = {c: {k: next(i) for k in
-               ("act", "adict", "state", "stext", "gskip", "body", "resp",
-                "rdict", "chk", "rtext", "gres")}
-           for c, _ in CHILDREN}
-
     A = []
     questions = []
 
@@ -259,9 +214,11 @@ def build(direction=None, env=None):
 
     A.append(comment(
         "Brightwheel — Check\n\n"
-        f"Checks {child_list_phrase()} in or out at {SCHOOL_NAME}"
-        f"{f' (room {ROOM_NAME})' if ROOM_NAME else ''} by "
-        "talking to the Brightwheel API directly, without opening the app.\n\n"
+        "Checks your children in or out by talking to the Brightwheel API "
+        "directly, without opening the app. Who the children are, which room "
+        "they are in and who is checking them in all come from Brightwheel "
+        "when it runs — nothing about your family is built into this "
+        "shortcut.\n\n"
         "Brightwheel Check In and Brightwheel Check Out start this one and tell "
         "it which direction to go; those are the two that carry the automation "
         "triggers. Run this on its own and it simply asks.\n\n"
@@ -331,7 +288,8 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
                  GroupingIdentifier=G_MENU, WFControlFlowMode=0,
                  WFMenuPrompt="Check the children in or out?",
-                 WFMenuItems=["Check In", "Check Out"]))
+                 WFMenuItems=["Check In", "Check Out",
+                              "Forget saved sign-in and school code"]))
     A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
                  GroupingIdentifier=G_MENU, WFControlFlowMode=1,
                  WFMenuItemTitle="Check In"))
@@ -346,6 +304,25 @@ def build(direction=None, env=None):
                  WFTextActionText="out"))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Direction",
                  WFInput=attach(out(U_MOUT, "Text"))))
+    # The only way to clear either stored value from the device. Deleting the
+    # shortcut does not: both live in the shared store, which outlives it, so
+    # the reinstall everyone reaches for first resets nothing. Sends nothing,
+    # so it is safe to reach by accident or through Siri.
+    A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
+                 GroupingIdentifier=G_MENU, WFControlFlowMode=1,
+                 WFMenuItemTitle="Forget saved sign-in and school code"))
+    A.append(act("is.workflow.actions.deletestoredcontent",
+                 WFStoredContentKey="BrightwheelSessionToken",
+                 WFStoredContentGlobalValue=True))
+    A.append(act("is.workflow.actions.deletestoredcontent",
+                 WFStoredContentKey="BrightwheelSchoolCode",
+                 WFStoredContentGlobalValue=True))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionBody=ts(
+                     "Forgotten. The next run signs in again and asks you to "
+                     "scan the school's code.")))
+    A.append(act("is.workflow.actions.exit"))
     A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
                  GroupingIdentifier=G_MENU, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
@@ -459,6 +436,24 @@ def build(direction=None, env=None):
     C_BAD = gate(U_PROBE, "Contents of URL", "E1200")
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Needs Sign In",
                  WFInput=attach(out(C_BAD, "Count"))))
+
+    # The guardian id is the top-level object_id of this same response, so it
+    # costs no extra request. Anchored to the start because "object_id" appears
+    # five times in the body — the photo, an auth method and a school invite all
+    # have one — and only the first is the guardian. On a run that has to sign
+    # in this response is the E1200 error body instead, so the match comes back
+    # empty and a second read below fills it in.
+    u_gm, u_gg, u_gt = next(i), next(i), next(i)
+    A.append(act("is.workflow.actions.text.match", UUID=u_gm,
+                 WFMatchTextPattern=r'^\{\s*"object_id"\s*:\s*"([^"]+)"',
+                 text=ts(out(U_PROBE, "Contents of URL"))))
+    A.append(act("is.workflow.actions.text.match.getgroup", UUID=u_gg,
+                 WFGroupIndex="1", matches=attach(out(u_gm, "Matches"))))
+    A.append(act("is.workflow.actions.gettext", UUID=u_gt,
+                 CustomOutputName="Guardian Id Text",
+                 WFTextActionText=ts(out(u_gg, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Guardian Id",
+                 WFInput=attach(out(u_gt, "Guardian Id Text"))))
 
     A.append(comment(
         "Sign in again, up to five times.\n"
@@ -588,6 +583,42 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_FAIL, WFControlFlowMode=2))
 
+    # A run that signed in read its guardian id off an E1200 body, so it has
+    # none. Ask again now that there is a working token. Gated on emptiness so
+    # the ordinary path still makes exactly one /users/me call.
+    G_GID = next(i)
+    C_NOGID = gate("Guardian Id", None)
+    A.append(comment(
+        "Fetch the guardian id if signing in meant the first read missed it.\n"
+        "- Condition counts whether an id was found on the probe\n"
+        "- The probe body is the auth error on a run that had to sign in"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_GID, WFControlFlowMode=0,
+                 WFCondition=0, WFNumberValue="1",
+                 WFInput=cond_input(out(C_NOGID, "Count"))))
+    u_me2, u_gm2, u_gg2, u_gt2 = (next(i) for _ in range(4))
+    A.append(act("is.workflow.actions.downloadurl", UUID=u_me2,
+                 Advanced=True, ShowHeaders=False,
+                 WFURL=f"{BASE}/users/me", WFHTTPMethod="GET",
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Parse-Session-Token", ts(var("Session Token"))),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ])))
+    A.append(act("is.workflow.actions.text.match", UUID=u_gm2,
+                 WFMatchTextPattern=r'^\{\s*"object_id"\s*:\s*"([^"]+)"',
+                 text=ts(out(u_me2, "Contents of URL"))))
+    A.append(act("is.workflow.actions.text.match.getgroup", UUID=u_gg2,
+                 WFGroupIndex="1", matches=attach(out(u_gm2, "Matches"))))
+    A.append(act("is.workflow.actions.gettext", UUID=u_gt2,
+                 CustomOutputName="Guardian Id Retry",
+                 WFTextActionText=ts(out(u_gg2, "Matched Text Group"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Guardian Id",
+                 WFInput=attach(out(u_gt2, "Guardian Id Retry"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_GID, WFControlFlowMode=2))
+
     # ---- attempt loop: school code, then every child ----
     #
     # Two passes. The first sends; if a child comes back with the school code
@@ -616,8 +647,6 @@ def build(direction=None, env=None):
         "inside it, so the name shown in notifications and the id sent to "
         "Brightwheel always come from the same entry."
     ))
-    A.append(act("is.workflow.actions.list", UUID=U_NAMES,
-                 WFItems=[n for n, _ in CHILDREN]))
     A.append(act("is.workflow.actions.number", UUID=U_ONE,
                  WFNumberActionNumber="1"))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Send Needed",
@@ -654,7 +683,8 @@ def build(direction=None, env=None):
                      CustomOutputName="Debug School Code",
                      WFTextActionText=json.dumps(
                          {"secret": env["BRIGHTWHEEL_SCHOOL_SECRET"],
-                          "school_id": SCHOOL, "signatures_enabled": False},
+                          "school_id": env["BRIGHTWHEEL_SCHOOL_ID"],
+                          "signatures_enabled": False},
                          separators=(",", ":"))))
         A.append(act("is.workflow.actions.setstoredcontent",
                      WFStoredContentKey="BrightwheelSchoolCode",
@@ -733,6 +763,165 @@ def build(direction=None, env=None):
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SIGS, WFControlFlowMode=2))
 
+    # --- who the children are, asked rather than baked in ---
+    #
+    # One call returns the roster and each child's current state together, so
+    # they cannot disagree, and it replaces the per-child activities read.
+    U_TZ, U_ROST, U_MATCH = next(i), next(i), next(i)
+    G_STALE2, G_G1, G_G2, G_G3, G_G4, G_RUN = (next(i) for _ in range(6))
+
+    # The device's own zone. time_zone is required by the endpoint, and while
+    # its value looked inert in testing that test could not tell an inert
+    # parameter from a day boundary nobody had crossed. UTC would put the
+    # boundary at teatime; the local zone puts it at local midnight.
+    A.append(act("is.workflow.actions.date", UUID=U_TZ))
+    u_tzf, u_tzt = next(i), next(i)
+    A.append(act("is.workflow.actions.format.date", UUID=u_tzf,
+                 WFDate=ts(out(U_TZ, "Current Date")),
+                 WFDateFormatStyle="Custom", WFDateFormat="VV"))
+    A.append(act("is.workflow.actions.gettext", UUID=u_tzt,
+                 CustomOutputName="Time Zone",
+                 WFTextActionText=ts(out(u_tzf, "Formatted Date"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Time Zone",
+                 WFInput=attach(out(u_tzt, "Time Zone"))))
+
+    A.append(comment(
+        "Ask Brightwheel who the children are and where they stand.\n"
+        "- One call returns the roster and each child's current state\n"
+        "- Nothing about the family is built into this shortcut"))
+    A.append(act("is.workflow.actions.downloadurl", UUID=U_ROST,
+                 Advanced=True, ShowHeaders=False, WFHTTPMethod="GET",
+                 WFURL=ts(f"{BASE}/guardians/", var("Guardian Id"),
+                          "/students_for_checkin?school_id=", var("School Id"),
+                          "&secret=", var("School Secret"),
+                          "&time_zone=", var("Time Zone")),
+                 WFHTTPHeaders=dict_field([
+                     kv("Accept", ts("application/json")),
+                     kv("X-Parse-Session-Token", ts(var("Session Token"))),
+                     kv("X-Client-Name", ts(CLIENT_NAME)),
+                     kv("X-Client-Version", ts(CLIENT_VERSION)),
+                 ])))
+
+    # The roster call is now the first thing to see a rotated school code, so
+    # the rescan has to be triggered from here as well as from the check-in
+    # response. Deleting the stored code is what turns the next pass into a
+    # fresh scan; without it the second pass reads the same stale code back.
+    C_STALE2 = gate(U_ROST, "Contents of URL", r'"secret"\s*:\s*"The given secret')
+    A.append(comment(
+        "Rescan if the school's code was rotated.\n"
+        "- Condition counts whether the roster call rejected the code\n"
+        "- Forgetting it makes the second pass scan a fresh one"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_STALE2, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_STALE2, "Count"))))
+    A.append(act("is.workflow.actions.deletestoredcontent",
+                 WFStoredContentKey="BrightwheelSchoolCode",
+                 WFStoredContentGlobalValue=True))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Send Needed",
+                 WFInput=attach(out(U_ONE, "Number"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionBody=ts(
+                     "The school's check-in code has changed. Scanning the new "
+                     "one and trying again.")))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_STALE2, WFControlFlowMode=2))
+
+    # The roster is read as a dictionary, not matched as text. Get Contents of
+    # URL parses JSON, so what a Match Text would see is a re-serialisation
+    # whose key order is Shortcuts' own — measured on device, the student's
+    # object_id came after the photo's. Key *names* survive that; positions and
+    # adjacency do not, which is fatal to any pattern pairing several fields.
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=U_MATCH,
+                 CustomOutputName="Students", WFGetDictionaryValueType="Value",
+                 WFDictionaryKey="students",
+                 WFInput=attach(out(U_ROST, "Contents of URL"))))
+    u_cm = next(i)
+    A.append(act("is.workflow.actions.count", UUID=u_cm, WFCountType="Items",
+                 WFInput=attach(out(U_MATCH, "Students")),
+                 Input=attach(out(U_MATCH, "Students"))))
+
+    # The guards still count key names in the body text, which is safe because
+    # a single key-value pair does not depend on order. Each well-formed child
+    # contributes exactly one "room_states" and one "checked_in".
+    u_km, u_ck = next(i), next(i)
+    A.append(act("is.workflow.actions.text.match", UUID=u_km,
+                 WFMatchTextPattern=r'"room_states"\s*:',
+                 text=ts(out(U_ROST, "Contents of URL"))))
+    A.append(act("is.workflow.actions.count", UUID=u_ck, WFCountType="Items",
+                 WFInput=attach(out(u_km, "Matches")), Input=attach(out(u_km, "Matches"))))
+    u_sm, u_cs = next(i), next(i)
+    A.append(act("is.workflow.actions.text.match", UUID=u_sm,
+                 WFMatchTextPattern=r'"checked_in"\s*:',
+                 text=ts(out(U_ROST, "Contents of URL"))))
+    A.append(act("is.workflow.actions.count", UUID=u_cs, WFCountType="Items",
+                 WFInput=attach(out(u_sm, "Matches")), Input=attach(out(u_sm, "Matches"))))
+
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Roster OK",
+                 WFInput=attach(out(U_ONE, "Number"))))
+
+    def guard(group, count_uuid, count_name, condition, number, message, blurb):
+        """Notify and clear Roster OK when a guard fires.
+
+        A flag rather than Exit: this sits two blocks deep inside the attempt
+        Repeat, and Exit is only ever used at the top level in this file.
+        """
+        A.append(comment(blurb))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=group, WFControlFlowMode=0,
+                     WFCondition=condition, WFNumberValue=number,
+                     WFInput=cond_input(out(count_uuid, count_name))))
+        A.append(act("is.workflow.actions.notification",
+                     WFNotificationActionTitle=ts("Brightwheel — nobody ", var("Verb")),
+                     WFNotificationActionBody=ts(message)))
+        A.append(act("is.workflow.actions.setvariable", WFVariableName="Roster OK",
+                     WFInput=attach(out(U_ZERO2, "Number"))))
+        A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                     GroupingIdentifier=group, WFControlFlowMode=2))
+
+    guard(G_G1, u_cm, "Count", 0, "1",
+          "Brightwheel did not return a roster, so nothing was sent. Open the "
+          "app to check, and run this by hand.",
+          "Did Brightwheel list any children?\n"
+          "- Condition counts the children in the reply\n"
+          "- An error reply has none, and would read as nobody to send for")
+
+    def diff_guard(group, a_uuid, a_name, b_uuid, b_name, message, blurb):
+        u = next(i)
+        A.append(act("is.workflow.actions.math", UUID=u,
+                     WFInput=attach(out(a_uuid, a_name)), WFMathOperation="-",
+                     WFMathOperand=attach(out(b_uuid, b_name))))
+        guard(group, u, "Calculation Result", 2, "0", message, blurb)
+
+    diff_guard(G_G2, u_cm, "Count", u_ck, "Count",
+               "The roster came back in a shape this shortcut could not read, "
+               "so nothing was sent. Check the children in by hand.",
+               "Does every child have a room entry?\n"
+               "- Condition counts children minus room entries\n"
+               "- A shortfall means the reply changed shape")
+    diff_guard(G_G3, u_cm, "Count", u_cs, "Count",
+               "A child in the roster has no room, so nothing was sent rather "
+               "than checking in only some of them.",
+               "Does every child have a room state?\n"
+               "- Condition counts children minus room states\n"
+               "- A child with none cannot be sent, so nobody is")
+    diff_guard(G_G4, u_cs, "Count", u_cm, "Count",
+               "A child is listed in more than one room, so nothing was sent "
+               "rather than guessing which one to use.",
+               "Is any child in more than one room?\n"
+               "- Condition counts room states minus children\n"
+               "- The room to send would be a guess, so nobody is")
+
+    A.append(comment(
+        "Only send if all four checks above agreed.\n"
+        "- Condition counts whether the roster survived every check\n"
+        "- Anything else has already said why, and sends nothing"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_RUN, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(var("Roster OK"))))
+
     # --- one pass over the children ---
     A.append(comment(
         f"Work through the children in turn.\n"
@@ -743,7 +932,7 @@ def build(direction=None, env=None):
     ))
     A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
                  GroupingIdentifier=G_KIDS, WFControlFlowMode=0,
-                 WFInput=attach(out(U_NAMES, "List"))))
+                 WFInput=attach(out(U_MATCH, "Students"))))
     # "Repeat Item 2", not "Repeat Item": this loop sits inside the retry
     # Repeat, and a count-style outer loop shifts the numbering just as a
     # nested Repeat with Each does. Verified on device with a probe — with the
@@ -752,41 +941,45 @@ def build(direction=None, env=None):
     #
     # Captured into Child Name here so the numbered variable appears exactly
     # once; if the nesting ever changes, this is the only line to revisit.
-    A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Name",
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Match",
                  WFInput=attach(var("Repeat Item 2"))))
-    # One plain If per child rather than a dictionary lookup. Get Dictionary
-    # Value returned nothing here too, leaving the target empty and every
-    # check-in answered with E1204 "The requested resource could not be found".
-    # Comparing a variable against a literal string is the primitive that works.
-    for cname, target in CHILDREN:
-        g_who, u_id = next(i), next(i)
-        A.append(comment(
-            f"Look up {cname}'s Brightwheel id.\n"
-            "- Condition compares the current child's name with this one\n"
-            "- Only the matching block sets Child Id"
-        ))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=g_who, WFControlFlowMode=0,
-                     WFCondition=4, WFConditionalActionString=cname,
-                     WFInput=cond_input(var("Child Name"))))
-        A.append(act("is.workflow.actions.gettext", UUID=u_id,
-                     WFTextActionText=target))
-        A.append(act("is.workflow.actions.setvariable", WFVariableName="Child Id",
-                     WFInput=attach(out(u_id, "Text"))))
-        A.append(act("is.workflow.actions.conditional", UUID=next(i),
-                     GroupingIdentifier=g_who, WFControlFlowMode=2))
-    A.append(act("is.workflow.actions.downloadurl", UUID=U_ACT,
-                 Advanced=True, ShowHeaders=False, WFHTTPMethod="GET",
-                 WFURL=ts(f"{BASE}/students/", var("Child Id"),
-                          "/activities?page_size=1&action_type=ac_checkin"),
-                 WFHTTPHeaders=dict_field([
-                     kv("Accept", ts("application/json")),
-                     kv("X-Parse-Session-Token", ts(var("Session Token"))),
-                     kv("X-Client-Name", ts(CLIENT_NAME)),
-                     kv("X-Client-Version", ts(CLIENT_VERSION)),
-                 ])))
+
+    # Read by key path off this child's entry. Array indices in a dot path are
+    # 1-based, so room_states.1 is the first (and, per the guards above, only)
+    # room entry.
+    for varname, key, outname in (
+            ("Child Id",   "student.object_id",              "Child Id Value"),
+            ("Child Name", "student.first_name",             "Child Name Value"),
+            ("Child Room", "room_states.1.room.object_id",   "Child Room Value")):
+        u_v, u_t = next(i), next(i)
+        A.append(act("is.workflow.actions.getvalueforkey", UUID=u_v,
+                     CustomOutputName=outname, WFGetDictionaryValueType="Value",
+                     WFDictionaryKey=key, WFInput=attach(var("Child Match"))))
+        A.append(act("is.workflow.actions.gettext", UUID=u_t,
+                     CustomOutputName=varname + " Text",
+                     WFTextActionText=ts(out(u_v, outname))))
+        A.append(act("is.workflow.actions.setvariable", WFVariableName=varname,
+                     WFInput=attach(out(u_t, varname + " Text"))))
+
+    # The state is a boolean, and a boolean does not coerce to text. Read the
+    # room entry it lives in — that does coerce, to {"checked_in":true,...} —
+    # and match the one pair out of it, which no key order can disturb.
+    u_rs, u_rst = next(i), next(i)
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=u_rs,
+                 CustomOutputName="Room State", WFGetDictionaryValueType="Value",
+                 WFDictionaryKey="room_states.1", WFInput=attach(var("Child Match"))))
+    A.append(act("is.workflow.actions.gettext", UUID=u_rst,
+                 CustomOutputName="Room State Text",
+                 WFTextActionText=ts(out(u_rs, "Room State"))))
+    A.append(act("is.workflow.actions.setvariable", WFVariableName="Room State Text",
+                 WFInput=attach(out(u_rst, "Room State Text"))))
+
     # Is the child checked in right now? 1 or 0, same shape as Wanted In.
-    C_IN = gate(U_ACT, "Contents of URL", '"state"\\s*:\\s*"1"')
+    # It has to be a count: the comparison below pastes two values and matches
+    # ^(01|10)$, so the literal "true" would give "true1", never match, and
+    # every child would be skipped in both directions while the notification
+    # said "no change".
+    C_IN = gate("Room State Text", None, r'"checked_in"\s*:\s*true')
     # Two runtime numbers cannot be compared directly — an If tests a variable
     # against a literal, not against another variable. Pasting them together
     # gives 11 or 00 when they agree and 10 or 01 when they differ, which a
@@ -815,10 +1008,12 @@ def build(direction=None, env=None):
 
     A.append(act("is.workflow.actions.gettext", UUID=U_BODY,
                  WFTextActionText=ts(
-                     '{"checkins":[{"actor":{"object_id":"' + ACTOR + '"},'
-                     '"health_screen":{"questions":[]},'
-                     '"room":{"object_id":"' + ROOM + '"},'
-                     '"checked_in":',
+                     '{"checkins":[{"actor":{"object_id":"',
+                     var("Guardian Id"),
+                     '"},"health_screen":{"questions":[]},'
+                     '"room":{"object_id":"',
+                     var("Child Room"),
+                     '"},"checked_in":',
                      var("Checked In Value"),
                      ',',
                      '"target":{"object_id":"',
@@ -900,6 +1095,9 @@ def build(direction=None, env=None):
                  GroupingIdentifier=G_SKIP, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.repeat.each", UUID=next(i),
                  GroupingIdentifier=G_KIDS, WFControlFlowMode=2))
+    # closes the If that runs the loop only when all four guards agreed
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_RUN, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_DOIT, WFControlFlowMode=2))
     A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
@@ -1062,9 +1260,6 @@ if __name__ == "__main__":
     ap.add_argument("--env-file", metavar="PATH",
                     help="bake this env file in instead of .env; use for test "
                          "builds so real credentials never reach the artifact")
-    ap.add_argument("--roster", metavar="PATH", default=DEFAULT_ROSTER,
-                    help="who to check in: guardian, room and children ids "
-                         "(default roster.json; see roster.example.json)")
     ap.add_argument("--api-base", metavar="URL", default=BASE,
                     help="point the shortcuts at a different API root; used by "
                          "the integration tests to reach the mock Brightwheel")
@@ -1072,7 +1267,6 @@ if __name__ == "__main__":
 
     # build() reads these at call time, so setting them here is enough.
     BASE = args.api_base
-    load_roster(args.roster)
 
     env = None
     if args.env_file:
