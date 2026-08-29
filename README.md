@@ -1,4 +1,4 @@
-# Brightwheel Attendance-In / Check-Out Shortcuts
+# Brightwheel Check-In / Check-Out Shortcuts
 
 Signed iOS Shortcuts that check both children in or out of Brightwheel without
 opening the app, fired unattended by location triggers.
@@ -46,8 +46,9 @@ are when it runs.
 
 Either command generates all three shortcuts, validates them against iOS 27,
 signs them, and writes both the unsigned `.xml` and the signed `.shortcut` to the
-target directory. It fails on any validator error except two named waivers, so
-a red build is a real problem.
+target directory. It fails on any validator error except the waivers named in
+`build.sh`, each of which is listed there with the reason it is waived, so a red
+build is a real problem.
 
 **Never edit a shortcut on the phone.** `build_shortcuts.py` is the source of
 truth and the next build overwrites everything else. The only values meant to be
