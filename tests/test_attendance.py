@@ -9,6 +9,7 @@ only says what the shortcut believes.
 Run with ./test.sh. See TESTING.md for what the harness had to work around.
 """
 import json
+import pathlib
 import subprocess
 import sys
 import time
@@ -365,6 +366,11 @@ def test_a_child_in_two_rooms_stops(s):
 
 def test_a_dropped_child_stops(s):
     """One child with no room means the run stops, rather than half-runs."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="empty_room_states",
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "a child dropped from the parse must stop the run"
 
 
 def test_two_children_cancelling_out_stops(s):
@@ -386,11 +392,6 @@ def test_two_children_cancelling_out_stops(s):
     s.run_and_settle(CHECK_IN)
     assert not s.mock.checkins, \
         "two children failing in opposite directions must stop the run"
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="empty_room_states",
-                         states={CHILD_A: "out", CHILD_B: "out"}))
-    s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "a child dropped from the parse must stop the run"
 
 
 def test_a_rotated_secret_on_the_roster_call_recovers(s):
@@ -426,7 +427,33 @@ TESTS = [
 ]
 
 
+def _audit_tests():
+    """Fail before the simulator boots if a test cannot fail.
+
+    A test whose body was lost to an edit still prints PASS, and a test written
+    but never added to TESTS never runs at all. Both read as green. This walks
+    this file's own syntax tree and refuses to start on either.
+    """
+    import ast
+    tree = ast.parse(pathlib.Path(__file__).read_text())
+    defined = {n.name: n for n in tree.body
+               if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")}
+    registered = {t.__name__ for t in TESTS}
+
+    problems = []
+    for name in sorted(defined.keys() - registered):
+        problems.append(f"{name} is defined but not in TESTS, so it never runs")
+    for name in sorted(registered - defined.keys()):
+        problems.append(f"{name} is in TESTS but not defined in this file")
+    for name in sorted(registered & defined.keys()):
+        if not any(isinstance(s, ast.Assert) for s in ast.walk(defined[name])):
+            problems.append(f"{name} has no assert, so it cannot fail")
+    if problems:
+        raise SystemExit("test suite is not sound:\n  " + "\n  ".join(problems))
+
+
 def main(argv):
+    _audit_tests()
     runtime = "iOS 27"
     if "--runtime" in argv:
         i = argv.index("--runtime")
