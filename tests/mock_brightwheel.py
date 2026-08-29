@@ -62,7 +62,7 @@ class Scenario:
     two_fa_code: str = "123456"
     issued_token: str = "SIMTOKEN0123456789AB"
 
-    # child object_id -> "in" | "out", the state the activities feed reports.
+    # child object_id -> "in" | "out", served as each child's checked_in.
     # A successful check-in updates this, so a second pass sees the new state
     # and skips — the same idempotency the real API gives us.
     states: dict = field(default_factory=dict)
@@ -88,7 +88,6 @@ class Scenario:
     #   restructured      students present, room_states renamed  -> no room
     #   empty_room_states first child has []                     -> no room
     #   two_rooms         first child gains a non-default room   -> two rooms
-    #   room_missing_flag that extra room omits is_default_room  -> two rooms
     #   unreadable_state  first child's checked_in is absent     -> no state
     #   cancelling        first child has two rooms, second []   -> per child
     #
@@ -190,15 +189,6 @@ class _Handler(BaseHTTPRequestHandler):
         elif path.endswith("/students_for_checkin"):
             resp, status = self._roster(sc, path)
 
-        elif "/students/" in path and path.endswith("/activities"):
-            child = path.split("/students/", 1)[1].split("/", 1)[0]
-            state = sc.states.get(child, "out")
-            # The shortcut greps the whole body for "state":"1", so nothing
-            # else in here may contain that pair.
-            resp = {"activities": [{"object_id": "act_1",
-                                    "action_type": "ac_checkin",
-                                    "state": "1" if state == "in" else "2"}]}
-
         elif path.endswith("/checkins/") or path.endswith("/checkins"):
             resp, status = self._checkin(sc, parsed)
 
@@ -274,12 +264,11 @@ class _Handler(BaseHTTPRequestHandler):
                     "is_default_room": False})
                 if len(students) > 1:
                     students[1]["room_states"] = []
-            elif shape in ("two_rooms", "room_missing_flag"):
-                extra = {"room": {"object_id": "room_aftercare", "name": "Aftercare"},
-                         "checked_in": not first["room_states"][0]["checked_in"]}
-                if shape == "two_rooms":
-                    extra["is_default_room"] = False
-                first["room_states"].insert(0, extra)
+            elif shape == "two_rooms":
+                first["room_states"].insert(0, {
+                    "room": {"object_id": "room_aftercare", "name": "Aftercare"},
+                    "checked_in": not first["room_states"][0]["checked_in"],
+                    "is_default_room": False})
             elif shape == "unreadable_state":
                 first["room_states"][0].pop("checked_in")
 
@@ -305,7 +294,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         if outcome == "ok":
             # Mirror the real API: a successful send changes the state the
-            # activities feed will report next time.
+            # next roster read will report.
             for entry in parsed.get("checkins", []) or []:
                 target = (entry.get("target") or {}).get("object_id")
                 if target:

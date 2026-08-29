@@ -41,7 +41,6 @@ KEYCODES = {
     "o": 31, "p": 35, "q": 12, "r": 15, "s": 1, "t": 17, "u": 32,
     "v": 9, "w": 13, "x": 7, "y": 16, "z": 6, " ": 49,
 }
-RETURN_KEY = 36
 
 BUTTON_H_RANGE = (70, 220)     # excludes the tall shortcut tile on
                                # the import sheet, which is also blue
@@ -358,16 +357,6 @@ class Simulator:
         time.sleep(0.5)
         return self.tap_affirmative()
 
-    def press_return(self):
-        """Return key, for committing an Ask for Input prompt."""
-        _osa('tell application "Simulator" to activate')
-        time.sleep(0.3)
-        for down in (True, False):
-            ev = Quartz.CGEventCreateKeyboardEvent(None, RETURN_KEY, down)
-            Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
-            time.sleep(0.05)
-        time.sleep(0.6)
-
     def ensure_hardware_keyboard(self):
         """Connect the hardware keyboard, re-applying it even if already ticked.
 
@@ -429,17 +418,6 @@ class Simulator:
         x0, y0, x1, y1 = max(boxes, key=lambda bx: (bx[3], bx[2]))
         self.tap((x0 + x1) // 2, (y0 + y1) // 2, device_size=img.size)
         return True
-
-    def drain_prompts(self, rounds=6, pause=1.2):
-        """Clear consent prompts until none are on screen."""
-        cleared = 0
-        for _ in range(rounds):
-            img = self.image()
-            if not self.tap_affirmative(img):
-                break
-            cleared += 1
-            time.sleep(pause)
-        return cleared
 
     # -- shortcuts ------------------------------------------------------
     def install(self, path, expect_name=None, timeout=75):

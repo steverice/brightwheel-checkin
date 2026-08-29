@@ -10,16 +10,9 @@ import base64
 import json
 import plistlib
 import subprocess
-import sys
 from pathlib import Path
 
 OBJ = "￼"  # U+FFFC placeholder for an inline variable
-
-# The school id seeds a debug build's stored school code, which is what keeps
-# the test suite away from Scan Code — an action a simulator does not have. It
-# is the only identifier the generator still needs; the children, the room and
-# the guardian all come from the API at run time now.
-SCHOOL = ""
 
 
 BASE = "https://schools.mybrightwheel.com/api/v1"
@@ -137,8 +130,6 @@ def comment(text):
 # `checked_in` is the DESIRED state, not the child's current state.
 #   checked_in: true  -> checks the child IN
 #   checked_in: false -> checks the child OUT
-# The activity feed's `state` field reports the result: "1" = in, "2" = out.
-STATE_IN, STATE_OUT = "1", "2"
 
 
 # (key, kind, prompt, blurb, action_value, prompt_default)
@@ -163,7 +154,7 @@ SETUP = [
 ]
 
 
-def build(direction=None, env=None):
+def build(env=None):
     """The shortcut that does the work. Direction arrives as Shortcut Input."""
     name = "Brightwheel Attendance"
     # 62329 is a ring of petals — close to the Brightwheel logo — on pink.
@@ -173,10 +164,6 @@ def build(direction=None, env=None):
 
     i = iter(uuids(260))
     U = {k: next(i) for k in ("code", "email", "password")}
-    U_HOUR, U_DAY, U_AFT, U_BEF = next(i), next(i), next(i), next(i)
-    U_WEM, U_WEC, U_HNM, U_HNC = next(i), next(i), next(i), next(i)
-    G0, G0A, G0B, G0C = next(i), next(i), next(i), next(i)
-    G2, G3 = next(i), next(i)
     A = []
     questions = []
 
@@ -191,9 +178,9 @@ def build(direction=None, env=None):
         pattern turns the same helper into "does this response say X".
 
         It is the branch that Get Dictionary Value cannot serve, not the read.
-        The roster is parsed with it, and so is the wording dictionary above —
-        but every one of those values is used as text. The moment a dictionary
-        value has to decide a branch, it has to come back through here.
+        The roster is read with it, and so is the wording dictionary below, but
+        every one of those values is used as text. The moment a dictionary value
+        has to decide a branch, it comes back through here.
         """
         t, m, c = next(i), next(i), next(i)
         # src may be an action UUID (with name), a variable name (name=None),
@@ -257,8 +244,9 @@ def build(direction=None, env=None):
     # live on the device and can be edited there, so a baked-in threshold would
     # silently disagree with them and send the wrong direction.
     #
-    # Run with no input, this stops. That also makes the shortcut safe to have
-    # in the library: saying its name to Siri cannot check anyone anywhere.
+    # Run with no input, this asks. That is what makes the shortcut safe to
+    # have in the library: saying its name to Siri opens a menu, and cancelling
+    # the menu sends nothing.
     U_WORDS, U_CIV, U_VERB, U_ALREADY = (next(i) for _ in range(4))
     G_VALID = next(i)
     EXT = {"Type": "ExtensionInput"}
@@ -625,16 +613,13 @@ def build(direction=None, env=None):
     # turns one into the other.
     #
     # Children are a Repeat rather than an unrolled pair so the retry re-enters
-    # the same actions instead of a second copy. Repeat Item is the child's
-    # name, and the id comes from a roster Dictionary looked up with a tokenized
-    # key — the one wiring here with a verified example behind it. Get Item from
-    # List and Split Text were the obvious alternatives and have no worked
-    # example of their parameters anywhere.
-    U_ROSTER, U_NAMES, U_ONE, U_ZERO2 = (next(i) for _ in range(4))
+    # the same actions instead of a second copy. Each Repeat Item is a whole
+    # child record, so the name, the id and the room are read off it by key
+    # path rather than looked up against anything.
+    U_ONE, U_ZERO2 = next(i), next(i)
     U_GC, U_SCAN, U_CDICT = next(i), next(i), next(i)
     U_CSEC, U_CSID, U_ST, U_SI = (next(i) for _ in range(4))
-    U_CHILD, U_CHILDT = next(i), next(i)
-    U_ACT, U_BODY, U_RESP, U_RTEXT = (next(i) for _ in range(4))
+    U_BODY, U_RESP, U_RTEXT = next(i), next(i), next(i)
     G_ATTEMPT, G_DOIT, G_HAVE, G_SIGS = (next(i) for _ in range(4))
     G_KIDS, G_SKIP, G_RES, G_STALE = (next(i) for _ in range(4))
 
@@ -1151,12 +1136,6 @@ def build(direction=None, env=None):
     }
 
 
-# --- helper: read the school secret out of a scanned QR code ---------------
-# iOS 27 has no action that decodes a QR back into a shortcut:
-# `is.workflow.actions.scanbarcode` decodes an image but is macOS-only, and
-# `com.apple.BarcodeScanner.BarcodeScannerIntent` ("Open Code Scanner") only
-# launches the scanner app. So this helper parses the decoded text instead,
-# defaulting to whatever Code Scanner left on the clipboard.
 def build_wrapper(direction):
     """A trigger carrier: a first-run setup guide, then the direction and the call.
 

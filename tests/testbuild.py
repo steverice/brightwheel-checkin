@@ -3,12 +3,12 @@
 
 Two things separate a test build from `./build.sh`:
 
-  * `--roster tests/fixtures/roster.json` and
-    `--env-file tests/fixtures/test.env` bake obviously-fake children and
-    credentials in
+  * `--env-file tests/fixtures/test.env` bakes obviously-fake credentials in
     and drops the import questions, so the sheet is a single "Add Shortcut"
     tap. It also seeds the school code, which is what keeps the run away from
-    Scan Code — an action the simulator does not have.
+    Scan Code — an action the simulator does not have. No children are baked
+    in; the roster comes from the mock, which serves
+    `tests/fixtures/roster.json`.
   * `--api-base` points every request at the mock, so a test can never reach
     the real Brightwheel and can never check a real child in.
 
@@ -23,7 +23,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TEST_ENV = Path(__file__).parent / "fixtures" / "test.env"
-TEST_ROSTER = Path(__file__).parent / "fixtures" / "roster.json"
 OUT = REPO / "dist-test"
 NAMES = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 

@@ -138,10 +138,6 @@ class Suite:
             n += 1
         return f"{base} {n}"
 
-    def activity_ids(self):
-        return [r["path"].split("/students/")[1].split("/")[0]
-                for r in self.mock.matching("GET", "/students/")]
-
 
 # ---------------------------------------------------------------------------
 # Tests. Each gets a fresh scenario; the installed shortcuts never change.
@@ -373,6 +369,21 @@ def test_a_dropped_child_stops(s):
         "a child dropped from the parse must stop the run"
 
 
+def test_a_room_with_no_state_stops(s):
+    """A room entry that lost its `checked_in` key must stop the run.
+
+    The one malformation the per-child room count cannot see: the child still
+    has exactly one room, so both per-child guards pass. Only the whole-roster
+    comparison of children against `"checked_in"` keys catches it, and this is
+    the only test that exercises that guard.
+    """
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="unreadable_state",
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "a room with no check-in state must not check anybody in"
+
+
 def test_two_children_cancelling_out_stops(s):
     """One child in two rooms and one with no room must still stop the run.
 
@@ -422,6 +433,7 @@ TESTS = [
     test_a_restructured_roster_stops,
     test_a_child_in_two_rooms_stops,
     test_a_dropped_child_stops,
+    test_a_room_with_no_state_stops,
     test_two_children_cancelling_out_stops,
     test_a_rotated_secret_on_the_roster_call_recovers,
 ]
