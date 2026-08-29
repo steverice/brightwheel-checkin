@@ -5,7 +5,7 @@
 This repo does not contain shortcuts. It contains a **generator** that emits
 them. `build_shortcuts.py` builds the Shortcuts plist for each shortcut as a
 Python data structure, and `build.sh` validates, signs, and stages the result.
-The `.shortcut` files in `dist/` are build output that happens to be committed.
+The `.shortcut` files in `dist/` are gitignored build output.
 
 That indirection exists because a Shortcuts plist is a poor thing to edit by
 hand. Variable references are UUID-keyed, string parameters carry
@@ -57,8 +57,8 @@ Inside `build_shortcuts.py`:
 
 **Build:** `build.sh` runs the generator into a target directory, then for each
 shortcut runs `validate-shortcut` against iOS 27, signs it with `sign-shortcut`,
-and copies the signed file back beside its XML. Any validator error except two
-named waivers aborts the build.
+and copies the signed file back beside its XML. Any validator error except the
+waivers named in `build.sh` aborts the build.
 
 **Runtime**, for `Brightwheel Attendance`:
 
@@ -80,8 +80,8 @@ Repeat 2, but only while Send Needed:
       └─ nothing stored ──> alert, Scan Code, store it
     Match Text  ->  School Secret, School Id
     Repeat for each child name:
-        Repeat Item 2 -> Child Name -> (one If per child) -> Child Id
-        GET /students/{id}/activities?page_size=1&action_type=ac_checkin
+        Repeat Item 2 -> Child Match -> student.object_id, student.first_name,
+                                        room_states.1.room.object_id
           └─ already the way this run wants ──> notify "no change", send nothing
           └─ otherwise ──> POST /checkins/
                  ├─ event_date        ──> notify success
@@ -102,7 +102,7 @@ satisfying "has any value".
 |---|---|
 | `E1200` | token expired or absent |
 | `"token"\s*:\s*"([^"]+)"` | sign-in succeeded |
-| `"state"\s*:\s*"1"` / `"2"` | child is already checked in / out |
+| `"checked_in"\s*:\s*true` | child is checked in right now |
 | `"event_date"` | a check-in record was really created |
 | `"secret"\s*:\s*"The given secret` | the stored school code has gone stale |
 | `"secret"\s*:\s*"([^"]+)"` / `"school_id"…` | pulling those out of the scanned code |
@@ -144,10 +144,12 @@ the stored code is what turns one into the other. The pattern
 stale secret, a wrong check-in code, an empty body and an expired token, and
 matches only the first.
 
-**Idempotency, failing open.** Each pass reads the child's latest check-in event
-and skips anyone already in the state this run wants, so a repeated trigger cannot record
-a second arrival. If the state cannot be read at all the request is sent anyway:
-a duplicate event is recoverable, a silently skipped arrival is not.
+**Idempotency.** Each pass reads the `checked_in` flag on the room the child is
+in — it arrives with the roster, so it cannot disagree with it — and skips
+anyone already in the state this run wants, so a repeated trigger cannot record
+a second arrival. A state that cannot be read at all no longer sends anyway: a
+room entry missing the key trips a guard and stops the whole run, because the
+same reply would have to be trusted for every other child too.
 
 Comparing "already checked in?" against "want them checked in?" needs two
 *runtime* numbers compared, and an If tests a variable against a literal, never
@@ -172,15 +174,17 @@ nested-each case only; the count case was confirmed on device with a probe. With
 the unnumbered name the item came back empty, the roster lookup found nothing,
 and notifications showed a blank child name.
 
-It is captured into `Child Name` immediately, so the numbered variable appears
-exactly once in the whole shortcut. Change the nesting and that is the only line
-to revisit.
+It is captured immediately in each of the two loops — into `Child Match` in the
+sending pass, read straight in the guard pass — so the numbered variable appears
+exactly twice. Change the nesting and those are the only lines to revisit.
 
-The child's name is the loop item; the id comes from **one plain If per child**
-comparing that name against a literal. A roster Dictionary read with
-`Get Dictionary Value` was tried first and returned nothing, leaving the target
-empty and every check-in answered `E1204 "The requested resource could not be
-found"`.
+Each loop item is a whole child record, so the id, the name and the room all
+come from **`Get Dictionary Value` by key path** off it: `student.object_id`,
+`student.first_name`, `room_states.1.room.object_id`. An earlier attempt at a
+Dictionary read returned nothing and answered every check-in with `E1204 "The
+requested resource could not be found"` — that was a Dictionary built from
+matched text, not a parsed URL response, which is the distinction that makes the
+current one work.
 
 Carrying name and id together in one list item would have been tidier, but
 `Get Item from List` and `Split Text` both appear in the golden shortcuts with
@@ -247,19 +251,20 @@ same shortcut serves the automations and manual use, with one direction path
 rather than two.
 
 That keeps it Siri-safe without refusing to run. Saying its name cannot check
-anyone anywhere by itself — it can only open a menu, and cancelling sends
-nothing. A wrapper never reaches the menu, because it hands in a direction.
+anyone anywhere by itself — it can only open a menu, and canceling sends
+nothing. The menu's third item, "Forget saved sign-in and school code", is the
+only way to clear the stored school code from the device, and it sends nothing
+either. A wrapper never reaches the menu, because it hands in a direction.
 
 **Debug builds are isolated by construction.** `./build.sh --debug` bakes `.env`
 values in and emits no import questions. Such a build contains a real password,
 so `--debug` writes only to `dist-debug/`, and both that directory and `.env` are
 gitignored. The isolation is structural rather than a reminder.
 
-**`dist/` is committed** so a checkout always carries an installable build and
-the XML diff shows what a generator change did. Two caveats: every build mints
-fresh UUIDs, so a no-op rebuild still churns; and `shortcuts sign` is not
-deterministic, so the signed blobs always differ. Review the `.xml` diff, never
-the `.shortcut`.
+**`dist/` is gitignored**, and not for privacy — a build carries no children.
+Every build mints fresh UUIDs and `shortcuts sign` is not deterministic, so all
+six files change completely on a no-op rebuild and nothing ever deltas. The
+built shortcuts ship as release assets instead.
 
 ---
 
@@ -307,7 +312,7 @@ Each of these passes the validator, imports cleanly, and then misbehaves.
 | `WFRequestVariable` | ACTIONS.md File Body example shows `WFTextTokenString` | Must be a `WFTextTokenAttachment` (SKILL.md rule 9 is the correct one) |
 | Multi-condition If | CONTROL_FLOW.md shows numeric rows with `WFNumberValue` | Numeric rows import empty and red; use Match Text + Count + a numeric If |
 | "Open Code Scanner" | Grounding catalog lists `com.apple.BarcodeScanner.BarcodeScannerIntent` under that display name | Plain `is.workflow.actions.openapp` with `WFAppIdentifier` + `WFSelectedApp`. (This project no longer opens the app at all — `scanbarcode` replaced it — but the lesson stands.) |
-| Glyph numbers | `shortcuts-official-glyph-mapping.json` | Right for many entries, but `59692` documented as `circledDownArrow` renders as a checkmark |
+| Glyph numbers | `shortcuts-official-glyph-mapping.json` | Right for many entries, but `59692` documented as `circledDownArrow` renders as a chevron |
 | `scanbarcode` | macOS-only, and requires `imageFile` | Works on iOS 27 as a **live scanner**: `WFScanCodeActionMode = 0`, no image input, output named `QR/Barcodes` |
 
 The Format Date one is the nastiest: the validator only enforces its
@@ -343,8 +348,8 @@ library with **empty parameters**, or not at all, so their wiring is guesswork:
 | Multi-condition `WFConditions` numeric rows | no example; imports red and empty |
 
 Working around a missing shape is usually cheap. Carrying a name and an id
-through a loop *looks* like it needs Split Text; one plain If per item does the
-same job with primitives that are proven.
+through a loop *looks* like it needs Split Text; reading both off the loop item
+by key path does the same job with primitives that are proven.
 
 ## Loops
 
@@ -455,9 +460,10 @@ coerce to text, so `room_states.1` is read instead and the single
 
 ### Guards, all before anything is sent
 
-Two of these count key names in the body text, which stays safe because a
-single key-value pair does not depend on order, and compare the result against
-the length of the `students` list. The other two count one child's own rooms.
+One of these counts key names in the body text, which stays safe because a
+single key-value pair does not depend on order, and compares the result against
+the length of the `students` list. Another counts that list itself. The last two
+count one child's own rooms.
 
 | guard | fires when |
 |---|---|
@@ -532,8 +538,8 @@ distinguish "worked" from "looked like it worked".
   `conditional` at mode 2 does not error, does not warn, and does not run its
   body even once — the actions between the markers are simply skipped. It looks
   exactly like a loop whose collection was empty. Closing a Repeat with a
-  Repeat, and an If with an If, is the rule; `build_shortcuts.py:901` is the
-  worked example.
+  Repeat, and an If with an If, is the rule; the pair at
+  `build_shortcuts.py:930` and `build_shortcuts.py:950` is the worked example.
 - **Dictionary actions return empty rather than failing.** See the prohibition
   above; this is the specific reason they cost four separate debugging rounds.
 
@@ -680,8 +686,8 @@ the shortcut, so each wrapper explains itself once and neither speaks for the
 other. Presence is measured with a match count, because an empty string still
 satisfies "has any value".
 
-Quantized to 64 colors the diagrams are ~85 KB each, ~110 KB as base64, which
-takes a wrapper from 4 KB to about 113 KB. Flat UI art loses nothing at 64
+Quantized to 64 colors the diagrams are ~104 KB each, ~138 KB as base64, which
+takes a wrapper from 4 KB to about 149 KB. Flat UI art loses nothing at 64
 colors.
 
 ## Practical notes
@@ -691,9 +697,9 @@ colors.
   be called *before* the comment, not between it and the `If`.
 - **UUIDs must look random.** Repeating-hex placeholders are a hard error. Mint
   them with `uuidgen`.
-- **Waive validator rules by name, never wholesale.** `build.sh` waives two, each
-  with its reason recorded: the removed attribution comment, and both
-  `scanbarcode` complaints, which a device-exported shortcut disproves.
+- **Waive validator rules by name, never wholesale.** `build.sh` waives five,
+  each with its reason recorded — among them both `scanbarcode` complaints,
+  which a device-exported shortcut disproves.
   Everything else stays fatal. That guard has caught real regressions, including a
   malformed control-flow block and a genuinely empty parameter.
 - **Signing is flaky, not broken.** `shortcuts sign` intermittently returns

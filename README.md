@@ -1,6 +1,6 @@
 # Brightwheel Check-In / Check-Out Shortcuts
 
-Signed iOS Shortcuts that check both children in or out of Brightwheel without
+Signed iOS Shortcuts that check your children in or out of Brightwheel without
 opening the app, fired unattended by location triggers.
 
 > ## Requires iOS 27
@@ -14,15 +14,17 @@ opening the app, fired unattended by location triggers.
 The three shortcuts:
 
 - **Brightwheel Attendance** — does the work. Run it by hand and it asks which way.
-- **Brightwheel Check In** — carries the morning trigger; calls Check with `in`
-- **Brightwheel Check Out** — carries the afternoon trigger; calls Check with `out`
+- **Brightwheel Check In** — carries the Arrive trigger; calls Attendance with `in`
+- **Brightwheel Check Out** — carries the Leave trigger; calls Attendance with `out`
 
 The two small ones exist so that **which trigger fired decides the direction**.
 Nothing works it out from the time of day, so editing a trigger's hours on the
 device cannot make it send the wrong direction.
 
 Run Attendance on its own — from the app, the Home Screen, or Siri — and it asks
-whether to check in or out. Cancelling the menu sends nothing.
+whether to check in or out. Canceling the menu sends nothing. A third item,
+"Forget saved sign-in and school code", clears what the shortcut has stored and
+is the only way to do so.
 
 `ARCHITECTURE.md` covers why it is built this way.
 
@@ -95,7 +97,7 @@ Only **Brightwheel Attendance** asks anything. Answer its three Setup questions:
 |---|---|
 | Brightwheel account email | Used to sign in |
 | Brightwheel account password | Same |
-| Check-in code | 4-digit guardian code; authenticates as you |
+| Brightwheel check-in code | 4-digit guardian code; authenticates as you |
 
 ### Nothing about your family is in the build
 
@@ -122,7 +124,7 @@ trigger — a background run cannot answer the code prompt.
 
 ### Triggers
 
-In iOS 27 a shortcut carries its own triggers, so add them to **Brightwheel Attendance
+In iOS 27 a shortcut carries its own triggers, so add them to **Brightwheel Check
 In** and **Brightwheel Check Out** — not to Brightwheel Attendance, which has no
 direction of its own.
 
@@ -196,7 +198,7 @@ The endpoints these shortcuts use.
 | `GET /users/me` | Auth probe. Invalid token → 401 with `E1200` |
 | `POST /sessions/start` | Sign-in step 1; sends the 2FA code |
 | `POST /sessions` | Sign-in step 2; returns a top-level `token` |
-| `GET /students/{id}/activities?page_size=1&action_type=ac_checkin` | Current state. `action_type` filters server-side |
+| `GET /students/{id}/activities?page_size=1&action_type=ac_checkin` | Not used. The roster call reports each child's state, so this read was dropped |
 | `POST /checkins/` | The check-in itself |
 | `GET /guardians/{id}/students_for_checkin` | **The roster.** Each child's id, name, room, and whether they are checked in right now. Needs `school_id`, `secret` and `time_zone` |
 | `GET /guardians/{id}/students` | A fuller roster. Not used — it carries addresses and medical notes this has no business seeing |

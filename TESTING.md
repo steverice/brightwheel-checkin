@@ -65,7 +65,7 @@ grep -c schools.mybrightwheel.com "dist-test/Brightwheel Attendance.xml"   # 0
 | `check_out_sends_checked_in_false` | Direction is structural — the wrapper decides it, not the clock |
 | `stale_school_code_causes_a_second_pass` | A rejected secret is recognized and retried instead of reported as a plain failure |
 | `expired_token_signs_in_again` | `E1200` → two-step 2FA → token stored → the run recovers and still sends |
-| `setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. Currently a **known-broken canary** — see the support matrix |
+| `test_setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. Currently a **known-broken canary** — see the support matrix |
 
 Assertions are on **recorded traffic**, not on notifications. "Nobody was
 checked in" is exactly "no POST reached `/checkins/`", which is a fact the mock
@@ -82,14 +82,16 @@ nowhere.
 
 | fixture | what it proves |
 |---|---|
-| one child | the common case, and that nothing assumes two |
-| three children | that nothing assumes two the other way |
 | an error body | a failed roster stops loudly instead of doing nothing quietly |
-| a restructured child shape | the guard the other three cannot cover, because they compare the reply against itself |
-| a child with empty `room_states` | one unreadable child stops the run rather than half-running it |
+| a restructured child shape | a child whose `room_states` key was renamed away has no room to send to |
+| a child with empty `room_states` | one child with no room stops the run rather than half-running it |
 | a child in two rooms | the room to send would be a guess, so nothing is sent |
-| a second room block missing `is_default_room` | the guard counts a key the extraction actually depends on |
+| a room entry with no `checked_in` | the one malformation a per-child room count cannot see |
+| one child empty, one in two rooms | every whole-roster total agrees; only the per-child count catches it |
 | a rotated secret | the re-scan still fires when the roster call is what sees the rotation |
+
+Every roster shape carries the same two children. Nothing yet varies the roster
+*length*, so "nothing assumes two" is not among the things this proves.
 
 Two fixtures earn their place by being wrong in a way that looks right: an
 error body and a restructured reply both drive every count the guards derive to
