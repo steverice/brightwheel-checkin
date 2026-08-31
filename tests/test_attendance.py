@@ -38,6 +38,9 @@ CHILD_A, CHILD_B = (c["id"] for c in ROSTER["children"])
 SCHOOL_ID = ROSTER["school_id"]
 ROOM_ID = ROSTER["room_id"]
 ROSTER_ROWS = [(c["id"], c["name"], ROOM_ID) for c in ROSTER["children"]]
+# What the mock serves as the guardian's own object_id, and so what the
+# roster URL must carry.
+GUARDIAN_ID = Scenario().guardian_id
 ARTIFACTS = Path(__file__).parent / "artifacts"
 
 
@@ -328,6 +331,41 @@ def test_reads_the_roster_at_runtime(s):
         f"expected both children from the roster, got {s.targets_of(posts)}"
 
 
+def test_the_roster_call_carries_the_guardian_id(s):
+    """The id must survive being read out of GET /users/me.
+
+    It is read by key name off the parsed body. An earlier version matched it
+    with a pattern anchored to the front of the response, which held only for
+    as long as Shortcuts happened to re-serialize object_id back into first
+    place. When that stopped, the roster URL lost its guardian segment, 404'd,
+    and the run announced that Brightwheel had returned no children — a broken
+    read filed as a broken API. The mock serves object_id out of first place,
+    so a positional read cannot pass here.
+    """
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    calls = _roster_requests(s)
+    assert calls, "the shortcut never asked for a roster"
+    assert f"/guardians/{GUARDIAN_ID}/" in calls[0]["path"], \
+        f"the roster call lost its guardian id: {calls[0]['path']}"
+
+
+def test_an_unreadable_guardian_id_stops_loudly(s):
+    """No id means no roster call at all, rather than one that 404s.
+
+    An empty guardian id still builds a well-formed URL, and Brightwheel
+    answers it 404 with no students in the body — indistinguishable downstream
+    from a school with nobody enrolled. So the run has to stop at the read.
+    """
+    s.mock.load(Scenario(roster=ROSTER_ROWS, guardian_id_readable=False,
+                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert not s.mock.checkins, \
+        "an unidentified account must not check anybody in"
+    assert not _roster_requests(s), \
+        "the run should stop at the guardian id, not ask for a roster without one"
+
+
 def test_a_failed_roster_stops_loudly(s):
     """An error body must not read as an empty roster.
 
@@ -433,6 +471,8 @@ TESTS = [
     test_expired_token_signs_in_again,
     test_setup_questions_commit_their_answers,
     test_reads_the_roster_at_runtime,
+    test_the_roster_call_carries_the_guardian_id,
+    test_an_unreadable_guardian_id_stops_loudly,
     test_a_failed_roster_stops_loudly,
     test_a_restructured_roster_stops,
     test_a_child_in_two_rooms_stops,

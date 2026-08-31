@@ -108,9 +108,10 @@ plus the `/users/me` call the shortcut already makes to check its token. A built
 shortcut is therefore generic: the same file works for any family, and a new
 sibling or a room move needs no rebuild.
 
-It also means the run stops rather than guessing. If the roster comes back
-empty, in a shape it cannot read, missing a child's room, or listing a child in
-two rooms, nothing is sent and a notification says which. A partial check-in is
+It also means the run stops rather than guessing. If it cannot tell which
+Brightwheel account this is, or the roster comes back empty, in a shape it
+cannot read, missing a child's room, or listing a child in two rooms, nothing is
+sent and a notification says which. A partial check-in is
 worse than none, because you would believe it worked.
 
 **No session token is asked for** — nobody setting this up has one. The first run

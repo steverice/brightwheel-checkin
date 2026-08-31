@@ -422,20 +422,29 @@ def build(env=None):
                  WFInput=attach(out(C_BAD, "Count"))))
 
     # The guardian id is the top-level object_id of this same response, so it
-    # costs no extra request. Anchored to the start because "object_id" appears
-    # five times in the body — the photo, an auth method and a school invite all
-    # have one — and only the first is the guardian. On a run that has to sign
-    # in this response is the E1200 error body instead, so the match comes back
-    # empty and a second read below fills it in.
-    u_gm, u_gg, u_gt = next(i), next(i), next(i)
-    A.append(act("is.workflow.actions.text.match", UUID=u_gm,
-                 WFMatchTextPattern=r'^\{\s*"object_id"\s*:\s*"([^"]+)"',
-                 text=ts(out(U_PROBE, "Contents of URL"))))
-    A.append(act("is.workflow.actions.text.match.getgroup", UUID=u_gg,
-                 WFGroupIndex="1", matches=attach(out(u_gm, "Matches"))))
+    # costs no extra request. Read by key name off the parsed body, because
+    # "object_id" appears four times in it — the photo, an auth method and a
+    # school invite all have one — and only the top-level key is the guardian.
+    #
+    # This used to be a Match Text anchored with ^ to the front of the body, on
+    # the reasoning that the wanted object_id is the first key. It is, on the
+    # wire. But Get Contents of URL parses the response and coerces a
+    # re-serialization in Shortcuts' own key order, where first place is not
+    # the API's to promise — measured on device at position six for a body of
+    # this shape. The anchor held until it did not, and an empty guardian id
+    # builds a URL that 404s and reads downstream as an empty roster.
+    #
+    # On a run that has to sign in this response is the E1200 error body
+    # instead, which has no object_id, so the read comes back empty and the
+    # second one below fills it in.
+    u_gv, u_gt = next(i), next(i)
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=u_gv,
+                 CustomOutputName="Guardian Id Value",
+                 WFGetDictionaryValueType="Value", WFDictionaryKey="object_id",
+                 WFInput=attach(out(U_PROBE, "Contents of URL"))))
     A.append(act("is.workflow.actions.gettext", UUID=u_gt,
                  CustomOutputName="Guardian Id Text",
-                 WFTextActionText=ts(out(u_gg, "Matched Text Group"))))
+                 WFTextActionText=ts(out(u_gv, "Guardian Id Value"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Guardian Id",
                  WFInput=attach(out(u_gt, "Guardian Id Text"))))
 
@@ -581,7 +590,7 @@ def build(env=None):
                  GroupingIdentifier=G_GID, WFControlFlowMode=0,
                  WFCondition=0, WFNumberValue="1",
                  WFInput=cond_input(out(C_NOGID, "Count"))))
-    u_me2, u_gm2, u_gg2, u_gt2 = (next(i) for _ in range(4))
+    u_me2, u_gv2, u_gt2 = (next(i) for _ in range(3))
     A.append(act("is.workflow.actions.downloadurl", UUID=u_me2,
                  Advanced=True, ShowHeaders=False,
                  WFURL=f"{BASE}/users/me", WFHTTPMethod="GET",
@@ -591,18 +600,47 @@ def build(env=None):
                      kv("X-Client-Name", ts(CLIENT_NAME)),
                      kv("X-Client-Version", ts(CLIENT_VERSION)),
                  ])))
-    A.append(act("is.workflow.actions.text.match", UUID=u_gm2,
-                 WFMatchTextPattern=r'^\{\s*"object_id"\s*:\s*"([^"]+)"',
-                 text=ts(out(u_me2, "Contents of URL"))))
-    A.append(act("is.workflow.actions.text.match.getgroup", UUID=u_gg2,
-                 WFGroupIndex="1", matches=attach(out(u_gm2, "Matches"))))
+    A.append(act("is.workflow.actions.getvalueforkey", UUID=u_gv2,
+                 CustomOutputName="Guardian Id Retry Value",
+                 WFGetDictionaryValueType="Value", WFDictionaryKey="object_id",
+                 WFInput=attach(out(u_me2, "Contents of URL"))))
     A.append(act("is.workflow.actions.gettext", UUID=u_gt2,
                  CustomOutputName="Guardian Id Retry",
-                 WFTextActionText=ts(out(u_gg2, "Matched Text Group"))))
+                 WFTextActionText=ts(out(u_gv2, "Guardian Id Retry Value"))))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Guardian Id",
                  WFInput=attach(out(u_gt2, "Guardian Id Retry"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_GID, WFControlFlowMode=2))
+
+    # Nothing below this works without an id, and an empty one is invisible: it
+    # builds a perfectly well-formed URL that answers 404, whose body has no
+    # students in it, which the roster guard then reports as Brightwheel having
+    # returned no children. That misfiled a broken read as a broken API for a
+    # whole morning. Guarded here, at the boundary it belongs to, so it says
+    # what actually went wrong.
+    #
+    # Exit rather than a flag: this is still top level, before the attempt
+    # Repeat, which is the only place this file uses Exit.
+    G_HASGID = next(i)
+    C_HASGID = gate("Guardian Id", None)
+    A.append(comment(
+        "Stop if the account could not be identified.\n"
+        "- Condition counts whether a guardian id was read\n"
+        "- An empty one would 404 the roster call and read as an empty roster"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_HASGID, WFControlFlowMode=0,
+                 WFCondition=0, WFNumberValue="1",
+                 WFInput=cond_input(out(C_HASGID, "Count"))))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("Brightwheel — nobody ",
+                                              out(U_VERB, "Verb")),
+                 WFNotificationActionBody=ts(
+                     "Could not read which Brightwheel account this is, so "
+                     "nothing was sent. Run this shortcut by hand to try "
+                     "again.")))
+    A.append(act("is.workflow.actions.exit"))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_HASGID, WFControlFlowMode=2))
 
     # ---- attempt loop: school code, then every child ----
     #

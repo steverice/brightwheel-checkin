@@ -382,7 +382,9 @@ design document cannot be checked by anyone else.
   match's group. Group 4 returning different values for two students is what
   proves it tracks matches rather than merely accepting the index.
 - **`Match Text` honors `^` as start-of-string.** An anchored pattern returned 1
-  match where the unanchored one returned 4 on the same body.
+  match where the unanchored one returned 4 on the same body. The anchor works;
+  what it anchors to is the trap. Nothing reads a parsed response by position
+  any more — see the re-serialization finding below.
 - **`Repeat with Each` iterates a `Matches` output**, and the repeat item coerces
   to the matched substring, so `Match Text` *on the item* isolates one record.
 - **`Get Group` against a single repeat item does not work.** It stores nothing
@@ -430,6 +432,18 @@ design document cannot be checked by anyone else.
   needed several fields from one record. Anything that has to pair fields must
   bound itself with brace structure — `[^{}]*` inside one object, or a nested
   object skipped explicitly — rather than with distance.
+
+  **"First key" is a position too, and this one reached production.** The
+  guardian id was read off `/users/me` with
+  `^\{\s*"object_id"\s*:\s*"([^"]+)"`, on the reasoning that the wanted
+  `object_id` is the first of that body's nineteen top-level keys while the
+  other three belong to a photo, an auth method and a school invite. It is
+  first on the wire, every time. It stopped being first in the
+  re-serialization on 2026-08-31: the match returned nothing, the roster call
+  went to `/guardians//students_for_checkin`, and that 404 — a body with no
+  students in it — was announced by the roster guard as Brightwheel having
+  returned no children. A read that broke, reported as an API that had not.
+  Both guardian-id reads now use `Get Dictionary Value` on `object_id`.
 - **A numeric `If` accepts a Math output directly.** Feeding
   `Calculation Result` to `WFCondition=2, WFNumberValue="0"` branches correctly:
   a difference of 1 took the greater-than branch, 0 took the else branch. So two
@@ -447,7 +461,7 @@ design document cannot be checked by anyone else.
 `GET /guardians/{id}/students_for_checkin`, which returns every child's id,
 name, room and current state in one call — replacing both a baked-in roster and
 a per-child activities read. The guardian id comes from the `/users/me` probe
-that already runs; the time zone comes from the device.
+that already runs, read by key name off it; the time zone comes from the device.
 
 **Read as a dictionary, not matched as text.** `Get Contents of URL` parses
 JSON, so the text a pattern would see is a re-serialization in Shortcuts' own
@@ -471,6 +485,12 @@ count one child's own rooms.
 | every room entry carries a state | `"checked_in"` count is short: a room lost the key |
 | this child has a room | their own `room_states` is empty or absent |
 | this child is in one room | their own `room_states` holds more than one |
+
+One more sits above all of these, back where the guardian id is read: an empty
+id builds a `/guardians//…` URL that answers 404 with no students in the body,
+which arrives here indistinguishable from a school with nobody enrolled. Every
+guard in this table would have blamed the API for a bad read, and for one
+morning the first of them did. It stops the run where the id is read instead.
 
 The last two run in **their own pass** over the children, before the sending
 pass. A check inside the sending loop cannot be all-or-nothing: by the child

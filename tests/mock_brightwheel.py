@@ -105,6 +105,12 @@ class Scenario:
     # The guardian id the roster path must carry; anything else answers E1204.
     guardian_id: str = "usr_guardian"
 
+    # False drops object_id from GET /users/me entirely, so the shortcut cannot
+    # learn who it is. The roster URL it would build then 404s, which is exactly
+    # what an empty roster looks like downstream — hence the guard that stops
+    # the run before it gets there.
+    guardian_id_readable: bool = True
+
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -158,14 +164,38 @@ class _Handler(BaseHTTPRequestHandler):
         
         if path.endswith("/users/me"):
             if self._authenticated(sc):
-                # Several object_ids, as the real body has, so an unanchored
-                # guardian-id pattern fails the suite instead of passing it.
-                # The wanted one is first, which is what makes ^ load-bearing.
-                resp = {"object_id": sc.guardian_id,
+                # The live body, field for field: nineteen top-level keys with
+                # four object_ids among them — the guardian's own plus a photo,
+                # an auth method and a school invite.
+                #
+                # `object_id` sits in the middle on purpose. Brightwheel does
+                # put it first on the wire, but `Get Contents of URL` parses the
+                # response and hands Match Text a re-serialization in Shortcuts'
+                # own key order, so first place is a position the API never
+                # promised and the device has already been measured not to keep
+                # (see ARCHITECTURE.md). Serving it out of order is what holds
+                # the shortcut to reading by key *name*.
+                resp = {"billing_status": None,
+                        "first_name": "Test",
+                        "last_name": "Guardian",
                         "email": "test@example.invalid",
+                        "auth_phone_number": None,
+                        "phone_1": None,
+                        "phone_2": None,
                         "profile_photo": {"object_id": "photo_decoy"},
+                        "raw_passcode": None,
+                        "object_id": sc.guardian_id,
+                        "user_type": "guardian",
+                        "created_at": "2026-01-05T22:18:46.900Z",
+                        "activated": True,
+                        "invite_code": "testinvite",
+                        "intro_seen": True,
+                        "demo_user": False,
+                        "intercom_user_jwt": "jwt_decoy",
                         "authentication_methods": [{"object_id": "auth_decoy"}],
                         "school_invites": [{"school": {"object_id": "school_decoy"}}]}
+                if not sc.guardian_id_readable:
+                    del resp["object_id"]
             else:
                 resp = {"error": "This resource requires authentication",
                         "code": "E1200"}
