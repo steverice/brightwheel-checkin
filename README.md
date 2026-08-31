@@ -28,11 +28,12 @@ is the only way to do so.
 
 `ARCHITECTURE.md` covers why it is built this way.
 
-> **Setup questions are broken on current iOS 27 betas.** From `24A5408d`
+> **Setup questions are broken on every current iOS 27 beta.** From `24A5408d`
 > onwards, answering the import questions and tapping **Add Shortcut** does
 > nothing — no install, no error. It is an iOS regression, not a problem with
 > this build: it reproduces with a two-action shortcut, and the same file
-> installs correctly on iOS 26.5 and on iOS 27 beta `24A5355p`. Until it is
+> installs correctly on iOS 26.5 and on iOS 27 beta `24A5355p`. Still broken on
+> beta 7 (`24A5424a`), checked on a physical iPhone. Until it is
 > fixed, either tap **Skip Setup** and fill the three Text actions in yourself,
 > or install a `--debug` build, which asks nothing.
 

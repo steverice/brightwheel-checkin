@@ -105,12 +105,22 @@ an unanchored guardian-id pattern fails the suite instead of passing it.
 Established by running the suite and targeted probes against each runtime, not
 inferred from release notes.
 
-| Runtime | Shortcuts run? | Setup questions? |
-|---|---|---|
-| iOS 26.5 `23F77` (release) and earlier | **No** | yes |
-| iOS 27.0 beta `24A5355p` | yes | yes |
-| iOS 27.0 beta `24A5408d` | yes | **No** |
-| iOS 27.0 beta `24A5423a` | yes | **No** |
+| Runtime | Shortcuts run? | Setup questions? | Checked on |
+|---|---|---|---|
+| iOS 26.5 `23F77` (release) and earlier | **No** | yes | simulator |
+| iOS 27.0 beta 1 `24A5355p` | yes | yes | simulator |
+| iOS 27.0 beta 5 `24A5408d` | yes | **No** | simulator |
+| iOS 27.0 beta 6 `24A5423a` | yes | **No** | simulator |
+| iOS 27.0 beta 7 `24A5424a` | yes | **No** | **device** |
+
+Beta 7 is a device result because Apple has published no simulator runtime for
+it — the downloadable index stops at beta 6. That makes it the better data
+point of the set: the regression is not a simulator artifact.
+
+Betas 2, 3 and 4 (`24A5370g`, `24A5380g`/`24A5380i`, `24A5390f`) have not been
+tried, so the regression landed somewhere between beta 1 and beta 5. Narrowing
+it would cost an 8 GB runtime download per beta and would not change what the
+build has to do.
 
 **iOS 27 is genuinely required to run these shortcuts.** On iOS 26.5 every test
 fails at the first action with "the shortcut could not be run because an action

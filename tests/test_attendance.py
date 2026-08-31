@@ -268,6 +268,9 @@ def test_setup_questions_commit_their_answers(s):
 
     Known broken on iOS 27 betas from 24A5408d onwards: the wizard collects the
     answers and "Add Shortcut" then does nothing at all, with no error logged.
+    Still broken at beta 7 (24A5424a), checked on a physical iPhone because
+    Apple has published no simulator runtime past beta 6 — so this is not a
+    simulator artifact.
     Verified working on iOS 26.5 (23F77) and on iOS 27 beta 24A5355p, so the
     question shape is right and this is a regression to wait out. When this
     starts passing, drop the expected_broken marker.
@@ -304,7 +307,8 @@ def test_setup_questions_commit_their_answers(s):
 
 test_setup_questions_commit_their_answers.expected_broken = (
     "iOS 27 beta regression: Add Shortcut is inert once a question is answered "
-    "(works on iOS 26.5 and on iOS 27 beta 24A5355p)")
+    "(works on iOS 26.5 and on iOS 27 beta 24A5355p; still broken on a device "
+    "at beta 7, 24A5424a)")
 
 
 def _roster_requests(s):
