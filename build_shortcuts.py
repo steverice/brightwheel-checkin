@@ -1189,8 +1189,13 @@ def build_wrapper(direction):
     title = "Brightwheel Check In" if checking_in else "Brightwheel Check Out"
     word = "in" if checking_in else "out"
     # The trigger each wrapper wants, named rather than offered as a choice —
-    # the bundled diagram rings this exact row in the action picker.
-    trigger = "Arrive" if checking_in else "Leave"
+    # the bundled diagram rings this exact row in the action picker. Both want
+    # Arrive: the school asks that children be checked out on the parents' way
+    # in, so the check-out fires on arriving to pick up rather than on leaving
+    # with them. The time range is what tells the two apart, and it lives on
+    # the device — see the direction note below for why that is still safe.
+    trigger = "Arrive"
+    when = "drop-off time" if checking_in else "pickup time"
     # A plane arriving for in, departing for out: a matched pair that reads as
     # direction and nothing else. (Not 62466/62467, which are a plane on a
     # runway rather than the arriving/departing pair.) Sunrise/sunset was the other candidate and was
@@ -1217,8 +1222,13 @@ def build_wrapper(direction):
     A = [
         comment(
             f"{title}\n\n"
-            f"Attach the {trigger} trigger to this shortcut. All it does is "
-            f"tell Brightwheel Attendance to check the children {word}.\n\n"
+            f"Attach the {trigger} trigger to this shortcut, set to {when}. "
+            f"All it does is tell Brightwheel Attendance to check the children "
+            f"{word}.\n\n"
+            "Both wrappers arrive at the same school, so the time range is what "
+            "tells them apart. Check out on the way in, not on the way out: the "
+            "school asks that children be checked out as parents walk in, and an "
+            "arrival fires while you are still parking.\n\n"
             "The direction lives here rather than in the shortcut that does the "
             "work, so which trigger fired decides it. Nothing is worked out from "
             "the time of day, which means changing a trigger's hours cannot make "

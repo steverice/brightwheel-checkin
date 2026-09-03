@@ -14,8 +14,8 @@ opening the app, fired unattended by location triggers.
 The three shortcuts:
 
 - **Brightwheel Attendance** — does the work. Run it by hand and it asks which way.
-- **Brightwheel Check In** — carries the Arrive trigger; calls Attendance with `in`
-- **Brightwheel Check Out** — carries the Leave trigger; calls Attendance with `out`
+- **Brightwheel Check In** — carries a morning Arrive trigger; calls Attendance with `in`
+- **Brightwheel Check Out** — carries an afternoon Arrive trigger; calls Attendance with `out`
 
 The two small ones exist so that **which trigger fired decides the direction**.
 Nothing works it out from the time of day, so editing a trigger's hours on the
@@ -130,17 +130,27 @@ In iOS 27 a shortcut carries its own triggers, so add them to **Brightwheel Chec
 In** and **Brightwheel Check Out** — not to Brightwheel Attendance, which has no
 direction of its own.
 
-Any pair of triggers works, as long as one means "going in" and the other "going
-out": arriving in the morning and leaving in the afternoon, or arriving twice
-with different time ranges. The shortcut does not care which; it only knows which
-wrapper called it.
+**Use Arrive for both**, on two different time ranges — arriving at the school in
+the morning and arriving again in the afternoon. Checking out on the way in is
+what the school asks for: children should be checked out as parents walk in, and
+an arrival fires while you are still parking, so they are already checked out by
+the time you reach the room. A Leave trigger only sends once you are driving away
+with them.
+
+Any pair still works, as long as one means "going in" and the other "going out" —
+leaving in the afternoon is a supported alternative, and the shortcut cannot tell
+the difference. It only knows which wrapper called it.
 
 **Each wrapper shows you how, once.** The first time you run Brightwheel Check
 In or Check Out by hand, it displays a diagram pointing at the action it needs —
-Arrive for one, Leave for the other — and then never shows it again.
+the same Arrive row for both, differing in the time range to set — and then never
+shows it again.
 
 - **Attach triggers last.** Re-importing a rebuilt shortcut loses them, and they
   cannot be generated into the file.
+- **Do not let the two ranges overlap.** With both wrappers watching the same
+  arrival, the hours are the only thing telling them apart. A bad range fires a
+  run at the wrong time — never in the wrong direction, which stays structural.
 - Set Location Services → Shortcuts to **Always**, or the geofence silently never
   fires.
 - **Confirm Before Run** already defaults to off, which is what lets a trigger

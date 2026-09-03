@@ -672,12 +672,28 @@ much smaller than the picker's.
 ## Showing an image, and the first-run guide
 
 Each wrapper shows a diagram the first time it runs, explaining how to attach
-its own trigger — Arrive for Check In, Leave for Check Out. It lives in the
-wrappers rather than in Attendance on purpose: **Attendance is complete on its
-own**, and the wrappers are optional extras that automate it, so setup
-instructions for an optional extra do not belong in the shortcut that extra is
-optional to. Two wrappers also means two different guides, which is what the
-job actually needs.
+its own trigger — an **Arrive** trigger for both, separated by their time
+ranges. Check Out used to point at Leave; it points at a second arrival now
+because the school asks that children be checked out as parents walk in, and an
+arrival fires while you are still parking rather than once you are driving away
+with them. The guide lives in the wrappers rather than in Attendance on purpose:
+**Attendance is complete on its own**, and the wrappers are optional extras that
+automate it, so setup instructions for an optional extra do not belong in the
+shortcut that extra is optional to. Two wrappers also means two different
+guides, which is what the job actually needs.
+
+Both guides therefore ring the same row in one shared picker screenshot, and it
+is the configured panel and step 4 that differ — `capture-arrive-set.png` at
+drop-off time against `capture-arrive-pm-set.png` at pickup time.
+
+Two arrivals at one school move all of the load onto the **time ranges, which
+must not overlap**. They are now the only thing telling the triggers apart, and
+they live on the device where the build cannot check them. What that cannot
+break is direction: the wrapper still decides it, so a badly set range makes a
+run fire at the wrong *time*, never in the wrong direction — the failure it can
+produce is a check-out in the morning, not a check-in that reports a departure.
+Arriving twice inside one window is separately harmless, because the
+idempotency guard above skips anyone already in the state the run wants.
 
 There is no image parameter on any alert. Show Alert takes a title and a
 message and nothing else. What works is carrying the PNG as base64 in a Text

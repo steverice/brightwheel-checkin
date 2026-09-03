@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Draw the first-run setup diagrams the wrappers show.
 
-Each wrapper explains how to attach its own trigger, so there are two: Check In
-points at the Arrive action, Check Out at Leave.
+Each wrapper explains how to attach its own trigger, so there are two. Both
+point at the Arrive action: the school asks that children be checked out on the
+parents' way in, so the check-out fires on arriving for pickup rather than on
+leaving. What separates the two is the time range, which is why the steps and
+the subtitle name it and the shared picker panel does not.
 
 Each diagram is a before/after pair. The top panel is the action picker with
 the row to tap ringed; the bottom panel is the same trigger once it has a
@@ -10,10 +13,12 @@ location and a time range, so there is something to compare your own screen
 against. Knowing what to search for is only half of it — "have I finished?" is
 the question the steps alone cannot answer.
 
-All four screenshots came off an iOS 27 simulator (assets/capture-*.png, and
-capture-*-set.png for the configured ones). They are stored **already cropped
-to the region used**, and are pasted whole — a full 1206x2622 screenshot is
-four times the bytes for the same picture, and these live in git.
+All three screenshots came off an iOS 27 simulator (assets/capture-*.png, and
+capture-*-set.png for the configured ones). Both diagrams share one picker
+capture, because both ring the same row; only the configured panel differs.
+They are stored **already cropped to the region used**, and are pasted whole —
+a full 1206x2622 screenshot is four times the bytes for the same picture, and
+these live in git.
 
 To recapture, take a full screenshot on an iPhone 17 Pro simulator and cut out
 the same region before saving it here:
@@ -43,10 +48,11 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = pathlib.Path(__file__).parent
 ASSETS = HERE / "assets"
 
-# The action row to ring. Both screenshots are the same screen — they differ
-# only in the label inside this row — so the rectangle is measured once and
-# shared. Ringing them from two hand-measured rectangles is what made the two
-# diagrams disagree: one ring cut into the card, the other sat around it.
+# The action row to ring. Both diagrams ring Arrive, so they now share one
+# picker capture outright and the rectangle is measured once. Ringing them from
+# two hand-measured rectangles is what made the two diagrams disagree back when
+# each had its own screenshot: one ring cut into the card, the other sat around
+# it.
 #
 # Measured, not eyeballed: the card is the white rounded rect, found by scanning
 # for near-white at x=1000 (clear of the icon and the text) and along y=795 of
@@ -60,14 +66,16 @@ PLAN = {
     "check-in": {
         "capture": "capture-arrive.png",
         "result": "capture-arrive-set.png",
-        "subtitle": "Automatically check in when you arrive at school",
+        "subtitle": "Automatically check in when you drop off in the morning",
         "action": "Arrive",
+        "when": "drop-off time",
     },
     "check-out": {
-        "capture": "capture-leave.png",
-        "result": "capture-leave-set.png",
-        "subtitle": "Automatically check out when you leave school",
-        "action": "Leave",
+        "capture": "capture-arrive.png",
+        "result": "capture-arrive-pm-set.png",
+        "subtitle": "Automatically check out on your way in to pick up",
+        "action": "Arrive",
+        "when": "pickup time",
     },
 }
 WIDTH = 860
@@ -105,10 +113,13 @@ def draw(kind, spec):
     # It already defaults to off — checked on a simulator, untouched, straight
     # after adding the trigger — so unattended runs need nothing done to it, and
     # whether you want a prompt is your call rather than a setup step.
+    # Step 4 names the time range rather than just asking for one. Both
+    # wrappers now ring the same row in the same picture, so the range is the
+    # only thing that tells the two guides apart on screen.
     steps = ["1.  Tap Edit on this shortcut.",
              "2.  Tap the search field at the bottom.",
              f'3.  Search "{spec["action"]}" and tap it under Automation.',
-             "4.  Pick the school, and set the time range."]
+             f'4.  Pick the school, and set the time range to {spec["when"]}.']
 
     # Lay the page out first so the canvas is exactly as tall as its contents.
     # It used to be a hard-coded 1320, which silently clipped anything added.
