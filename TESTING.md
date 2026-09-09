@@ -30,6 +30,22 @@ not replaced** — the harness skips installing over it.
   mouse events, so without this the cursor moves and nothing is pressed.
 - Nothing else. The certificate, the mock, and the test build are all generated.
 
+> **Xcode 27 breaks this harness.** It removed `Simulator.app` — the whole of
+> `Xcode.app/Contents/Developer/Applications/` is gone — and replaced it with
+> **Device Hub** (`Xcode.app/Contents/Applications/DeviceHub.app`, process
+> `DeviceHub`), which hosts simulators and real devices in one sidebar window.
+> `simharness.py` drives `process "Simulator"` throughout, so every AppleScript
+> in it now finds nothing. Two more things it depends on are gone with it:
+> `Show Device Bezels` and `Point Accurate`, which is what made `_mapping()`'s
+> window-frame arithmetic exact. Bezels are always drawn now and there is no 1:1
+> zoom, so the device screen has to be *measured* inside the window instead —
+> and neither the sidebar nor the device screen appears in the accessibility
+> tree, so there is no way around clicking coordinates.
+>
+> `xcrun simctl` is untouched, including `simctl io <udid> screenshot`, so every
+> assertion the suite makes about on-disk state still works headlessly. Until
+> the port lands, run the suite under Xcode 26.
+
 **Other simulators can stay booted.** The harness brings its own device's
 window to the front and verifies it arrived, because every Simulator menu it
 touches applies to the frontmost window. A visionOS device in front has no
