@@ -269,14 +269,20 @@ def test_setup_questions_commit_their_answers(s):
     placeholders and expects setup to fill them in. It is deliberately tiny, so
     when it fails it is saying something about iOS and nothing about Brightwheel.
 
-    Known broken on iOS 27 betas from 24A5408d onwards: the wizard collects the
-    answers and "Add Shortcut" then does nothing at all, with no error logged.
-    Still broken at beta 7 (24A5424a), checked on a physical iPhone because
-    Apple has published no simulator runtime past beta 6 — so this is not a
-    simulator artifact.
+    Known broken from iOS 27 beta 24A5408d through the 27.0 release candidate
+    24A434: the wizard collects the answers and "Add Shortcut" then does nothing
+    at all, with no error logged. Beta 7 (24A5424a) was checked on a physical
+    iPhone because Apple published no simulator runtime past beta 6 — so this is
+    not a simulator artifact.
     Verified working on iOS 26.5 (23F77) and on iOS 27 beta 24A5355p, so the
     question shape is right and this is a regression to wait out. When this
     starts passing, drop the expected_broken marker.
+
+    This still tests "Add Shortcut", deliberately, because that is the button
+    whose repair we are waiting on. Skip Setup does commit the answers on
+    24A434, and that is what the shipping build now tells the user to reach
+    for — see TESTING.md — but a canary that tapped Skip Setup would go green
+    while the actual bug was still there.
     """
     name = s.unique_name("Setup Canary")
     path = testbuild.build_setup_probe(name)
@@ -309,9 +315,10 @@ def test_setup_questions_commit_their_answers(s):
 
 
 test_setup_questions_commit_their_answers.expected_broken = (
-    "iOS 27 beta regression: Add Shortcut is inert once a question is answered "
+    "iOS 27 regression: Add Shortcut is inert once a question is answered "
     "(works on iOS 26.5 and on iOS 27 beta 24A5355p; still broken on a device "
-    "at beta 7, 24A5424a)")
+    "at beta 7, 24A5424a, and on the 27.0 release candidate, 24A434). "
+    "Skip Setup commits the answers and is the documented way through.")
 
 
 def _roster_requests(s):

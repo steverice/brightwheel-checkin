@@ -153,6 +153,19 @@ SETUP = [
      "Your 4-digit guardian check-in code.", "not set", ""),
 ]
 
+# iOS 27 asks these one at a time, and only the last page carries the button
+# that commits them. That button is dead: from 24A5408d through the 27.0
+# release candidate 24A434, tapping "Add Shortcut" after answering a question
+# does nothing at all — no install, no error. "Skip Setup" commits every answer
+# correctly, which its name gives nobody any reason to expect, so the last
+# question has to say so. Measured, not assumed: all three answers were read
+# back out of the installed shortcut. See TESTING.md.
+LAST_QUESTION_NOTE = (
+    "\n\niOS 27: if \u201cAdd Shortcut\u201d does nothing when you tap it, tap "
+    "\u201cSkip Setup\u201d instead \u2014 it saves these answers too. That is an "
+    "iOS bug, not a problem with what you typed."
+)
+
 
 def build(env=None):
     """The shortcut that does the work. Direction arrives as Shortcut Input."""
@@ -381,6 +394,11 @@ def build(env=None):
             })
         A.append(act(ident, UUID=U[key], CustomOutputName=names[key],
                      **{param: default}))
+    if questions:
+        # Appended to whichever question comes last rather than written into
+        # SETUP, so reordering the questions cannot leave the note stranded on
+        # a page whose button still works.
+        questions[-1]["Text"] += LAST_QUESTION_NOTE
 
     # ---- session token, with interactive sign-in on failure ----
     #

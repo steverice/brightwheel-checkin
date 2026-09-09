@@ -128,10 +128,15 @@ inferred from release notes.
 | iOS 27.0 beta 5 `24A5408d` | yes | **No** | simulator |
 | iOS 27.0 beta 6 `24A5423a` | yes | **No** | simulator |
 | iOS 27.0 beta 7 `24A5424a` | yes | **No** | **device** |
+| iOS 27.0 RC `24A434` | yes | **No** — but Skip Setup commits them | simulator |
 
 Beta 7 is a device result because Apple has published no simulator runtime for
 it — the downloadable index stops at beta 6. That makes it the better data
 point of the set: the regression is not a simulator artifact.
+
+The release candidate has not been checked on a device. Everything in the
+`24A434` row was measured on a simulator, so the Skip Setup workaround is worth
+confirming on a phone before anyone relies on it.
 
 Betas 2, 3 and 4 (`24A5370g`, `24A5380g`/`24A5380i`, `24A5390f`) have not been
 tried, so the regression landed somewhere between beta 1 and beta 5. Narrowing
@@ -155,9 +160,30 @@ importing a shortcut that merely *has* questions is fine; it is committing the
 
 That is what `test_setup_questions_commit_their_answers` watches. It is marked
 `expected_broken`, so it reports **KNOWN** in yellow and does not fail the
-suite — and the day a beta fixes it, it reports **FIXED** and tells you to drop
-the marker. Until then, `dist/` cannot be installed through its documented
-setup flow, which is why the debug build (no questions) is the practical path.
+suite — and the day a release fixes it, it reports **FIXED** and tells you to
+drop the marker.
+
+**Skip Setup commits the answers, so `dist/` is installable after all.** Found
+on the `24A434` release candidate, and it is the reason the last setup question
+now carries a note saying so. Three probes, each read back off the device rather
+than judged from the screen:
+
+| what was done | what the installed shortcut held |
+|---|---|
+| answer typed, **Add Shortcut** tapped (twice, 5s apart) | nothing installed at all |
+| answer typed, **Skip Setup** tapped | installed, holding the typed answer |
+| nothing typed, **Skip Setup** tapped | installed, holding the `not set` placeholder |
+
+The second and third rows together are the proof: the field is genuinely read,
+rather than Skip Setup applying something unconditionally. Repeated against the
+real 238-action build with all three questions answered — every answer reached
+its own `gettext` action, in order, and no action was left holding `not set`.
+
+Two details of the multi-question flow that the one-question canary cannot see.
+iOS asks the questions **one at a time**, and the button reads **Next** until
+the last page; Next works normally, so it is specifically the final commit that
+is dead. And **the answer field autocapitalizes** — `pw9swordfish` is stored as
+`Pw9swordfish`. Digits are immune, which is why the canary types digits.
 
 ## How it fits together
 

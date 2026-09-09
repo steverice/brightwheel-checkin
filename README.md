@@ -28,14 +28,19 @@ is the only way to do so.
 
 `ARCHITECTURE.md` covers why it is built this way.
 
-> **Setup questions are broken on every current iOS 27 beta.** From `24A5408d`
-> onwards, answering the import questions and tapping **Add Shortcut** does
-> nothing — no install, no error. It is an iOS regression, not a problem with
-> this build: it reproduces with a two-action shortcut, and the same file
-> installs correctly on iOS 26.5 and on iOS 27 beta `24A5355p`. Still broken on
-> beta 7 (`24A5424a`), checked on a physical iPhone. Until it is
-> fixed, either tap **Skip Setup** and fill the three Text actions in yourself,
-> or install a `--debug` build, which asks nothing.
+> **On iOS 27, finish the setup questions with Skip Setup, not Add Shortcut.**
+> From `24A5408d` through the 27.0 release candidate `24A434`, answering an
+> import question and tapping **Add Shortcut** does nothing at all — no install,
+> no error, nothing logged. Tapping **Skip Setup** on that same page installs
+> the shortcut *and* keeps every answer you typed, which its name gives you no
+> reason to expect. The last question says so on screen.
+>
+> It is an iOS regression, not a problem with this build: it reproduces with a
+> two-action shortcut carrying one question, and the same file installs
+> correctly on iOS 26.5 and on iOS 27 beta `24A5355p`. Verified on the release
+> candidate by reading all three answers back out of the installed shortcut —
+> see the support matrix in `TESTING.md`. A `--debug` build, which asks nothing,
+> sidesteps the whole flow.
 
 ## Build
 
@@ -99,6 +104,18 @@ Only **Brightwheel Attendance** asks anything. Answer its three Setup questions:
 | Brightwheel account email | Used to sign in |
 | Brightwheel account password | Same |
 | Brightwheel check-in code | 4-digit guardian code; authenticates as you |
+
+iOS asks them **one at a time**. The button reads **Next** on the first two
+pages and **Add Shortcut** on the last — and on iOS 27 that last button does
+nothing, so finish with **Skip Setup**. See the warning at the top.
+
+**Watch the first letter of the password.** The answer field autocapitalizes,
+so a password typed as `hunter2` is stored as `Hunter2` and the sign-in fails
+with credentials that look right. Nothing the build can switch off: import
+questions expose no autocapitalization setting. The email is likelier to survive
+it — most services fold email case, though that is not something this project
+has tested against Brightwheel — but fix both. The check-in code is digits and
+cannot be affected.
 
 ### Nothing about your family is in the build
 
