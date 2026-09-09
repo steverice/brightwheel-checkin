@@ -620,9 +620,11 @@ from. So the import sheet shows a name, an icon, and the setup questions —
 nothing else you can write.
 
 That makes a question's own `Text` the only prose slot on the whole import
-flow, which is why the iOS 27 "Add Shortcut is dead, tap Skip Setup" note is
-appended to the last question rather than living somewhere more sensible. It
-takes `\n\n` and renders the paragraph break, checked on a simulator.
+flow, which is why both warnings the setup flow needs are appended to questions
+rather than living somewhere more sensible: the iOS 27 "Add Shortcut is dead,
+tap Skip Setup" note on the last question, and the case-sensitivity warning on
+the password. `Text` takes `\n\n` and renders the paragraph break; both were
+checked on a simulator.
 
 `data/shortcuts-official-glyph-mapping.json` is not trustworthy: it calls
 `59692` `circledDownArrow`, and it renders as a chevron. Rather than guess,

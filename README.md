@@ -111,8 +111,9 @@ nothing, so finish with **Skip Setup**. See the warning at the top.
 
 **Watch the first letter of the password.** The answer field autocapitalizes,
 so a password typed as `hunter2` is stored as `Hunter2` and the sign-in fails
-with credentials that look right. Nothing the build can switch off: import
-questions expose no autocapitalization setting. The email is likelier to survive
+with credentials that look right. Nothing the build can switch off — import
+questions expose no autocapitalization setting — so the password question warns
+about it on screen instead. The email is likelier to survive
 it — most services fold email case, though that is not something this project
 has tested against Brightwheel — but fix both. The check-in code is digits and
 cannot be affected.

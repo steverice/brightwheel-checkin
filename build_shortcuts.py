@@ -153,6 +153,19 @@ SETUP = [
      "Your 4-digit guardian check-in code.", "not set", ""),
 ]
 
+# The answer field autocapitalizes, and an import question exposes no setting
+# that turns it off. A password typed as "hunter2" is therefore stored as
+# "Hunter2", and the sign-in fails later with credentials that look right —
+# so the question that suffers for it says so. Measured on iOS 27 24A434.
+# Digits are unaffected, which is why the check-in code needs no such warning,
+# and the email is only likely to survive it because most services fold case.
+QUESTION_NOTES = {
+    "password": (
+        "\n\nPasswords are case-sensitive, and this field capitalizes the first "
+        "letter for you. Check it matches your password exactly before moving on."
+    ),
+}
+
 # iOS 27 asks these one at a time, and only the last page carries the button
 # that commits them. That button is dead: from 24A5408d through the 27.0
 # release candidate 24A434, tapping "Add Shortcut" after answering a question
@@ -390,7 +403,7 @@ def build(env=None):
                 "Category": "Parameter",
                 "DefaultValue": prompt_default,
                 "ParameterKey": param,
-                "Text": f"{prompt} — {blurb}",
+                "Text": f"{prompt} — {blurb}" + QUESTION_NOTES.get(key, ""),
             })
         A.append(act(ident, UUID=U[key], CustomOutputName=names[key],
                      **{param: default}))
