@@ -30,32 +30,50 @@ not replaced** — the harness skips installing over it.
   mouse events, so without this the cursor moves and nothing is pressed.
 - Nothing else. The certificate, the mock, and the test build are all generated.
 
-> **Xcode 27 breaks this harness.** It removed `Simulator.app` — the whole of
-> `Xcode.app/Contents/Developer/Applications/` is gone — and replaced it with
-> **Device Hub** (`Xcode.app/Contents/Applications/DeviceHub.app`, process
-> `DeviceHub`), which hosts simulators and real devices in one sidebar window.
-> `simharness.py` drives `process "Simulator"` throughout, so every AppleScript
-> in it now finds nothing. Two more things it depends on are gone with it:
-> `Show Device Bezels` and `Point Accurate`, which is what made `_mapping()`'s
-> window-frame arithmetic exact. Bezels are always drawn now and there is no 1:1
-> zoom, so the device screen has to be *measured* inside the window instead —
-> and neither the sidebar nor the device screen appears in the accessibility
-> tree, so there is no way around clicking coordinates.
->
-> `xcrun simctl` is untouched, including `simctl io <udid> screenshot`, so every
-> assertion the suite makes about on-disk state still works headlessly. Until
-> the port lands, run the suite under Xcode 26.
+### Simulator.app, or Device Hub
 
-**Other simulators can stay booted.** The harness brings its own device's
-window to the front and verifies it arrived, because every Simulator menu it
-touches applies to the frontmost window. A visionOS device in front has no
-"Show Device Bezels" item at all, which used to kill the run on a missing menu
-item rather than on anything real. Window settings are now applied only if the
-frontmost window offers them; the hardware keyboard is not optional, so a
-missing one there is still an error, and it names the likely cause.
+Xcode 27 deleted `Simulator.app` and replaced it with **Device Hub**
+(`Xcode.app/Contents/Applications/DeviceHub.app`, process `DeviceHub`), which
+shows simulators and real devices together in one window with a sidebar. The
+harness detects which one is installed and drives either; everything that
+differs lives in the two `_Host` classes in `simharness.py`. `xcrun simctl` is
+untouched under both, so every assertion about on-disk state is headless
+regardless.
 
-Leave the Simulator window alone while the suite runs — the taps go to real
-screen coordinates.
+Three things are genuinely harder under Device Hub, and are worth knowing when
+a run misbehaves:
+
+- **Selecting the device is a click, not a command.** There is one window and it
+  shows whichever device the sidebar has selected, so "no window for this
+  device" is the ordinary state. Nothing in the sidebar reaches the
+  accessibility tree — the split view reports *zero* children — so the harness
+  filters the sidebar by typing the device name and clicks rows by position,
+  checking the window title after each until it matches. Never send ⌘A hoping to
+  clear that filter: ⌘A is Select All for the *device list*, and its modifier
+  leaks into the clicks that follow, which quietly gathers up a multi-selection.
+- **The mapping is measured, not computed.** `Point Accurate` and
+  `Show Device Bezels` are both gone, bezels are always drawn, and there is no
+  1:1 zoom, so `_measure` finds the screen inside the bezel in pixels. It runs
+  once per window, on the home screen, because anything dark to the screen's own
+  edge — the dimmed backdrop behind a sheet — reads as more bezel. A shape check
+  against the device's real aspect ratio turns that into an error rather than a
+  bad mapping, and the failing screenshot is kept as
+  `artifacts/measure-failed.png`.
+- **Capture the window, not the rectangle.** A window can start at a negative x.
+  Clamping the capture origin to the display without also shrinking the width
+  runs the region past the far edge, and whatever window is behind there gets
+  measured as bezel.
+
+**Other devices can stay booted.** The harness brings its own device's window to
+the front and verifies it arrived, because every menu it touches applies to the
+frontmost window. A visionOS device in front has no "Show Device Bezels" item at
+all, which used to kill the run on a missing menu item rather than on anything
+real. Display settings are applied only if the frontmost window offers them; the
+hardware keyboard is not optional, so a missing one there is still an error, and
+it names the likely cause.
+
+Leave the device window alone while the suite runs — the taps go to real screen
+coordinates.
 
 ## It cannot reach the real Brightwheel
 
@@ -234,10 +252,11 @@ wrappers call.
 
 **Tapping.** A synthesized click needs a `MouseMoved` event first *and*
 `kCGMouseEventClickState` set; with either missing the cursor moves to the right
-place and nothing is pressed. Coordinates are exact once the Simulator is set to
-*Window → Point Accurate* with *Show Device Bezels* off: the device screen then
-starts at the window origin plus a 52pt title bar, at 3 device pixels per point.
-The harness sets both itself.
+place and nothing is pressed. Under Simulator.app coordinates are exact once it
+is set to *Window → Point Accurate* with *Show Device Bezels* off: the device
+screen then starts at the window origin plus a 52pt title bar, at 3 device
+pixels per point, and the harness sets both itself. Device Hub offers neither,
+so there the screen is measured inside the bezel — see above.
 
 **Finding the button.** In every prompt shape the button we want is the
 bottom-most iOS-blue one — "Allow", "Always Allow", "Add Shortcut" — so the
