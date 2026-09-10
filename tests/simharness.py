@@ -50,7 +50,7 @@ BUTTON_H_RANGE = (70, 220)     # excludes the tall shortcut tile on
                                # the import sheet, which is also blue
 
 
-DARK_SUM = 150                 # r+g+b below this is bezel, not screen content
+DARK_SUM = 150                 # r+g+b below this is bezel, or a dark background
 
 
 class SimulatorError(RuntimeError):
@@ -144,17 +144,38 @@ def _title_is(title, name, version=""):
     return (not rest or rest[0] == " ") and version in rest
 
 
-def _light_edges(light):
-    """First and last light column of every row, as arrays.
+def _screen_box(dark, wall=0.9, gap=2):
+    """The device screen: the gap between the two walls of dark either side.
 
-    Rows that are dark end to end get sentinels that lose to every real edge in
-    the min/max that follows.
+    The bezel reads dark in both system appearances. In dark mode so does the
+    window background, and in light mode it does not — but that difference
+    cannot hurt, because merging the background into the bezel only makes the
+    wall thicker and never moves its *inner* edge, which is the edge being
+    measured. A column counts as wall when it is dark for almost a whole band
+    of rows, which sidebar text and toolbar glyphs never are.
+
+    Dark patches in the wallpaper make extra walls, but they fall between the
+    outer two rather than outside them, so the widest interior gap is still the
+    screen.
     """
-    any_light = light.any(axis=1)
-    first = np.where(any_light, light.argmax(axis=1), light.shape[1])
-    last = np.where(any_light,
-                    light.shape[1] - 1 - light[:, ::-1].argmax(axis=1), -1)
-    return first, last
+    h, w = dark.shape
+    band = dark[int(h * 0.15):int(h * 0.85)]
+    cols = np.where(band.sum(axis=0) / band.shape[0] > wall)[0]
+    span = _widest_gap(_contiguous(cols, gap=gap))
+    if span is None:
+        return None
+    x0, x1 = span
+    rows = np.where(dark[:, x0:x1 + 1].sum(axis=1) / (x1 - x0 + 1) > wall)[0]
+    span = _widest_gap(_contiguous(rows, gap=gap))
+    if span is None:
+        return None
+    return (x0, span[0], x1, span[1])
+
+
+def _widest_gap(runs):
+    """The widest space *between* runs, or None if there are fewer than two."""
+    gaps = [(runs[i][-1] + 1, runs[i + 1][0] - 1) for i in range(len(runs) - 1)]
+    return max(gaps, key=lambda g: g[1] - g[0]) if gaps else None
 
 
 # -- the Mac app that draws the device --------------------------------------
@@ -359,16 +380,7 @@ class _DeviceHub(_Host):
         raise SimulatorError(f"{last} (window as captured: {keep})")
 
     def _measure_once(self, sim, rect, device_size):
-        """Find the device screen inside the bezel, in screen points.
-
-        Every scan line across the window crosses light background, then bezel,
-        then screen, then bezel, then background. Screen content can be dark at
-        its own edge, which makes that line's bezel look thicker, so no single
-        line is trusted: each edge is the extreme across many lines, which is
-        the one least eaten into by content. A screen dark all the way round —
-        the dimmed backdrop behind a sheet — defeats that, and the shape check
-        at the end is what turns it into an error instead of a bad mapping.
-        """
+        """Find the device screen in the window, in screen points."""
         wx, wy, ww, wh = rect
         # Clamp the capture to the part of the window that is actually on the
         # display, width included. Clamping only the origin leaves the region
@@ -378,51 +390,30 @@ class _DeviceHub(_Host):
         cw, ch = ww - (ox - wx), wh - (oy - wy)
         shot = (sim.artifacts or Path("/tmp")) / "_measure.png"
         _run("screencapture", "-x", "-o", f"-R{ox},{oy},{cw},{ch}", str(shot))
-        px = np.asarray(Image.open(shot).convert("RGB")).astype(int).sum(axis=2)
-        dark = px < DARK_SUM
-        h, w = dark.shape
+        im = Image.open(shot).convert("RGB")
+        # `screencapture -R` takes a rect in points and writes *pixels*, so on a
+        # Retina display the image is twice the size of the window it captured.
+        # Quartz click coordinates are points, so every measurement has to come
+        # back through this scale or taps land at half the intended offset.
+        scale = im.width / cw
+        px = np.asarray(im).astype(int).sum(axis=2)
 
-        # The bezel runs nearly the full height of the device; sidebar text and
-        # toolbar glyphs are dark too, but nowhere near that tall.
-        band = dark[int(h * 0.15):int(h * 0.85)]
-        cols = np.where(band.sum(axis=0) > band.shape[0] * 0.5)[0]
-        if len(cols) < 2:
-            raise SimulatorError(
-                "no device bezel in the Device Hub window — is it showing a "
-                "device at all?")
-        bx0, bx1 = int(cols[0]), int(cols[-1])
-        if bx1 - bx0 > w * 0.9:
-            # Something outside the device — a sidebar icon column, a window
-            # edge — was tall and dark enough to pass for bezel, and the span
-            # between them is not a phone.
-            raise SimulatorError(
-                f"the tall dark columns span {bx1 - bx0}px of a {w}px window; "
-                f"that is not a device bezel")
-        rows = np.where(dark[:, bx0:bx1 + 1].sum(axis=1) > (bx1 - bx0) * 0.5)[0]
-        if len(rows) < 2:
-            raise SimulatorError("could not find the top and bottom of the bezel")
-        by0, by1 = int(rows[0]), int(rows[-1])
-
-        light = ~dark[by0:by1 + 1, bx0:bx1 + 1]
-        ih, iw = light.shape
-        first, last = _light_edges(light)
-        rband = slice(int(ih * 0.25), int(ih * 0.75))
-        left, right = int(first[rband].min()), int(last[rband].max())
-        tfirst, tlast = _light_edges(light.T)
-        cband = slice(int(iw * 0.25), int(iw * 0.75))
-        top, bottom = int(tfirst[cband].min()), int(tlast[cband].max())
-
-        sw, sh = right - left + 1, bottom - top + 1
+        box = _screen_box(px < DARK_SUM)
+        if box is None:
+            raise SimulatorError("no device screen in the window — is it "
+                                 "showing a device at all?")
+        x0, y0, x1, y1 = box
+        sw, sh = (x1 - x0 + 1) / scale, (y1 - y0 + 1) / scale
         dw, dh = device_size
         if not 0.97 <= (sw / sh) / (dw / dh) <= 1.03:
             raise SimulatorError(
-                f"measured a {sw}x{sh} screen for a {dw}x{dh} device. The "
-                f"window is probably showing something dark to its own edges; "
-                f"this has to be measured on the home screen.")
+                f"measured a {sw:.0f}x{sh:.0f} screen for a {dw}x{dh} device. "
+                f"Something dark to the screen's own edges — the dimmed "
+                f"backdrop behind a sheet — has probably swallowed it.")
         ppp = ((sw / dw) + (sh / dh)) / 2
         # Fit on the centres — the rounded corners cost a pixel at each edge.
-        cx = ox + bx0 + (left + right) / 2
-        cy = oy + by0 + (top + bottom) / 2
+        cx = ox + (x0 + x1) / 2 / scale
+        cy = oy + (y0 + y1) / 2 / scale
         return cx - dw / 2 * ppp, cy - dh / 2 * ppp, ppp
 
 

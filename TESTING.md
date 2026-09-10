@@ -53,16 +53,22 @@ a run misbehaves:
   leaks into the clicks that follow, which quietly gathers up a multi-selection.
 - **The mapping is measured, not computed.** `Point Accurate` and
   `Show Device Bezels` are both gone, bezels are always drawn, and there is no
-  1:1 zoom, so `_measure` finds the screen inside the bezel in pixels. It runs
-  once per window, on the home screen, because anything dark to the screen's own
-  edge — the dimmed backdrop behind a sheet — reads as more bezel. A shape check
-  against the device's real aspect ratio turns that into an error rather than a
-  bad mapping, and the failing screenshot is kept as
+  1:1 zoom, so `_screen_box` finds the screen in pixels: it is the widest gap
+  between the two walls of dark either side of it. The bezel reads dark in both
+  system appearances, and in dark mode so does the window background — which
+  costs nothing, because merging the two only thickens the wall and never moves
+  its inner edge. It runs once per window, on the home screen, since a dimmed
+  backdrop behind a sheet swallows the screen's own edges. A shape check against
+  the device's real aspect ratio turns that into an error rather than a bad
+  mapping, and the failing screenshot is kept as
   `artifacts/measure-failed.png`.
-- **Capture the window, not the rectangle.** A window can start at a negative x.
-  Clamping the capture origin to the display without also shrinking the width
-  runs the region past the far edge, and whatever window is behind there gets
-  measured as bezel.
+- **Points and pixels are not the same number.** `screencapture -R` takes a rect
+  in points and writes pixels, so on a Retina display the image is twice the
+  size of the window it captured, while Quartz click coordinates stay in points.
+  Every measurement divides by that scale. Also clamp the capture *width* to the
+  display, not only its origin: a window can start at a negative x, and clamping
+  one without the other runs the region past the far edge, where whatever window
+  sits behind gets measured as bezel.
 
 **Other devices can stay booted.** The harness brings its own device's window to
 the front and verifies it arrived, because every menu it touches applies to the
