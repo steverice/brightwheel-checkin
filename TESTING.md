@@ -122,6 +122,35 @@ That check is a one-off rather than a suite test, because Quick Look has no
 on-disk state to assert against — the evidence is pixels, and the decode has to
 happen outside the device.
 
+## Importing on a Mac
+
+Worth knowing before minting iCloud links, since the link is a snapshot of
+whatever the sharing device holds: **a Mac import is lossless.** The shipping
+Attendance build was signed under a throwaway name, imported into the macOS 27
+Shortcuts library, and read back out of `~/Library/Shortcuts/Shortcuts.sqlite`,
+which has the same schema as the simulator's:
+
+| | source | after a Mac import |
+|---|---|---|
+| actions | 251 | 251 |
+| identifier sequence | — | identical |
+| parameters differing | — | none |
+| action UUIDs (164 of them) | — | all preserved |
+
+Nothing is rewritten, dropped, or reminted, so a link minted from a
+Mac-imported copy carries what a link minted from an iPhone would. The limit of
+that test is worth stating: it compares what the Mac *stored*, not what it would
+*serialize when sharing*. Sharing reads from the stored form, so there is no
+obvious room for divergence, but it was not measured.
+
+Two platform differences turned up on the way:
+
+- **macOS asks the setup questions all on one page**, where iOS 27 asks them one
+  at a time behind a Next button.
+- **Add Shortcut works on macOS.** The regression that makes it inert is iOS
+  only — the probe imported on the first click, with the questions answered by
+  nobody. So a Mac is a way to install a build without meeting the bug at all.
+
 ## The roster fixtures
 
 The shortcut reads its roster at run time, so the mock has to be able to answer
@@ -191,6 +220,9 @@ It reproduces with a **two-action** shortcut carrying one question, so it is
 nothing to do with this project's build. Skip Setup still installs, and
 importing a shortcut that merely *has* questions is fine; it is committing the
 *answers* that is inert.
+
+The regression is **iOS only**: the same build imports on macOS 27 on the first
+click of Add Shortcut — see "Importing on a Mac" below.
 
 That is what `test_setup_questions_commit_their_answers` watches. It is marked
 `expected_broken`, so it reports **KNOWN** in yellow and does not fail the
