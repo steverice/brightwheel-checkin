@@ -336,10 +336,10 @@ def build(env=None):
                  WFStoredContentKey="BrightwheelSchoolCode",
                  WFStoredContentGlobalValue=True))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionTitle=ts("Forgotten"),
                  WFNotificationActionBody=ts(
-                     "Forgotten. The next run signs in again and asks you to "
-                     "scan the school's code.")))
+                     "The next run signs in again and asks you to scan the "
+                     "school's code.")))
     A.append(act("is.workflow.actions.exit"))
     A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
                  GroupingIdentifier=G_MENU, WFControlFlowMode=2))
@@ -598,7 +598,7 @@ def build(env=None):
                  WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(var("Needs Sign In"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel — nobody ",
+                 WFNotificationActionTitle=ts("Nobody ",
                                               out(U_VERB, "Verb")),
                  WFNotificationActionBody=ts(
                      "Could not sign in after five tries, so nothing was sent. "
@@ -663,7 +663,7 @@ def build(env=None):
                  WFCondition=0, WFNumberValue="1",
                  WFInput=cond_input(out(C_HASGID, "Count"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel — nobody ",
+                 WFNotificationActionTitle=ts("Nobody ",
                                               out(U_VERB, "Verb")),
                  WFNotificationActionBody=ts(
                      "Could not read which Brightwheel account this is, so "
@@ -807,10 +807,9 @@ def build(env=None):
                  WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(out(C_SIGS, "Count"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionTitle=ts("This school now requires signatures"),
                  WFNotificationActionBody=ts(
-                     "This school now requires signatures at check-in. These "
-                     "shortcuts do not send one, so check-ins may start "
+                     "These shortcuts do not send one, so check-ins may start "
                      "failing.")))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SIGS, WFControlFlowMode=2))
@@ -874,10 +873,9 @@ def build(env=None):
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Send Needed",
                  WFInput=attach(out(U_ONE, "Number"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionTitle=ts("The school's check-in code has changed"),
                  WFNotificationActionBody=ts(
-                     "The school's check-in code has changed. Scanning the new "
-                     "one and trying again.")))
+                     "Scanning the new one and trying again.")))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_STALE2, WFControlFlowMode=2))
 
@@ -922,7 +920,7 @@ def build(env=None):
                      WFCondition=condition, WFNumberValue=number,
                      WFInput=cond_input(out(count_uuid, count_name))))
         A.append(act("is.workflow.actions.notification",
-                     WFNotificationActionTitle=ts("Brightwheel — nobody ",
+                     WFNotificationActionTitle=ts("Nobody ",
                                               out(U_VERB, "Verb")),
                      WFNotificationActionBody=ts(message)))
         A.append(act("is.workflow.actions.setvariable", WFVariableName="Roster OK",
@@ -1085,9 +1083,8 @@ def build(env=None):
                  WFCondition=0, WFNumberValue="1",
                  WFInput=cond_input(out(C_SEND, "Count"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
-                     "• ", var("Child Name"), " was ",
+                     var("Child Name"), " was ",
                      out(U_ALREADY, "Already Word"), " — no change")))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_SKIP, WFControlFlowMode=1))
@@ -1137,7 +1134,6 @@ def build(env=None):
                  WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(out(C_OK, "Count"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel"),
                  WFNotificationActionBody=ts(
                      "✅ ", var("Child Name"), " ", out(U_VERB, "Verb"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
@@ -1160,10 +1156,9 @@ def build(env=None):
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Send Needed",
                  WFInput=attach(out(U_ONE, "Number"))))
     A.append(act("is.workflow.actions.notification",
-                 WFNotificationActionTitle=ts("Brightwheel"),
+                 WFNotificationActionTitle=ts("The school's check-in code has changed"),
                  WFNotificationActionBody=ts(
-                     "The school's check-in code has changed. Scanning the new "
-                     "one and trying again.")))
+                     "Scanning the new one and trying again.")))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_STALE, WFControlFlowMode=1))
     A.append(act("is.workflow.actions.notification",
