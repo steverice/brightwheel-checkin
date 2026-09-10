@@ -90,6 +90,28 @@ build is a real problem.
 truth and the next build overwrites everything else. The only values meant to be
 changed on the device are the Setup answers.
 
+### Refreshing the site's iCloud links
+
+`docs/index.html` links each shortcut by iCloud link, and an iCloud link is a
+snapshot taken at the moment you share — it never follows a rebuild. There is no
+API for minting one: the `shortcuts` CLI has `run`, `list`, `view` and `sign` and
+nothing else, and the AppleScript dictionary exposes only `run`. The action
+exists only inside Shortcuts itself.
+
+So `tools/build_publisher.py` generates **Brightwheel Share Links**, a shortcut
+that calls `com.apple.shortcuts.CreateShortcutiCloudLinkAction` three times and
+puts the result on the clipboard as the three `<li>` lines the page wants.
+
+```bash
+python3 tools/build_publisher.py     # -> dist-tools/, validated and signed
+```
+
+Import it once on iOS 27 or macOS 27, open each of the three actions and pick the
+shortcut it names — the picker cannot be filled in by the generator, because the
+parameter references a workflow and a workflow's identifier is minted at import,
+so it differs in every library. After that, one run per release: three
+confirmation taps, then paste over the links in the page.
+
 ### Debug builds
 
 Answering three Setup questions on every test import gets old. Copy

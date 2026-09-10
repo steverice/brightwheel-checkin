@@ -103,18 +103,13 @@
   ul.needs li { padding-left: 2.2rem; position: relative; font-weight: 600; }
   ul.needs li::before {
     content: "";
-    position: absolute; left: 0; top: 0.22em;
+    position: absolute; left: 0; top: 0.2em;
     width: 1.35rem; height: 1.35rem;
     border-radius: 50%;
-    background: var(--ok);
-  }
-  ul.needs li::after {
-    content: "";
-    position: absolute; left: 0.38rem; top: 0.5em;
-    width: 0.58rem; height: 0.3rem;
-    border-left: 2.5px solid #fff;
-    border-bottom: 2.5px solid #fff;
-    transform: rotate(-45deg);
+    background:
+      var(--ok)
+      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23fff'%20stroke-width='3.2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M5%2012.3l4.7%204.7L19%207.4'/%3E%3C/svg%3E")
+      center / 0.78rem no-repeat;
   }
 
   ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
@@ -145,26 +140,26 @@
   ol.steps p { color: var(--muted); }
   ol.steps p:last-child { margin-bottom: 0; }
 
-  ul.downloads { list-style: none; margin: 0.9rem 0 1rem; padding: 0; display: grid; gap: 0.5rem; }
+  ul.downloads { list-style: none; margin: 0.9rem 0 1rem; padding: 0; display: grid; gap: 0.55rem; }
   ul.downloads a {
-    display: flex; align-items: center; gap: 0.75rem;
-    background: var(--card);
-    border: 2px solid var(--rule);
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    background: var(--brand);
     border-radius: 0.95rem;
-    padding: 0.8rem 1rem;
+    padding: 0.85rem 1.15rem;
     font-weight: 700;
-    color: var(--ink);
+    color: #fff;
     text-decoration: none;
   }
-  ul.downloads a::before {
+  /* Points the way out, not down: a chevron-down on a row reads as "expand". */
+  ul.downloads a::after {
     content: "";
     flex: none;
-    width: 0.8rem; height: 0.8rem;
-    border: 2.5px solid var(--brand);
-    border-top: 0; border-left: 0;
-    transform: rotate(45deg) translate(-0.15rem, -0.15rem);
+    width: 0.5rem; height: 0.5rem;
+    border: 2.5px solid rgba(255, 255, 255, 0.92);
+    border-left: 0; border-bottom: 0;
+    transform: rotate(45deg);
   }
-  ul.downloads a:hover { border-color: var(--brand); }
+  ul.downloads a:hover { background: #4245c4; }
 
   .shot {
     width: min(15rem, 100%);
@@ -241,18 +236,15 @@
     <h2>Setup</h2>
     <ol class="steps">
       <li>
-        <h3>Download all three</h3>
+        <h3>Add all three</h3>
+        <!-- Replace all three with real iCloud links: in Shortcuts, share each
+             shortcut and choose Copy iCloud Link. Until then these go nowhere. -->
         <ul class="downloads">
-          <li><a href="https://github.com/steverice/brightwheel-checkin/releases/latest/download/Brightwheel%20Attendance.shortcut">Brightwheel Attendance</a></li>
-          <li><a href="https://github.com/steverice/brightwheel-checkin/releases/latest/download/Brightwheel%20Check%20In.shortcut">Brightwheel Check In</a></li>
-          <li><a href="https://github.com/steverice/brightwheel-checkin/releases/latest/download/Brightwheel%20Check%20Out.shortcut">Brightwheel Check Out</a></li>
+          <li><a href="https://www.icloud.com/shortcuts/PASTE_ATTENDANCE_LINK">Brightwheel Attendance</a></li>
+          <li><a href="https://www.icloud.com/shortcuts/PASTE_CHECK_IN_LINK">Brightwheel Check In</a></li>
+          <li><a href="https://www.icloud.com/shortcuts/PASTE_CHECK_OUT_LINK">Brightwheel Check Out</a></li>
         </ul>
-        <p>Tap each one, then tap Download.</p>
-      </li>
-      <li>
-        <h3>Open them in the Files app</h3>
-        <p>Files, then Downloads, then tap each one. Nothing looks like it
-          happened when you downloaded them; this is where they went.</p>
+        <p>Tap each one. Shortcuts opens and offers to add it.</p>
       </li>
       <li>
         <h3>Answer three questions</h3>
@@ -317,7 +309,8 @@
 <footer>
   <div class="wrap">
     <p>Made for one family and shared as-is, with no warranty and no promise to
-      keep working. Brightwheel could change something tomorrow.</p>
+      keep working. Brightwheel could change something tomorrow and your check-in
+      will stop working.</p>
     <p>Not affiliated with, endorsed by, or connected to Brightwheel. Ada and Milo
       are made up.</p>
     <p><a href="https://github.com/steverice/brightwheel-checkin">How it works, and

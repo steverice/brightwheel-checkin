@@ -27,5 +27,6 @@ __pycache__/
 
 # Integration-test scratch.
 dist-test/
+dist-tools/
 tests/tls/
 tests/artifacts/
