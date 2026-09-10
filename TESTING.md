@@ -112,6 +112,16 @@ checked in" is exactly "no POST reached `/checkins/`", which is a fact the mock
 holds; a notification only reports what the shortcut believes happened. The
 shortcut's own state is checked by reading Store Content back off the device.
 
+**The QR the menu draws is the one that was scanned.** Not judged by eye: the
+rendered image was pulled off the simulator and decoded with CoreImage's
+`CIDetectorTypeQRCode`, and the result compared to the `BrightwheelSchoolCode`
+string in the device's own store. Byte-identical, which is what makes
+re-seeding a second phone from it equivalent to standing at the door.
+
+That check is a one-off rather than a suite test, because Quick Look has no
+on-disk state to assert against — the evidence is pixels, and the decode has to
+happen outside the device.
+
 ## The roster fixtures
 
 The shortcut reads its roster at run time, so the mock has to be able to answer

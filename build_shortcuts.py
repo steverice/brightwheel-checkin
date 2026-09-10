@@ -306,6 +306,7 @@ def build(env=None):
                  GroupingIdentifier=G_MENU, WFControlFlowMode=0,
                  WFMenuPrompt="Check the children in or out?",
                  WFMenuItems=["Check In", "Check Out",
+                              "Show the school's code",
                               "Forget saved sign-in and school code"]))
     A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
                  GroupingIdentifier=G_MENU, WFControlFlowMode=1,
@@ -321,6 +322,51 @@ def build(env=None):
                  WFTextActionText="out"))
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Direction",
                  WFInput=attach(out(U_MOUT, "Text"))))
+    # Puts the school's code back on screen as the QR it was scanned from.
+    # What is stored is the scanned payload verbatim, so the image this draws is
+    # the one taped up by the door — which is the point: a second phone can be
+    # set up from it, and it is a way back into the Brightwheel app when the
+    # shortcut is the thing misbehaving. It is not a secret being spread any
+    # further than it already is; the same string sits in this shortcut's own
+    # storage, which its owner can read. Sends nothing.
+    A.append(act("is.workflow.actions.choosefrommenu", UUID=next(i),
+                 GroupingIdentifier=G_MENU, WFControlFlowMode=1,
+                 WFMenuItemTitle="Show the school's code"))
+    U_QRC = next(i)
+    A.append(act("is.workflow.actions.getstoredcontent", UUID=U_QRC,
+                 WFStoredContentKey="BrightwheelSchoolCode",
+                 WFStoredContentGlobalValue=True))
+    C_QRC = gate(U_QRC, "Stored Content")
+    G_QR = next(i)
+    A.append(comment(
+        "Draw the stored code, or say there is none.\n"
+        "- Condition counts whether anything is stored, because an empty "
+        "string still satisfies \"has any value\"\n"
+        "- Condition 2 against 0 is \"more than none\", so the first branch is "
+        "the one where a code exists\n"
+        "- Nothing is stored until the first run at the school has scanned it"
+    ))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_QR, WFControlFlowMode=0,
+                 WFCondition=2, WFNumberValue="0",
+                 WFInput=cond_input(out(C_QRC, "Count"))))
+    U_QRI = next(i)
+    A.append(act("is.workflow.actions.generatebarcode", UUID=U_QRI,
+                 CustomOutputName="School Code QR",
+                 WFText=ts(out(U_QRC, "Stored Content"))))
+    A.append(act("is.workflow.actions.previewdocument",
+                 WFInput=attach(out(U_QRI, "School Code QR"))))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_QR, WFControlFlowMode=1))
+    A.append(act("is.workflow.actions.notification",
+                 WFNotificationActionTitle=ts("No school code saved yet"),
+                 WFNotificationActionBody=ts(
+                     "Run a check-in at the school once. It scans the code by "
+                     "the door and keeps it.")))
+    A.append(act("is.workflow.actions.conditional", UUID=next(i),
+                 GroupingIdentifier=G_QR, WFControlFlowMode=2))
+    A.append(act("is.workflow.actions.exit"))
+
     # The only way to clear the school code from the device. Deleting the
     # shortcut takes the token with it, but the code lives in the shared store,
     # which outlives it — so the reinstall everyone reaches for first still

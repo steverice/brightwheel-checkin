@@ -50,9 +50,17 @@ Nothing works it out from the time of day, so editing a trigger's hours on the
 device cannot make it send the wrong direction.
 
 Run Attendance on its own — from the app, the Home Screen, or Siri — and it asks
-whether to check in or out. Canceling the menu sends nothing. A third item,
-"Forget saved sign-in and school code", clears what the shortcut has stored and
-is the only way to do so.
+whether to check in or out. Canceling the menu sends nothing. Two more items sit
+below those:
+
+- **Show the school's code** draws the stored school code back as the QR it was
+  scanned from. What is stored is the scanned payload verbatim, so the image is
+  the one taped up by the door: a second phone can be set up from it without a
+  trip to the school, and it is a way back into the Brightwheel app when the
+  shortcut is the thing misbehaving. Verified by decoding the rendered image and
+  comparing it to the stored string — see `TESTING.md`.
+- **Forget saved sign-in and school code** clears what the shortcut has stored,
+  and is the only way to do so.
 
 `ARCHITECTURE.md` covers why it is built this way.
 
