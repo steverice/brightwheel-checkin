@@ -110,7 +110,20 @@ Import it once on iOS 27 or macOS 27, open each of the three actions and pick th
 shortcut it names — the picker cannot be filled in by the generator, because the
 parameter references a workflow and a workflow's identifier is minted at import,
 so it differs in every library. After that, one run per release: three
-confirmation taps, then paste over the links in the page.
+confirmation taps, and the three links are on your clipboard.
+
+`release.sh` asks for them as its last step. To do it any other time:
+
+```bash
+python3 tools/update_links.py --clipboard   # takes what Share Links copied
+python3 tools/update_links.py               # or asks for each of the three
+```
+
+It writes nothing unless all three are present and start with
+`https://www.icloud.com/shortcuts/`, so a half-finished paste cannot leave the
+page pointing two ways at once. Links are matched by the name next to them
+rather than by position, so a reordered paste fails instead of silently swapping
+two shortcuts.
 
 ### Debug builds
 

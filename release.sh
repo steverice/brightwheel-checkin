@@ -61,3 +61,28 @@ if [ -n "$DRAFT" ]; then
     echo "Draft created. Review it, then publish from the Releases page"
     echo "or with: gh release edit $TAG --draft=false"
 fi
+
+# The site links each shortcut by iCloud link, and an iCloud link is frozen at
+# the moment it was shared — a new release does not reach the old ones. Ask now,
+# while cutting the release is still fresh, rather than leaving the page quietly
+# serving the previous version.
+echo
+echo "The page's iCloud links still point at the previous build."
+echo "Import this release on your phone, run Brightwheel Share Links, then:"
+echo
+read -r -p "Paste the three links now? [y/N] " answer
+case "$answer" in
+    [yY]*)
+        # Share Links leaves the three on the clipboard, so try that first and
+        # fall back to asking for each in turn.
+        if ! python3 tools/update_links.py --clipboard; then
+            echo
+            echo "Enter them by hand instead:"
+            python3 tools/update_links.py || true
+        fi
+        ;;
+    *)
+        echo "Skipped. Run this whenever you have them:"
+        echo "  python3 tools/update_links.py --clipboard"
+        ;;
+esac
