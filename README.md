@@ -3,13 +3,41 @@
 Signed iOS Shortcuts that check your children in or out of Brightwheel without
 opening the app, fired unattended by location triggers.
 
-> ## Requires iOS 27
+## Just want it on your phone?
+
+You do not need to understand any of this page. **[Start
+here](https://steverice.github.io/brightwheel-checkin/)** — same instructions,
+written for someone who has never seen GitHub before.
+
+The short version, if you would rather stay here:
+
+1. **Check your iPhone is on iOS 27.** Settings → General → About → Software
+   Version. On iOS 26 or earlier these do not run at all; see the note below.
+2. **[Download the three
+   shortcuts](https://github.com/steverice/brightwheel-checkin/releases/latest)**
+   from the latest release. Tap each of the three `.shortcut` files, then tap
+   Download. Ignore the `.zip` unless you are on a Mac.
+3. **Open the Files app → Downloads** and tap each one. Nothing looks like it
+   happened when you downloaded them; this is where they went.
+4. **Answer the three questions** Brightwheel Attendance asks — your Brightwheel
+   email, your password, and your own 4-digit check-in code — and finish with
+   **Skip Setup**, not Add Shortcut. See the warning below for why.
+5. **Run Brightwheel Check In by hand once, at the school**, so it can sign in
+   and scan the school's code. Then add an Arrive trigger to Check In and to
+   Check Out.
+
+You need a Brightwheel account of your own; the download contains nothing about
+anybody's children and asks Brightwheel who yours are every time it runs.
+
+> ### Requires iOS 27
 >
 > These do not work on iOS 26 or earlier. The shortcut stops at its first
 > action, with "the shortcut could not be run because an action could not be
 > found". Store Content and the live `Scan Code` action were both added in
 > iOS 27, and only from iOS 27 does a shortcut carry its own triggers.
 > `TESTING.md` has the version-by-version support matrix.
+
+## How it is put together
 
 The three shortcuts:
 
