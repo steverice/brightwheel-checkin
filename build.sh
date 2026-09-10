@@ -70,7 +70,14 @@ for xml in "$DIST"/*.xml; do
         exit 1
     fi
 
-    sign-shortcut "$xml" --name "$name" >/dev/null
+    # --mode anyone is what makes the artifact shareable: Apple signs it on its
+    # server, and anybody can import it. The other mode, people-who-know-me,
+    # embeds your contact card and works only for people who already have you
+    # in Contacts — a release built that way would fail for every stranger and
+    # succeed for you. sign-shortcut defaults to anyone, but that default reads
+    # from the environment, so pin it here rather than let a release depend on
+    # a variable nobody remembers setting.
+    sign-shortcut "$xml" --name "$name" --mode anyone >/dev/null
     cp "$OUTPUT_DIR/$name.shortcut" "$DIST/$name.shortcut"
     echo "validated, signed -> $DIST/$name.shortcut"
 done
