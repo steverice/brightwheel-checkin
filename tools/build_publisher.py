@@ -116,9 +116,13 @@ def build():
             any_copy, "Count", "1",
             f"Stop if there is more than one {t}.\n"
             f"- Condition counts every copy, numbered or not\n"
-            f"- Linking either one would be a guess about which is the new build",
+            f"- Linking either one would be a guess about which is the new build\n"
+            f"- Replace on the Mac hides the old copy from the app, not from "
+            f"this count",
             f"More than one {t}",
-            "Delete the old copy and run this again. Nothing was shared.")
+            "Delete every copy and import the new build once. If only one shows, "
+            "delete it anyway: Replace hides the old copy until the new one is "
+            "gone. Nothing was shared.")
         numbered = count_of(f"(?m)^{t} \\d+$", names)
         stop_if_above(
             numbered, "Count", "0",

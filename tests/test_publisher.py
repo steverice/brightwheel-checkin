@@ -98,6 +98,17 @@ def test_patterns_mean_what_the_checks_claim():
         assert len(re.findall(f"(?m)^{t}( \\d+)?$", same_name)) == 2
 
 
+def test_more_than_one_explains_the_copy_you_cannot_see():
+    # On the Mac, choosing Replace leaves the old copy hidden from the app but
+    # counted here, so the refusal has to say how to bring it back into view
+    # (TESTING.md, "Replace hides the old copy from the app, and nowhere else").
+    notes = {params(a)["WFNotificationActionTitle"]["Value"]["string"]:
+             params(a)["WFNotificationActionBody"]["Value"]["string"]
+             for a in actions() if ident(a) == "is.workflow.actions.notification"}
+    for t in P.TARGETS:
+        assert "Replace" in notes[f"More than one {t}"]
+
+
 def test_clipboard_gets_the_markup_update_links_reads():
     acts = actions()
     markup = [a for a in acts if params(a).get("CustomOutputName") == "Markup"]
