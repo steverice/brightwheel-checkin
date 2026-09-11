@@ -355,6 +355,26 @@ at all. No shortcut in that database was tombstoned, including ones deleted
 earlier in the session. iCloud sync for Shortcuts was off on that Mac, and
 Replace and Delete with sync on haven't been measured.
 
+**The shipping publisher now works this way.** `tools/build_publisher.py`
+generates Brightwheel Share Links around the lookup. For each of the three
+targets it stops, with a notification, on more than one copy, on a copy whose
+only name is numbered, or on a missing shortcut. All nine checks run before the
+first link is minted, and `tests/test_publisher.py` pins that structure down.
+Measured on 2026-09-11:
+
+| step | result |
+|---|---|
+| import on an iOS 27 simulator | 99 actions; all three links still hold the `Repeat Item` variable |
+| Mac run, the current `dist/` builds imported fresh | three links, which `verify_links.py` accepted: same actions, and Attendance's 3 questions |
+| a kept second copy of Check In | "More than one Brightwheel Check In", no link confirmation (the user's report) |
+| only `Brightwheel Check In 1` left | "…has a number after its name", no link confirmation (the user's report) |
+| Check Out renamed `Brightwheel Check Out x` | "…is not in your library", no link confirmation (the user's report) |
+
+The clipboard sentinel that would have independently confirmed the refusals
+copied nothing was overwritten by an unrelated copy during those runs. So the
+refusal rows rest on what was on screen: each notification appeared, and no link
+confirmation did.
+
 
 
 ## The roster fixtures

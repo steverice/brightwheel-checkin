@@ -107,24 +107,35 @@ nothing else, and the AppleScript dictionary exposes only `run`. The action
 exists only inside Shortcuts itself.
 
 So `tools/build_publisher.py` generates **Brightwheel Share Links**, a shortcut
-that calls `com.apple.shortcuts.CreateShortcutiCloudLinkAction` three times and
-puts the result on the clipboard as the three `<li>` lines the page wants.
+that finds each of the three in your library, calls
+`com.apple.shortcuts.CreateShortcutiCloudLinkAction` on it, and puts the result
+on the clipboard as the three `<li>` lines the page wants.
 
 ```bash
 python3 tools/build_publisher.py     # -> dist-tools/, validated and signed
+pytest tests/test_publisher.py       # name the file; see below
 ```
 
-Import it once on iOS 27 or macOS 27, open each of the three actions and pick the
-shortcut it names — the picker cannot be filled in by the generator, because the
-parameter references a workflow and a workflow's identifier is minted at import,
-so it differs in every library.
+Import it once on iOS 27 or macOS 27. There is nothing to pick: it finds each of
+the three by name every time it runs, so after a release it simply finds the new
+copies. A picker couldn't do that. It stores a workflow identifier, which every
+re-import replaces, and it can't be pre-seeded by name (`TESTING.md` has the
+measurements).
 
-**The pickers go stale on every release**, for the same reason: publishing a new
-build means deleting the old shortcut and importing the new one, which mints a
-new identifier and leaves the picker holding the old one. Running it then stops
-and asks for a shortcut to be picked again. The editor will not warn you — it
-keeps displaying the old name as though nothing changed. Re-pick all three each
-release; `TESTING.md` has the measurements.
+**Delete the old copies before importing the new ones, and on a Mac don't choose
+Replace.** A plain second import installs a numbered copy (`Brightwheel
+Attendance 1`). Replace hides the old copy from the app without removing it.
+Either way the publisher stops with a notification rather than guessing which
+copy is the new build. It also refuses a copy whose only name is numbered, since
+parents would install it under that name and the wrappers call Brightwheel
+Attendance by its exact name. And it stops if a shortcut is missing. Every check
+runs before the first link is minted, because each link is public the moment it
+exists. If it says there's more than one copy but you see only one, delete that
+one: the hidden copy reappears, and you delete it too.
+
+`tests/test_publisher.py` pins that structure down. Run it with the file named.
+A bare `pytest tests/` also collects `test_attendance.py`, whose custom `s`
+argument reads to pytest as a missing fixture.
 
 `release.sh` asks for them as its last step, and **verifies them before writing
 them**:
