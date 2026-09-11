@@ -205,6 +205,42 @@ round-tripped shortcut is structurally identical to the build the suite
 exercises, not that it was separately run end to end. And a shortcut with no
 questions still installs and runs — it simply has no credentials in it.
 
+### The publisher's pickers go stale every release
+
+`Create iCloud Link for Shortcut` takes a workflow reference, and the picker
+stores both an identifier and a display name:
+
+```
+identifier : 5427F12F-…      the target's ZWORKFLOWID
+title      : { key: "ZZ Target" }
+subtitle   : { key: "ZZ Target" }
+image      : { uri: intents-remote-image-proxy:… }
+```
+
+Delete the target and import it again — which is exactly what shipping a new
+build requires, since a same-name import is silently skipped — and it comes back
+with a fresh `ZWORKFLOWID`. The picker keeps the old one. Measured: stored
+`5427F12F-…` against a live `28E1CE52-…`.
+
+**The editor hides this.** It goes on displaying the target's name, because the
+name is stored beside the identifier as display metadata. Nothing is marked
+broken. Running the shortcut is what surfaces it: Shortcuts re-prompts for a
+shortcut to use.
+
+Two failure modes, and the quiet one is the problem:
+
+| state of the old copy | what happens |
+|---|---|
+| deleted, as a release requires | re-prompts — loud, and hard to get wrong |
+| still present, renamed or forgotten | resolves to it and mints a link for the **old build**, silently |
+
+`verify_links.py` catches the second one for free: a link to a stale build fails
+the comparison against `dist/<name>.xml`. That is a second reason it exists.
+
+So `Brightwheel Share Links` saves the three trips through the share sheet but
+not the picking, and the picking has to happen again every release. Worth
+knowing before treating it as automation.
+
 ## The roster fixtures
 
 The shortcut reads its roster at run time, so the mock has to be able to answer

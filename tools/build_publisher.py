@@ -61,11 +61,13 @@ def build():
         A.append(act(ICLOUD_LINK, UUID=u,
                      CustomOutputName=f"{target} Link",
                      AppIntentDescriptor=descriptor(),
-                     # The picker is left empty on purpose: a workflow reference
-                     # has no verified serialization, and an invented one either
-                     # fails to import or imports as a parameter that silently
-                     # points at nothing. Choose each shortcut once in the
-                     # editor and it stays chosen.
+                     # The picker is left empty on purpose: a workflow
+                     # reference has no verified serialization, and an invented
+                     # one either fails to import or imports pointing at
+                     # nothing. It has to be chosen in the editor — and chosen
+                     # again after every release, because the reference is to a
+                     # workflow *identifier* and re-importing mints a new one.
+                     # See TESTING.md.
                      shortcut=""))
 
     parts = []

@@ -117,8 +117,13 @@ python3 tools/build_publisher.py     # -> dist-tools/, validated and signed
 Import it once on iOS 27 or macOS 27, open each of the three actions and pick the
 shortcut it names — the picker cannot be filled in by the generator, because the
 parameter references a workflow and a workflow's identifier is minted at import,
-so it differs in every library. After that, one run per release: three
-confirmation taps, and the three links are on your clipboard.
+so it differs in every library.
+
+**The pickers go stale on every release**, for the same reason: publishing a new
+build means deleting the old shortcut and importing the new one, which mints a
+new identifier and leaves the picker pointing at the copy you deleted. Re-pick
+all three each time. The editor will not tell you — it keeps displaying the old
+name. `TESTING.md` has the measurements and the failure modes.
 
 `release.sh` asks for them as its last step, and **verifies them before writing
 them**:
