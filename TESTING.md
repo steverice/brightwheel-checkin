@@ -226,22 +226,22 @@ with a fresh `ZWORKFLOWID`. The picker keeps the old one. Measured: stored
 renders it as a resolved token, because the name is stored beside the identifier
 as display metadata. Nothing is marked broken.
 
-What has *not* been established is what happens at run time — whether the stale
-identifier is fatal or whether Shortcuts falls back to the name, as `Run
-Shortcut` does with its own `workflowIdentifier`. The attempt to find out ran
-into an unrelated wall: the probe had been denied iCloud access on a previous
-run, so it failed on permissions before reaching the question. Treat the
-identifier going stale as measured and the consequence as open.
+**And it is fatal: the picker does not fall back to the name.** Run on the Mac
+with iCloud access allowed, after deleting and re-importing the target, the probe
+stops and asks for a shortcut to be picked again. (An earlier attempt was
+confounded — the probe had been denied iCloud access, and failed on permissions
+before reaching the question.) So `Run Shortcut`'s behavior does not carry over:
+it resolves its `workflowIdentifier` by name, and this picker does not.
 
-The consequence worth guarding against either way is the quiet one. If the old
+The consequence worth guarding against is still the quiet one. If the old
 copy is still in the library — renamed, or simply not cleared out — a picker
 holding its identifier would mint a link for the **previous build** with nothing
 on screen to say so. `verify_links.py` catches that for free, since a link to a
 stale build fails the comparison against `dist/<name>.xml`; a second reason it
 earns its place.
 
-So `Brightwheel Share Links` saves the three trips through the share sheet, but
-its pickers should be re-checked every release rather than trusted.
+So `Brightwheel Share Links` saves the three trips through the share sheet but
+not the picking, and the picking has to be redone every release.
 
 ## The roster fixtures
 

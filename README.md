@@ -119,12 +119,12 @@ shortcut it names — the picker cannot be filled in by the generator, because t
 parameter references a workflow and a workflow's identifier is minted at import,
 so it differs in every library.
 
-**The pickers hold a stale identifier after every release**, for the same reason:
-publishing a new build means deleting the old shortcut and importing the new one,
-which mints a new identifier and leaves the picker holding the old one. Measured.
-Whether that is fatal at run time is not yet established, and the editor will not
-help — it keeps displaying the old name as though nothing changed. Re-check all
-three each release; `TESTING.md` has the measurements.
+**The pickers go stale on every release**, for the same reason: publishing a new
+build means deleting the old shortcut and importing the new one, which mints a
+new identifier and leaves the picker holding the old one. Running it then stops
+and asks for a shortcut to be picked again. The editor will not warn you — it
+keeps displaying the old name as though nothing changed. Re-pick all three each
+release; `TESTING.md` has the measurements.
 
 `release.sh` asks for them as its last step, and **verifies them before writing
 them**:
