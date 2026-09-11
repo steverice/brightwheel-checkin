@@ -120,12 +120,22 @@ parameter references a workflow and a workflow's identifier is minted at import,
 so it differs in every library. After that, one run per release: three
 confirmation taps, and the three links are on your clipboard.
 
-`release.sh` asks for them as its last step. To do it any other time:
+`release.sh` asks for them as its last step, and **verifies them before writing
+them**:
 
 ```bash
-python3 tools/update_links.py --clipboard   # takes what Share Links copied
-python3 tools/update_links.py               # or asks for each of the three
+python3 tools/verify_links.py --clipboard --erase   # imports each on a simulator
+python3 tools/update_links.py --clipboard           # then writes them into the page
 ```
+
+Verification exists because a link can arrive without its setup questions. It
+happened once here and nobody has explained it — see `TESTING.md`. The failure
+is silent: the shortcut installs in one tap, looks correct, and leaves `not set`
+in the email, password and check-in code actions, so the first sign of trouble is
+somebody whose check-in never works. `verify_links.py` imports each link on an
+iOS 27 simulator and compares what lands against `dist/<name>.xml` — same action
+identifiers in the same order, same number of import questions — and refuses the
+lot if any of them disagrees.
 
 It writes nothing unless all three are present and start with
 `https://www.icloud.com/shortcuts/`, so a half-finished paste cannot leave the

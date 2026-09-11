@@ -73,12 +73,17 @@ echo
 read -r -p "Paste the three links now? [y/N] " answer
 case "$answer" in
     [yY]*)
-        # Share Links leaves the three on the clipboard, so try that first and
-        # fall back to asking for each in turn.
-        if ! python3 tools/update_links.py --clipboard; then
+        # Check before writing. A link can arrive without its setup questions,
+        # and that failure is silent — the shortcut installs in one tap, looks
+        # right, and never asks for credentials. Importing each link on a
+        # simulator is the only way to see it before a parent does.
+        if python3 tools/verify_links.py --clipboard --erase; then
+            python3 tools/update_links.py --clipboard || true
+        else
             echo
-            echo "Enter them by hand instead:"
-            python3 tools/update_links.py || true
+            echo "Links not written. Re-mint them and run:"
+            echo "  python3 tools/verify_links.py --clipboard --erase"
+            echo "  python3 tools/update_links.py --clipboard"
         fi
         ;;
     *)
