@@ -225,8 +225,8 @@ image      : { uri: intents-remote-image-proxy:… }
 ```
 
 Delete the target and import it again — which is exactly what shipping a new
-build requires, since iOS skips a same-name import and macOS installs a numbered
-second copy beside it — and it comes back with a fresh `ZWORKFLOWID`. The picker keeps the old one. Measured: stored
+build requires, since iOS skips a same-name import and macOS installs a second
+copy beside it, numbered or not — and it comes back with a fresh `ZWORKFLOWID`. The picker keeps the old one. Measured: stored
 `5427F12F-…` against a live `28E1CE52-…`.
 
 **The editor gives no sign of it.** It goes on displaying the target's name and
@@ -308,9 +308,37 @@ Check the clipboard, not what the screen displays.
 
 A fresh import is simply found again on the next run, so nothing needs
 re-picking. The one hazard left is duplicates. Re-importing without deleting
-leaves `Brightwheel Attendance 1` beside the original, and an unanchored name
-match takes both. Anchor the match to the exact name, and treat more than one
-match as an error rather than guessing which copy is the new build.
+can leave `Brightwheel Attendance 1` beside the original, and an unanchored name
+match takes both. It can also leave a second copy under the exact same name,
+which an anchored match takes too (see below). Count every copy, and treat more
+than one as an error rather than guessing which is the new build.
+
+**A whole library coerces to its names, one per line, and Match Text honors
+`(?m)`.** Checking every copy at once means counting over the library's names
+rather than one item at a time, which rested on two things nobody had measured.
+A probe ran Get My Shortcuts on the Mac, put the result in a Text action, and ran
+three anchored patterns over it with Match Text and Count. The library held two
+shortcuts named exactly `ZZ Target` and one `ZZ Target 1`.
+
+| pattern | Shortcuts counted | Python's `re`, same text |
+|---|---|---|
+| `(?m)^ZZ Target( \d+)?$` | 3 | 3 |
+| `(?m)^ZZ Target \d+$` | 1 | 1 |
+| `(?m)^ZZ Target$` | 2 | 2 |
+
+The text is the names joined by `\n` and nothing else, so no lookaround or
+separator-based fallback is needed. It held 123 names against 125 visible rows in
+`Shortcuts.sqlite`. All four Brightwheel shortcuts were there once each. The two
+missing were old, empty `New Shortcut 6` and `New Shortcut 7`. Nothing in their
+rows sets them apart from `New Shortcut 4`, which is equally empty and was
+returned. Why they were skipped isn't known.
+
+**A duplicate isn't always numbered.** That fixture came from importing
+`ZZ Target.shortcut` twice, 21 seconds apart, over an existing `ZZ Target` on the
+Mac. The first import produced a second row named exactly `ZZ Target`, and the
+second produced `ZZ Target 1`. What differed between the two imports wasn't
+recorded. Either way, anchoring the match isn't enough to catch a duplicate;
+count every copy, numbered or not.
 
 
 

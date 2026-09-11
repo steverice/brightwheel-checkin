@@ -544,7 +544,9 @@ distinguish "worked" from "looked like it worked".
   nothing. **macOS does something different and just as quiet:** it installs a
   second copy with a number appended, so importing `ZZ Probe Two` twice leaves
   `ZZ Probe Two` and `ZZ Probe Two 1` side by side and the new build is the
-  numbered one. Either way, delete before importing.
+  numbered one. Not always, though: of two later imports over `ZZ Target`, one
+  produced a second copy under the exact same name (`TESTING.md`, "A duplicate
+  isn't always numbered"). Either way, delete before importing.
 - **Get Contents of URL exposes no HTTP status code.** Success has to be
   determined from the body.
 - **Handing off to another app lets the run continue.** A clipboard read after an
