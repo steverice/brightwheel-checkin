@@ -544,10 +544,12 @@ distinguish "worked" from "looked like it worked".
   nothing. **macOS does something different and just as quiet:** it installs a
   second copy with a number appended, so importing `ZZ Probe Two` twice leaves
   `ZZ Probe Two` and `ZZ Probe Two 1` side by side and the new build is the
-  numbered one. And choosing to *replace* the existing shortcut doesn't: it left
-  the original in place and added a second copy under the exact same name
-  (`TESTING.md`, "A duplicate isn't always numbered"; measured with iCloud sync
-  off). Either way, delete before importing.
+  numbered one. And choosing to *replace* the existing shortcut doesn't: it
+  added a second copy under the exact same name and hid the original from the
+  app, which still showed one. Get My Shortcuts and `shortcuts list` still
+  returned both, and the original reappeared in the app once the new copy was
+  deleted (`TESTING.md`, "Replace hides the old copy from the app, and nowhere
+  else"; measured with iCloud sync off). Either way, delete before importing.
 - **Get Contents of URL exposes no HTTP status code.** Success has to be
   determined from the body.
 - **Handing off to another app lets the run continue.** A clipboard read after an

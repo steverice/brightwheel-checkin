@@ -338,11 +338,22 @@ That fixture came from importing `ZZ Target.shortcut` twice, 21 seconds apart,
 over an existing `ZZ Target` on the Mac. For the first import the user chose to
 replace the existing shortcut. That added a second row named exactly
 `ZZ Target`, and the original stayed. More than twenty minutes later it was still
-not tombstoned, not hidden, and had an unchanged modification time, and Get My
-Shortcuts returned both. The second import didn't replace, and produced
-`ZZ Target 1`. iCloud sync for Shortcuts was off on that Mac, so a replace with
-sync on might behave differently. Either way, anchoring the match isn't enough
-to catch a duplicate; count every copy, numbered or not.
+not tombstoned, not flagged `ZHIDDENFROMLIBRARYANDSYNC`, and had an unchanged
+modification time, and Get My Shortcuts returned both. The second import didn't
+replace, and produced `ZZ Target 1`. Either way, anchoring the match isn't
+enough to catch a duplicate; count every copy, numbered or not.
+
+**Replace hides the old copy from the app, and nowhere else.** With three rows
+in the database, the app listed two, `ZZ Target` and `ZZ Target 1` (the user's
+report). `shortcuts list --show-identifiers` gave all three. To find out which
+`ZZ Target` the app was showing, the user renamed it to `ZZ Visible` and deleted
+it. The row that disappeared was the copy Replace had added, so the original was
+the one the app hid. Once the replacement was gone, the original reappeared in
+the app. So a Replace duplicate can be cleared from the app: delete the copy you
+can see, and the hidden one comes back into view. The delete left no row behind
+at all. No shortcut in that database was tombstoned, including ones deleted
+earlier in the session. iCloud sync for Shortcuts was off on that Mac, and
+Replace and Delete with sync on haven't been measured.
 
 
 
