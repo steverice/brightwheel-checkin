@@ -240,6 +240,23 @@ on screen to say so. `verify_links.py` catches that for free, since a link to a
 stale build fails the comparison against `dist/<name>.xml`; a second reason it
 earns its place.
 
+**Nor can it be pre-seeded by name**, which is how the wrappers get away with
+never knowing Brightwheel Attendance's identifier. `Run Shortcut` has a name field
+the runtime reads — `WFWorkflowName`, with a `workflowIdentifier` that matches
+nothing — and the picker has no equivalent. Three shapes were generated, imported,
+and run on the Mac with the target present and iCloud access allowed:
+
+| pre-seeded with | on run |
+|---|---|
+| a fresh UUID that matches nothing, plus the name | asks for a shortcut |
+| the name only, no identifier | asks for a shortcut |
+| the name in the identifier slot | asks for a shortcut |
+
+All three validate, import, and display the target's name in the editor, so
+nothing short of running one reveals the problem. The identifier must be a real,
+live workflow id, and no such id exists before import — the generator cannot
+supply one, and neither can any build step.
+
 So `Brightwheel Share Links` saves the three trips through the share sheet but
 not the picking, and the picking has to be redone every release.
 
