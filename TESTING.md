@@ -260,6 +260,41 @@ supply one, and neither can any build step.
 So `Brightwheel Share Links` saves the three trips through the share sheet but
 not the picking, and the picking has to be redone every release.
 
+### Looking the shortcut up at run time avoids the picker entirely
+
+Storing no reference is what fixes it. A probe ran **Get My Shortcuts**, walked
+the result with **Repeat with Each**, kept the item whose name matched, and passed
+that item to Create iCloud Link as a *variable* instead of a picked value. Each
+step was checked on its own:
+
+- **The variable survives import.** Read back off an iOS 27 simulator, the
+  `shortcut` parameter still holds
+  `{"Value": {"VariableName": "Repeat Item", "Type": "Variable"}, …}` rather than
+  being reset to an empty picker.
+- **The lookup matches.** On the Mac the match branch ran, and the result was the
+  iCloud page for the target.
+- **The output is a usable URL.** Building Share Links' exact
+  `<li><a href="…">` markup and copying it gave
+  `<li><a href="https://www.icloud.com/shortcuts/686774d5…">ZZ Target</a></li>`
+  on the clipboard, which is exactly what `update_links.py` reads.
+
+A shortcut coerced to text gives its name, so the match needs no property
+lookup: a Text action holding the Repeat Item, then Match Text and Count, the
+same pattern `gate()` uses in `build_shortcuts.py`.
+
+One thing looked like a bug and was not. Put the link straight into **Show
+Content** and it reads "minted: Shortcuts", followed by the rendered page. That
+is only a rich preview. The link's text form is the URL, as the clipboard shows.
+Check the clipboard, not what the screen displays.
+
+A fresh import is simply found again on the next run, so nothing needs
+re-picking. The one hazard left is duplicates. Re-importing without deleting
+leaves `Brightwheel Attendance 1` beside the original, and an unanchored name
+match takes both. Anchor the match to the exact name, and treat more than one
+match as an error rather than guessing which copy is the new build.
+
+
+
 ## The roster fixtures
 
 The shortcut reads its roster at run time, so the mock has to be able to answer
