@@ -2,10 +2,12 @@
 """Generate "Brightwheel Share Links": a shortcut that shares the shortcuts.
 
 An iCloud link is a snapshot taken when you share, so every release needs three
-fresh ones, and the only way to mint them is from inside Shortcuts — the
-`shortcuts` CLI has no share command and the AppleScript dictionary exposes
-only `run`. This builds a shortcut that mints all three and puts them on the
-clipboard as the exact markup `docs/index.html` wants.
+fresh ones. The `shortcuts` CLI has no share command and the AppleScript
+dictionary exposes only `run`, so the minting has to happen *inside* a shortcut
+— but `run` is all it takes to drive one. This builds a shortcut that mints all
+three and puts them on the clipboard as the exact markup `docs/index.html`
+wants, which is what makes refreshing the page's links a scripted step rather
+than a chore.
 
 It finds each shortcut **by name, every time it runs**, rather than through a
 picker. A picker stores a workflow identifier, publishing a new build mints a
@@ -19,8 +21,15 @@ copy ("Brightwheel Attendance 1", which macOS can leave when you import over an
 existing name) is refused rather than shared: parents would install it under
 that name, and the wrappers call Brightwheel Attendance by its exact name.
 
-Run it on macOS 27 or iOS 27, where the action exists. Each link still costs one
-confirmation tap.
+Run it headless:
+
+    shortcuts run "Brightwheel Share Links"
+
+It exits 0 with the three links already on the clipboard — no taps, no phone,
+no Shortcuts window. Then `verify_links.py --clipboard --erase` and
+`update_links.py --clipboard` finish the job; `release.sh` offers to run both
+right after cutting a release, and declining that offer is what leaves the
+published page handing out the previous build's links.
 """
 import plistlib
 import sys
@@ -37,7 +46,9 @@ TARGETS = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check 
 
 # Verified against the v78 ToolKit database rather than guessed: the action is
 # com.apple.shortcuts.CreateShortcutiCloudLinkAction, "Create iCloud Link for
-# Shortcut", one parameter keyed `shortcut`, present on iOS 27 and macOS 27.
+# Shortcut", one parameter keyed `shortcut`. That snapshot only covers OS 27, so
+# it says nothing about the floor — the action is older, and minted all three
+# links on macOS 26.6.2 on 2026-09-11. Don't read the snapshot as a requirement.
 ICLOUD_LINK = "com.apple.shortcuts.CreateShortcutiCloudLinkAction"
 
 
