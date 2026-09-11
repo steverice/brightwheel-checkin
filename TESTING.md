@@ -158,10 +158,39 @@ of that action does not get substituted in passing. That was the plausible
 silent failure — a shortcut that imports cleanly, looks right, and has no camera
 at the school door.
 
-Two limits worth keeping in view. This measured the **file** export path; the
-iCloud link path serialises from the same stored form but was not itself tested.
-And it establishes that the round-tripped shortcut is structurally identical to
-the build the suite exercises, not that it was separately run end to end.
+### An iCloud link drops the setup questions
+
+The iCloud path was then tested the same way — a link minted on the Mac, opened
+on an iOS 27 simulator, actions read back — and the **actions** come through
+even more cleanly than the file: 251 actions, identical identifiers, and *zero*
+differences after canonicalising text tokens, `scanbarcode` included.
+
+The questions do not come through at all.
+
+| imported from | actions | `WFWorkflowImportQuestions` |
+|---|---|---|
+| a `.shortcut` file exported from macOS | 251, identical | **3, preserved** |
+| an iCloud link minted from macOS | 251, identical | **0, gone** |
+
+Read straight out of `ZSHORTCUT.ZIMPORTQUESTIONSDATA` on the device, so this is
+not an inference from what the sheet offered. The visible symptom is that the
+import sheet shows **Add Shortcut** rather than **Set Up Shortcut**, installs on
+one tap, and leaves `not set` sitting in all three Text actions. Nothing errors.
+Whoever installed it has a shortcut that cannot sign in, with nothing on screen
+to say why and no prompt to fill in.
+
+That makes an iCloud link the wrong way to distribute *this* shortcut, whatever
+its advantages elsewhere — the whole setup flow is carried in those questions.
+
+What is still unknown is whether this is a property of iCloud links or of
+sharing one **from a Mac**. The file export from the same Mac kept the questions,
+so it is not that macOS strips everything on the way out. Minting a link from an
+iPhone and importing that would settle it; until then, ship files.
+
+Two limits worth keeping in view on the file result. It establishes that the
+round-tripped shortcut is structurally identical to the build the suite
+exercises, not that it was separately run end to end. And a shortcut with no
+questions still installs and runs — it simply has no credentials in it.
 
 A note on the round trip, since it surprises: text tokens carrying no
 attachments come back as bare strings rather than the `Value`/`string` wrapper
