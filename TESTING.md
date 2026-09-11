@@ -158,39 +158,47 @@ of that action does not get substituted in passing. That was the plausible
 silent failure — a shortcut that imports cleanly, looks right, and has no camera
 at the school door.
 
-### Mint iCloud links on the phone, not the Mac
+### iCloud links carry setup questions — but check every one
 
-The **actions** survive every route tested, and an iCloud link is the cleanest of
-them: 251 actions, identical identifiers, zero differences after canonicalising
-text tokens, `scanbarcode` intact.
+The **actions** survive every route tested: 251 actions, identical identifiers,
+zero differences after canonicalising text tokens, `scanbarcode` intact. Only
+`WFWorkflowImportQuestions` ever went missing, and only once.
 
-`WFWorkflowImportQuestions` is the part that depends on the route. Four
-measurements, each read out of `ZSHORTCUT.ZIMPORTQUESTIONSDATA` on the importing
-device rather than inferred from what the sheet offered:
+Everything measured, each count read out of `ZSHORTCUT.ZIMPORTQUESTIONSDATA`
+rather than inferred from what a sheet offered:
 
-| route | questions |
+| | questions |
 |---|---|
-| the built file itself | 3 |
-| file → macOS import → **File → Export** → iOS | **3** |
-| file → macOS import → **iCloud link minted on the Mac** → iOS | **0** |
-| file → iPhone import (Skip Setup) → **iCloud link minted on the phone** → iOS | **3** |
+| the built file | 3 |
+| macOS library copy, imported with Add Shortcut and no values filled | **3** |
+| the same copy after a File → Export | **3** (export changes nothing) |
+| macOS export → file → iOS import | **3** |
+| link minted on an **iPhone** → iOS import | **3** |
+| link minted on the **Mac** from that copy → iOS import | **3** |
+| link minted on the Mac from the *first* probe → iOS import | **0** |
 
-So: **iCloud links carry setup questions, as long as the link is minted on a
-phone.** That matches RoutineHub, which distributes entirely by iCloud link and
-hosts plenty of shortcuts that ask questions on import.
+So iCloud links carry questions, from either platform, and "Add Shortcut with
+the fields left empty" on macOS behaves like iOS's Skip Setup — the copy keeps
+its questions.
 
-Why the Mac-minted link lost them is *not* established. The obvious theory —
-that completing setup consumes the questions, and macOS has no Skip Setup to
-avoid it — does not survive the second row: a file exported from that same Mac
-copy carried all three. The Mac copy's own question count was never measured
-before it was deleted, which is the measurement that would settle it. Recorded
-here as unexplained rather than guessed at a third time.
+**The last row is unexplained.** Three theories were tried and all three are
+dead: an iCloud link does not strip questions (five links say otherwise);
+completing setup does not consume them (the macOS copy kept all three); and
+exporting does not clear them (measured before and after). The only other
+difference between that probe and the rest is that its clicks were synthesized
+rather than made by a person, which is not a mechanism, just the remaining
+variable.
 
-The visible tell costs nothing to check, whichever route is used. An import
-sheet offering **Set Up Shortcut** has questions; one offering **Add Shortcut**
-does not, and will install in one tap leaving `not set` in the email, password
-and check-in code actions — no error, no prompt, and a shortcut that cannot sign
-in. Look at the button before sending a link to anyone.
+A note on what sent that investigation wrong twice: every `Brightwheel*` shortcut
+in the macOS library reports zero import questions, which looked like strong
+evidence that something was stripping them. They are **debug builds**, which are
+generated with no import questions at all. They were never evidence.
+
+Since the cause is unknown, rely on the check rather than the rule. It is free:
+open the link yourself before sending it to anyone. A sheet offering **Set Up
+Shortcut** has the questions; one offering **Add Shortcut** does not, and will
+install in one tap leaving `not set` in the email, password and check-in code
+actions — no error, no prompt, and a shortcut that cannot sign in.
 
 Two limits worth keeping on the file result. It establishes that the
 round-tripped shortcut is structurally identical to the build the suite
