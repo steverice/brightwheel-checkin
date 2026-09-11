@@ -333,12 +333,16 @@ missing were old, empty `New Shortcut 6` and `New Shortcut 7`. Nothing in their
 rows sets them apart from `New Shortcut 4`, which is equally empty and was
 returned. Why they were skipped isn't known.
 
-**A duplicate isn't always numbered.** That fixture came from importing
-`ZZ Target.shortcut` twice, 21 seconds apart, over an existing `ZZ Target` on the
-Mac. The first import produced a second row named exactly `ZZ Target`, and the
-second produced `ZZ Target 1`. What differed between the two imports wasn't
-recorded. Either way, anchoring the match isn't enough to catch a duplicate;
-count every copy, numbered or not.
+**A duplicate isn't always numbered, and choosing to replace doesn't replace.**
+That fixture came from importing `ZZ Target.shortcut` twice, 21 seconds apart,
+over an existing `ZZ Target` on the Mac. For the first import the user chose to
+replace the existing shortcut. That added a second row named exactly
+`ZZ Target`, and the original stayed. More than twenty minutes later it was still
+not tombstoned, not hidden, and had an unchanged modification time, and Get My
+Shortcuts returned both. The second import didn't replace, and produced
+`ZZ Target 1`. iCloud sync for Shortcuts was off on that Mac, so a replace with
+sync on might behave differently. Either way, anchoring the match isn't enough
+to catch a duplicate; count every copy, numbered or not.
 
 
 
