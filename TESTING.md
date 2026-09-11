@@ -212,6 +212,15 @@ round-tripped shortcut is structurally identical to the build the suite
 exercises, not that it was separately run end to end. And a shortcut with no
 questions still installs and runs — it simply has no credentials in it.
 
+**Deleting the shortcut didn't take its link down.** Two links still opened an
+import sheet after the shortcut they were minted from had been deleted on the
+Mac. ZZ Import Probe's (`7ba4b5a8…`) was checked on 2026-09-11, the day after
+it was minted. Brightwheel Check In's (`b1ff396f…`) was checked minutes after the
+deletion. Both deletions happened with iCloud sync for Shortcuts off, so they
+may never have reached iCloud, and a deletion with sync on is unmeasured. No way
+to revoke a link is known, so treat every link you mint as public for good.
+Mint from builds with no credentials in them.
+
 ### The publisher's pickers go stale every release
 
 `Create iCloud Link for Shortcut` takes a workflow reference, and the picker
