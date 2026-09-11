@@ -81,6 +81,13 @@ it names the likely cause.
 Leave the device window alone while the suite runs — the taps go to real screen
 coordinates.
 
+**The simulator cannot open files from `~/Desktop`.** `xcrun simctl openurl
+<udid> file:///Users/…/Desktop/X.shortcut` fails with "Operation not permitted":
+the Desktop is one of macOS's privacy-protected folders, and the simulator
+process has no grant for it. The harness opens files from the repo and from temp
+paths for that reason. `~/Documents` and `~/Downloads` are protected the same
+way and are likely to fail too, though neither has been tried.
+
 ## It cannot reach the real Brightwheel
 
 Test builds are generated with `--api-base` pointing at the local mock, plus
@@ -218,8 +225,8 @@ image      : { uri: intents-remote-image-proxy:… }
 ```
 
 Delete the target and import it again — which is exactly what shipping a new
-build requires, since a same-name import is silently skipped — and it comes back
-with a fresh `ZWORKFLOWID`. The picker keeps the old one. Measured: stored
+build requires, since iOS skips a same-name import and macOS installs a numbered
+second copy beside it — and it comes back with a fresh `ZWORKFLOWID`. The picker keeps the old one. Measured: stored
 `5427F12F-…` against a live `28E1CE52-…`.
 
 **The editor gives no sign of it.** It goes on displaying the target's name and
@@ -280,7 +287,19 @@ step was checked on its own:
 
 A shortcut coerced to text gives its name, so the match needs no property
 lookup: a Text action holding the Repeat Item, then Match Text and Count, the
-same pattern `gate()` uses in `build_shortcuts.py`.
+same pattern `gate()` uses in `build_shortcuts.py`. `Get Shortcut Attributes`
+looks like the obvious tool and is not: its `attribute` enum covers only
+toggles — share sheet, Apple Watch, menu bar, running when locked — and has no
+name.
+
+**Reading a Mac-run shortcut's output: use the clipboard, primed.** A shortcut
+run on the Mac can only report back through the screen or the clipboard, and the
+screen lies — see the Show Content note below. So have the probe copy its result,
+put a sentinel on the clipboard before the run (`printf SENTINEL | pbcopy`), and
+read it with `pbpaste` afterwards. The sentinel is what makes a run that copied
+nothing look different from a result. And nobody may copy anything between the
+run and the read: pasting a note into chat once overwrote a result, which the
+sentinel check caught.
 
 One thing looked like a bug and was not. Put the link straight into **Show
 Content** and it reads "minted: Shortcuts", followed by the rendered page. That

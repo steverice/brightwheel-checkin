@@ -539,9 +539,12 @@ distinguish "worked" from "looked like it worked".
   and re-import to reset" is therefore not true for anything stored globally,
   which is where the school code lives. The session token is scoped to the
   shortcut for exactly this reason, so a re-import does clear that.
-- **A same-name import is silently skipped.** iOS keeps the old version with no
-  warning, which is indistinguishable from a code change that did nothing. Delete
-  before importing.
+- **A same-name import is silently skipped — on iOS.** iOS keeps the old version
+  with no warning, which is indistinguishable from a code change that did
+  nothing. **macOS does something different and just as quiet:** it installs a
+  second copy with a number appended, so importing `ZZ Probe Two` twice leaves
+  `ZZ Probe Two` and `ZZ Probe Two 1` side by side and the new build is the
+  numbered one. Either way, delete before importing.
 - **Get Contents of URL exposes no HTTP status code.** Success has to be
   determined from the body.
 - **Handing off to another app lets the run continue.** A clipboard read after an
