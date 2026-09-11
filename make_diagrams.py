@@ -20,6 +20,13 @@ They are stored **already cropped to the region used**, and are pasted whole —
 a full 1206x2622 screenshot is four times the bytes for the same picture, and
 these live in git.
 
+**"Washington Elementary School" in the captures is a stand-in, not anybody's
+school**, picked because it could be any of dozens of them. The location a
+trigger names is the one thing in these screenshots that could identify a
+family, so a capture must never show a real one. Nothing else here is personal:
+the screenshots are simulator screens, and the diagrams ship inside the wrappers
+where every parent who installs one sees them.
+
 To recapture, take a full screenshot on an iPhone 17 Pro simulator and cut out
 the same region before saving it here:
 

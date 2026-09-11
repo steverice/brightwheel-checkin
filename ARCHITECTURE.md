@@ -709,6 +709,13 @@ Both guides therefore ring the same row in one shared picker screenshot, and it
 is the configured panel and step 4 that differ — `capture-arrive-set.png` at
 drop-off time against `capture-arrive-pm-set.png` at pickup time.
 
+The school those captures name, **Washington Elementary School, is a stand-in**
+chosen because it could be any of dozens of them, and the times with it are
+invented. It is not anybody's school, so it is not something to scrub. The
+location in a trigger is the one part of these screenshots that could identify a
+family, and the diagrams ship inside the wrappers, so a recapture must keep
+using a stand-in — `make_diagrams.py` says so where the crops are described.
+
 Two arrivals at one school move all of the load onto the **time ranges, which
 must not overlap**. They are now the only thing telling the triggers apart, and
 they live on the device where the build cannot check them. What that cannot
