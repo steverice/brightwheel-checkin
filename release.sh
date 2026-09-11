@@ -6,10 +6,12 @@
 #   ./release.sh v1.3.0 --publish           # publish straight away
 #   ./release.sh v1.3.0 --notes-file NOTES.md
 #
-# The three .shortcut files go up individually *and* as a zip. The loose files
-# are the ones the instructions link to: tapping one on a phone downloads a
-# single shortcut, where the zip forces a trip through the Files app to unpack
-# it first. The zip stays for anyone who wants all three at once on a Mac.
+# Only the zip goes up. GitHub replaces the spaces in an asset's name with dots,
+# and an imported shortcut is named after its file, so a loose
+# "Brightwheel.Check.In.shortcut" installs as "Brightwheel.Check.In" — and the
+# wrappers, which find Brightwheel Attendance by name, can't find it. The zip is
+# built here, so its entries keep their spaces. Phones install from the page's
+# iCloud links, which carry the names too. See ARCHITECTURE.md.
 #
 # Drafts are the default because publishing a release is public and hard to take
 # back. Nothing here signs anything itself — build.sh does, pinned to
@@ -47,7 +49,7 @@ rm -f "$ZIP"
 # has no long form in the zip macOS ships, which is the only reason it is short.
 zip --junk-paths -X --quiet "$ZIP" dist/*.shortcut
 
-assets=(dist/*.shortcut "$ZIP")
+assets=("$ZIP")
 echo
 echo "attaching:"
 printf '  %s\n' "${assets[@]}"

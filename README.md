@@ -9,22 +9,25 @@ You do not need to understand any of this page. **[Start
 here](https://steverice.github.io/brightwheel-checkin/)** — same instructions,
 written for someone who has never seen GitHub before.
 
-The short version, if you would rather stay here:
+The short version:
 
 1. **Check your iPhone is on iOS 27.** Settings → General → About → Software
    Version. On iOS 26 or earlier these do not run at all; see the note below.
-2. **[Download the three
-   shortcuts](https://github.com/steverice/brightwheel-checkin/releases/latest)**
-   from the latest release. Tap each of the three `.shortcut` files, then tap
-   Download. Ignore the `.zip` unless you are on a Mac.
-3. **Open the Files app → Downloads** and tap each one. Nothing looks like it
-   happened when you downloaded them; this is where they went.
-4. **Answer the three questions** Brightwheel Attendance asks — your Brightwheel
+2. **On your iPhone, tap the three download buttons on [the
+   page](https://steverice.github.io/brightwheel-checkin/).** Each one opens
+   straight in Shortcuts.
+3. **Answer the three questions** Brightwheel Attendance asks — your Brightwheel
    email, your password, and your own 4-digit check-in code — and finish with
    **Skip Setup**, not Add Shortcut. See the warning below for why.
-5. **Run Brightwheel Check In by hand once, at the school**, so it can sign in
+4. **Run Brightwheel Check In by hand once, at the school**, so it can sign in
    and scan the school's code. Then add an Arrive trigger to Check In and to
    Check Out.
+
+Prefer files? The [latest
+release](https://github.com/steverice/brightwheel-checkin/releases/latest) has
+all three in a zip. Unzip it and open each file, and **keep the file names as
+they are**. A shortcut is named after the file it came from, and the three find
+each other by name.
 
 You need a Brightwheel account of your own; the download contains nothing about
 anybody's children and asks Brightwheel who yours are every time it runs.
@@ -194,7 +197,8 @@ needs a real camera — and what had to be worked out to drive the simulator.
 
 ## Install
 
-AirDrop `dist/*.shortcut` to the phone. **Order does not matter** — Run Shortcut
+AirDrop `dist/*.shortcut` to the phone, without renaming them: an imported
+shortcut is named after its file. **Order does not matter** — Run Shortcut
 resolves its target by name when it runs, not when it is imported, so a wrapper
 imported on its own works as soon as Brightwheel Attendance exists. All three
 have to be there before a trigger fires.
