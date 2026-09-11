@@ -351,8 +351,16 @@ def build(env=None):
                  WFCondition=2, WFNumberValue="0",
                  WFInput=cond_input(out(C_QRC, "Count"))))
     U_QRI = next(i)
+    # Low error correction. The redundancy in a QR code buys tolerance for
+    # physical insult — creases, glare, a torn corner, a bad angle — and this
+    # code is drawn on a phone screen and read off it, so it has none to
+    # survive. What the levels do cost is size: the payload is 127 bytes, which
+    # fits a version 6 symbol (41x41) at Low but needs a version 8 (49x49) at
+    # the action's Medium default. Low spends that budget on bigger modules
+    # instead, which is the thing that actually helps a camera.
     A.append(act("is.workflow.actions.generatebarcode", UUID=U_QRI,
                  CustomOutputName="School Code QR",
+                 WFQRErrorCorrectionLevel="Low",
                  WFText=ts(out(U_QRC, "Stored Content"))))
     A.append(act("is.workflow.actions.previewdocument",
                  WFInput=attach(out(U_QRI, "School Code QR"))))
