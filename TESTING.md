@@ -158,52 +158,42 @@ of that action does not get substituted in passing. That was the plausible
 silent failure — a shortcut that imports cleanly, looks right, and has no camera
 at the school door.
 
-### An iCloud link drops the setup questions
+### Setup questions are consumed at import, which is easy to misread
 
-The iCloud path was then tested the same way — a link minted on the Mac, opened
-on an iOS 27 simulator, actions read back — and the **actions** come through
-even more cleanly than the file: 251 actions, identical identifiers, and *zero*
-differences after canonicalising text tokens, `scanbarcode` included.
+The iCloud path was tested the same way — a link minted on the Mac, opened on an
+iOS 27 simulator, actions read back. The **actions** come through even more
+cleanly than the file: 251 actions, identical identifiers, and *zero* differences
+after canonicalising text tokens, `scanbarcode` included.
 
-The questions do not come through at all.
+The import questions were absent, and the first reading of that was wrong. It is
+not that an iCloud link strips them. It is that **completing setup consumes
+them**, and the Mac copy the link was minted from had already been through that:
 
-| imported from | actions | `WFWorkflowImportQuestions` |
+| copy | how it was imported | `WFWorkflowImportQuestions` |
 |---|---|---|
-| a `.shortcut` file exported from macOS | 251, identical | **3, preserved** |
-| an iCloud link minted from macOS | 251, identical | **0, gone** |
+| the built file | — | 3 |
+| every Brightwheel shortcut in the Mac library | setup completed | **0** |
+| simulator, from a file, finished with **Skip Setup** | skipped | **3** |
+| simulator, from a link minted off the Mac copy | nothing to ask | **0** |
 
-Read straight out of `ZSHORTCUT.ZIMPORTQUESTIONSDATA` on the device, so this is
-not an inference from what the sheet offered. The visible symptom is that the
-import sheet shows **Add Shortcut** rather than **Set Up Shortcut**, installs on
-one tap, and leaves `not set` sitting in all three Text actions. Nothing errors.
-Whoever installed it has a shortcut that cannot sign in, with nothing on screen
-to say why and no prompt to fill in.
+The Mac had nothing to share. macOS's setup sheet offers only Cancel and Add
+Shortcut — there is no Skip Setup on that platform — so any Mac import answers
+the questions and the installed copy keeps none. A link minted from it carries
+what it had, which was none.
 
-That makes an iCloud link the wrong way to distribute *this* shortcut, whatever
-its advantages elsewhere — the whole setup flow is carried in those questions.
+Skip Setup is what preserves them, and it exists only on iOS. So a
+question-bearing link has to be minted from a phone, from a copy imported with
+Skip Setup. That is consistent with RoutineHub, which distributes entirely by
+iCloud link and hosts plenty of shortcuts that ask questions on import.
 
-What is still unknown is whether this is a property of iCloud links or of
-sharing one **from a Mac**. The file export from the same Mac kept the questions,
-so it is not that macOS strips everything on the way out. Minting a link from an
-iPhone and importing that would settle it; until then, ship files.
+Still untested: minting from an iPhone and importing that. Until it is, prefer
+files — not because links are known to be lossy, but because nothing here has
+yet shown a link that carries questions.
 
-Two limits worth keeping in view on the file result. It establishes that the
+Two limits worth keeping on the file result. It establishes that the
 round-tripped shortcut is structurally identical to the build the suite
 exercises, not that it was separately run end to end. And a shortcut with no
 questions still installs and runs — it simply has no credentials in it.
-
-A note on the round trip, since it surprises: text tokens carrying no
-attachments come back as bare strings rather than the `Value`/`string` wrapper
-they went out as. That is the app's own canonical form, not a change of meaning
-— but a naive diff reports 22 changed actions because of it.
-
-Two platform differences turned up on the way:
-
-- **macOS asks the setup questions all on one page**, where iOS 27 asks them one
-  at a time behind a Next button.
-- **Add Shortcut works on macOS.** The regression that makes it inert is iOS
-  only — the probe imported on the first click, with the questions answered by
-  nobody. So a Mac is a way to install a build without meeting the bug at all.
 
 ## The roster fixtures
 
