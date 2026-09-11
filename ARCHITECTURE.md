@@ -550,6 +550,14 @@ distinguish "worked" from "looked like it worked".
   returned both, and the original reappeared in the app once the new copy was
   deleted (`TESTING.md`, "Replace hides the old copy from the app, and nowhere
   else"; measured with iCloud sync off). Either way, delete before importing.
+- **An imported shortcut is named after its file, and GitHub renames release
+  assets.** GitHub replaced the spaces in `v1.3.0`'s loose assets with dots, so
+  `Brightwheel Check In.shortcut` downloads as `Brightwheel.Check.In.shortcut`.
+  Imported on an iOS 27 simulator, that file installed as `Brightwheel.Check.In`,
+  not the `WFWorkflowName` inside it. The wrappers call Brightwheel Attendance by
+  its exact name, so a loose file from a release installs shortcuts that can't
+  find each other. The zip is unaffected: it's built locally, and its entries
+  keep their spaces. iCloud links carry the name too.
 - **Get Contents of URL exposes no HTTP status code.** Success has to be
   determined from the body.
 - **Handing off to another app lets the run continue.** A clipboard read after an
