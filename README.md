@@ -125,6 +125,22 @@ copies. A picker couldn't do that. It stores a workflow identifier, which every
 re-import replaces, and it can't be pre-seeded by name (`TESTING.md` has the
 measurements).
 
+> ### Mint links from a library that holds none of your own copies
+>
+> Use a Mac with **Shortcuts' iCloud sync turned off**, holding fresh imports of
+> `dist/` and nothing you have set up. Never the phone you check in with.
+>
+> The publisher links whatever it finds under each name, and it cannot tell a
+> clean build from the copy you use every day — the one carrying your Brightwheel
+> password, baked in if it is a debug build and stored as your answers if it is
+> not. In a synced library that is the copy it would find, and every check would
+> pass. The confirmation tap would be the only thing between your password and
+> the internet, and a link cannot be revoked afterward (`TESTING.md`).
+>
+> Sync off also keeps a release import from landing on your phone beside your own
+> copies, where the wrappers find Brightwheel Attendance by name. If sync is ever
+> turned back on, delete the Mac's Brightwheel shortcuts first.
+
 **Delete the old copies before importing the new ones, and on a Mac don't choose
 Replace.** A plain second import installs a numbered copy (`Brightwheel
 Attendance 1`). Replace hides the old copy from the app without removing it.
