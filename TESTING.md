@@ -384,6 +384,14 @@ copied nothing was overwritten by an unrelated copy during those runs. So the
 refusal rows rest on what was on screen: each notification appeared, and no link
 confirmation did.
 
+Once, on a freshly erased simulator, the first `simctl openurl` of an iCloud
+link left the home screen showing and no import sheet. The same link opened
+normally on the next try. A second erase followed by an immediate open didn't
+reproduce it. `verify_links.py` used to blame the link ("is the link still
+live?") after a single miss, so it now opens each link a second time before
+giving up. Since the miss won't reproduce on demand,
+`tests/test_verify_links.py` covers the retry with a fake simulator.
+
 
 
 ## The roster fixtures

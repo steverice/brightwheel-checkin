@@ -53,17 +53,28 @@ def install(sim, link, timeout=45):
     which is the only way to finish that keeps the questions. One without
     questions installs on the first tap. Both are handled, because which one
     appears is the thing being measured.
+
+    The link is opened a second time before giving up. On a freshly erased
+    simulator the first open left the home screen showing, and the same link
+    opened normally on the next try (TESTING.md), so one failure alone says
+    nothing about the link.
     """
-    sim.terminate_shortcuts()
-    time.sleep(1.2)
-    subprocess.run(["xcrun", "simctl", "openurl", sim.udid, link], check=True)
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        time.sleep(2)
-        if sim.blue_buttons():
-            break
-    else:
-        raise RuntimeError("no import sheet appeared — is the link still live?")
+    for attempt in (1, 2):
+        sim.terminate_shortcuts()
+        time.sleep(1.2)
+        subprocess.run(["xcrun", "simctl", "openurl", sim.udid, link], check=True)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            time.sleep(2)
+            if sim.blue_buttons():
+                break
+        else:
+            if attempt == 1:
+                print(f"        no import sheet after {timeout}s; opening it again")
+                continue
+            raise RuntimeError("no import sheet appeared on either try — "
+                               "is the link still live?")
+        break
     sim.tap_affirmative()
     time.sleep(4)
     boxes = sim.blue_buttons()
