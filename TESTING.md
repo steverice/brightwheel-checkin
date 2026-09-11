@@ -158,37 +158,39 @@ of that action does not get substituted in passing. That was the plausible
 silent failure — a shortcut that imports cleanly, looks right, and has no camera
 at the school door.
 
-### Setup questions are consumed at import, which is easy to misread
+### Mint iCloud links on the phone, not the Mac
 
-The iCloud path was tested the same way — a link minted on the Mac, opened on an
-iOS 27 simulator, actions read back. The **actions** come through even more
-cleanly than the file: 251 actions, identical identifiers, and *zero* differences
-after canonicalising text tokens, `scanbarcode` included.
+The **actions** survive every route tested, and an iCloud link is the cleanest of
+them: 251 actions, identical identifiers, zero differences after canonicalising
+text tokens, `scanbarcode` intact.
 
-The import questions were absent, and the first reading of that was wrong. It is
-not that an iCloud link strips them. It is that **completing setup consumes
-them**, and the Mac copy the link was minted from had already been through that:
+`WFWorkflowImportQuestions` is the part that depends on the route. Four
+measurements, each read out of `ZSHORTCUT.ZIMPORTQUESTIONSDATA` on the importing
+device rather than inferred from what the sheet offered:
 
-| copy | how it was imported | `WFWorkflowImportQuestions` |
-|---|---|---|
-| the built file | — | 3 |
-| every Brightwheel shortcut in the Mac library | setup completed | **0** |
-| simulator, from a file, finished with **Skip Setup** | skipped | **3** |
-| simulator, from a link minted off the Mac copy | nothing to ask | **0** |
+| route | questions |
+|---|---|
+| the built file itself | 3 |
+| file → macOS import → **File → Export** → iOS | **3** |
+| file → macOS import → **iCloud link minted on the Mac** → iOS | **0** |
+| file → iPhone import (Skip Setup) → **iCloud link minted on the phone** → iOS | **3** |
 
-The Mac had nothing to share. macOS's setup sheet offers only Cancel and Add
-Shortcut — there is no Skip Setup on that platform — so any Mac import answers
-the questions and the installed copy keeps none. A link minted from it carries
-what it had, which was none.
+So: **iCloud links carry setup questions, as long as the link is minted on a
+phone.** That matches RoutineHub, which distributes entirely by iCloud link and
+hosts plenty of shortcuts that ask questions on import.
 
-Skip Setup is what preserves them, and it exists only on iOS. So a
-question-bearing link has to be minted from a phone, from a copy imported with
-Skip Setup. That is consistent with RoutineHub, which distributes entirely by
-iCloud link and hosts plenty of shortcuts that ask questions on import.
+Why the Mac-minted link lost them is *not* established. The obvious theory —
+that completing setup consumes the questions, and macOS has no Skip Setup to
+avoid it — does not survive the second row: a file exported from that same Mac
+copy carried all three. The Mac copy's own question count was never measured
+before it was deleted, which is the measurement that would settle it. Recorded
+here as unexplained rather than guessed at a third time.
 
-Still untested: minting from an iPhone and importing that. Until it is, prefer
-files — not because links are known to be lossy, but because nothing here has
-yet shown a link that carries questions.
+The visible tell costs nothing to check, whichever route is used. An import
+sheet offering **Set Up Shortcut** has questions; one offering **Add Shortcut**
+does not, and will install in one tap leaving `not set` in the email, password
+and check-in code actions — no error, no prompt, and a shortcut that cannot sign
+in. Look at the button before sending a link to anyone.
 
 Two limits worth keeping on the file result. It establishes that the
 round-tripped shortcut is structurally identical to the build the suite
