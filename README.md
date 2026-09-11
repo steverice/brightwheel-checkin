@@ -182,6 +182,13 @@ the real API.
 A test build is generated with fake credentials and its API base pointed at the
 mock, so **no test can reach the real Brightwheel** or check a real child in.
 
+The release tools have plain pytest files that need no simulator. Name them, so
+pytest doesn't also collect `test_attendance.py`:
+
+```bash
+pytest tests/test_publisher.py tests/test_verify_links.py
+```
+
 `TESTING.md` covers what it needs, what it cannot cover — the QR scanning path
 needs a real camera — and what had to be worked out to drive the simulator.
 
