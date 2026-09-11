@@ -650,3 +650,4 @@ verb in `WorkflowKit`.
 | Taps land in the wrong place | Something re-enabled device bezels or changed the window scale; rerun, the harness resets both |
 | A test hangs then fails to settle | Look at `tests/artifacts/` — a prompt shape the harness did not recognize |
 | Everything fails after an erase | The CA is re-added automatically, but only on the run that erased |
+| `could not select … in Device Hub's sidebar` | Seen once, straight after an erase, with the terminal in front afterward: the search text never reached the field and no row click registered. Rerunning worked, and it didn't recur in two later runs. Bring Device Hub forward and rerun |
