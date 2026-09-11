@@ -137,11 +137,36 @@ which has the same schema as the simulator's:
 | parameters differing | — | none |
 | action UUIDs (164 of them) | — | all preserved |
 
-Nothing is rewritten, dropped, or reminted, so a link minted from a
-Mac-imported copy carries what a link minted from an iPhone would. The limit of
-that test is worth stating: it compares what the Mac *stored*, not what it would
-*serialize when sharing*. Sharing reads from the stored form, so there is no
-obvious room for divergence, but it was not measured.
+Nothing is rewritten, dropped, or reminted on the way in.
+
+**And nothing is rewritten on the way out either.** That copy was exported from
+the Mac's Shortcuts (File → Export, *For: Anyone*, which re-signs through
+iCloud), the exported file imported on an iOS 27 simulator, and the actions read
+back off the device: 251 actions again, identifier sequence identical, and after
+canonicalising Shortcuts' own text-token form the *only* three differences were
+the setup answers, which Skip Setup had emptied during the import.
+
+The action that made this worth testing survives exactly:
+
+| | `is.workflow.actions.scanbarcode` |
+|---|---|
+| source | `{'WFScanCodeActionMode': 0}` |
+| after macOS export → iOS import | `{'WFScanCodeActionMode': 0}` |
+
+No `imageFile` appears and the live-scanner mode is intact, so the macOS variant
+of that action does not get substituted in passing. That was the plausible
+silent failure — a shortcut that imports cleanly, looks right, and has no camera
+at the school door.
+
+Two limits worth keeping in view. This measured the **file** export path; the
+iCloud link path serialises from the same stored form but was not itself tested.
+And it establishes that the round-tripped shortcut is structurally identical to
+the build the suite exercises, not that it was separately run end to end.
+
+A note on the round trip, since it surprises: text tokens carrying no
+attachments come back as bare strings rather than the `Value`/`string` wrapper
+they went out as. That is the app's own canonical form, not a change of meaning
+— but a naive diff reports 22 changed actions because of it.
 
 Two platform differences turned up on the way:
 
