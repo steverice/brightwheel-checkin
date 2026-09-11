@@ -222,24 +222,26 @@ build requires, since a same-name import is silently skipped — and it comes ba
 with a fresh `ZWORKFLOWID`. The picker keeps the old one. Measured: stored
 `5427F12F-…` against a live `28E1CE52-…`.
 
-**The editor hides this.** It goes on displaying the target's name, because the
-name is stored beside the identifier as display metadata. Nothing is marked
-broken. Running the shortcut is what surfaces it: Shortcuts re-prompts for a
-shortcut to use.
+**The editor gives no sign of it.** It goes on displaying the target's name and
+renders it as a resolved token, because the name is stored beside the identifier
+as display metadata. Nothing is marked broken.
 
-Two failure modes, and the quiet one is the problem:
+What has *not* been established is what happens at run time — whether the stale
+identifier is fatal or whether Shortcuts falls back to the name, as `Run
+Shortcut` does with its own `workflowIdentifier`. The attempt to find out ran
+into an unrelated wall: the probe had been denied iCloud access on a previous
+run, so it failed on permissions before reaching the question. Treat the
+identifier going stale as measured and the consequence as open.
 
-| state of the old copy | what happens |
-|---|---|
-| deleted, as a release requires | re-prompts — loud, and hard to get wrong |
-| still present, renamed or forgotten | resolves to it and mints a link for the **old build**, silently |
+The consequence worth guarding against either way is the quiet one. If the old
+copy is still in the library — renamed, or simply not cleared out — a picker
+holding its identifier would mint a link for the **previous build** with nothing
+on screen to say so. `verify_links.py` catches that for free, since a link to a
+stale build fails the comparison against `dist/<name>.xml`; a second reason it
+earns its place.
 
-`verify_links.py` catches the second one for free: a link to a stale build fails
-the comparison against `dist/<name>.xml`. That is a second reason it exists.
-
-So `Brightwheel Share Links` saves the three trips through the share sheet but
-not the picking, and the picking has to happen again every release. Worth
-knowing before treating it as automation.
+So `Brightwheel Share Links` saves the three trips through the share sheet, but
+its pickers should be re-checked every release rather than trusted.
 
 ## The roster fixtures
 
