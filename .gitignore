@@ -30,3 +30,6 @@ dist-test/
 dist-tools/
 tests/tls/
 tests/artifacts/
+
+# Fetched by make_og_image.py; the card it draws is committed, these are not.
+.fonts/
