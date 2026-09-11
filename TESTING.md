@@ -150,7 +150,7 @@ Nothing is rewritten, dropped, or reminted on the way in.
 the Mac's Shortcuts (File → Export, *For: Anyone*, which re-signs through
 iCloud), the exported file imported on an iOS 27 simulator, and the actions read
 back off the device: 251 actions again, identifier sequence identical, and after
-canonicalising Shortcuts' own text-token form the *only* three differences were
+canonicalizing Shortcuts' own text-token form the *only* three differences were
 the setup answers, which Skip Setup had emptied during the import.
 
 The action that made this worth testing survives exactly:
@@ -168,7 +168,7 @@ at the school door.
 ### iCloud links carry setup questions — but check every one
 
 The **actions** survive every route tested: 251 actions, identical identifiers,
-zero differences after canonicalising text tokens, `scanbarcode` intact. Only
+zero differences after canonicalizing text tokens, `scanbarcode` intact. Only
 `WFWorkflowImportQuestions` ever went missing, and only once.
 
 Everything measured, each count read out of `ZSHORTCUT.ZIMPORTQUESTIONSDATA`

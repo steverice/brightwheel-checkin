@@ -50,7 +50,7 @@ Inside `build_shortcuts.py`:
 | `SETUP` / `ENV_KEYS` | The import-time values, and their `.env` names for debug builds. |
 | `guard()` / `diff_guard()` | Emit one roster check: notify, clear `Roster OK`, and let the run fall through without sending. `guard()` also serves the per-child pass. |
 | `build()` | `Brightwheel Attendance` — everything except the direction. |
-| `build_wrapper()` | The two trigger carriers, parameterised by direction. Each also carries its own first-run setup guide. |
+| `build_wrapper()` | The two trigger carriers, parameterized by direction. Each also carries its own first-run setup guide. |
 | `--api-base` / `--env-file` | Overrides used only by the integration tests, so a test build cannot reach the real API. See `TESTING.md`. |
 
 ## Data flow
