@@ -25,8 +25,11 @@ right after cutting a release, and declining that offer is what leaves the
 published page handing out the previous build's links.
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
+from typing import Any
 
 from shortcut_forge_lib.build import Shortcut, build_all
 from shortcut_forge_lib.publisher import share_links_shortcut
@@ -46,7 +49,7 @@ TARGETS = NAMES
 WAIVED = ["Second action must be the prompt Comment block"]
 
 
-def build():
+def build() -> dict[str, Any]:
     """The publisher, with this project's three targets and the page's markup."""
     return share_links_shortcut(
         NAME,
@@ -56,7 +59,7 @@ def build():
     )
 
 
-def main():
+def main() -> int:
     dest = Path(sys.argv[1] if len(sys.argv) > 1 else REPO / "dist-tools")
     plist = build()
     built = build_all(dest, [Shortcut(NAME, plist)], waived=WAIVED, mode="anyone", known_shortcuts=TARGETS)

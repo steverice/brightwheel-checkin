@@ -48,6 +48,10 @@ rest of it width.
 Needs Pillow. Only for regenerating the diagrams — ./build.sh just reads the
 PNGs this writes.
 """
+
+from __future__ import annotations
+
+import contextlib
 import pathlib
 
 from PIL import Image, ImageDraw, ImageFont
@@ -88,31 +92,38 @@ PLAN = {
 WIDTH = 860
 
 
-def font(size, bold=False):
-    for path in ("/System/Library/Fonts/SFNSRounded.ttf",
-                 "/System/Library/Fonts/SFNS.ttf",
-                 "/System/Library/Fonts/Supplemental/Arial.ttf"):
-        try:
-            f = ImageFont.truetype(path, size)
-            if bold and hasattr(f, "set_variation_by_name"):
-                try:
-                    f.set_variation_by_name("Bold")
-                except Exception:
-                    pass
-            return f
-        except Exception:
+def _load_font(path: str, size: int) -> ImageFont.FreeTypeFont | None:
+    """`ImageFont.truetype`, or `None` if this path is not a usable font."""
+    try:
+        return ImageFont.truetype(path, size)
+    except OSError:
+        return None
+
+
+def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for path in (
+        "/System/Library/Fonts/SFNSRounded.ttf",
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+    ):
+        f = _load_font(path, size)
+        if f is None:
             continue
+        if bold and hasattr(f, "set_variation_by_name"):
+            with contextlib.suppress(Exception):
+                f.set_variation_by_name("Bold")
+        return f
     return ImageFont.load_default()
 
 
-def panel(name):
+def panel(name: str) -> tuple[Image.Image, float]:
     """A capture, scaled to the diagram width. Stored pre-cropped, so whole."""
     shot = Image.open(ASSETS / name).convert("RGB")
     scale = WIDTH / shot.width
-    return shot.resize((WIDTH, int(shot.height * scale)), Image.LANCZOS), scale
+    return shot.resize((WIDTH, int(shot.height * scale)), Image.Resampling.LANCZOS), scale
 
 
-def draw(kind, spec):
+def draw(kind: str, spec: dict[str, str]) -> tuple[pathlib.Path, int]:
     picker, scale = panel(spec["capture"])
     result, _ = panel(spec["result"])
 
@@ -123,10 +134,12 @@ def draw(kind, spec):
     # Step 4 names the time range rather than just asking for one. Both
     # wrappers now ring the same row in the same picture, so the range is the
     # only thing that tells the two guides apart on screen.
-    steps = ["1.  Tap Edit on this shortcut.",
-             "2.  Tap the search field at the bottom.",
-             f'3.  Search "{spec["action"]}" and tap it under Automation.',
-             f'4.  Pick the school, and set the time range to {spec["when"]}.']
+    steps = [
+        "1.  Tap Edit on this shortcut.",
+        "2.  Tap the search field at the bottom.",
+        f'3.  Search "{spec["action"]}" and tap it under Automation.',
+        f"4.  Pick the school, and set the time range to {spec['when']}.",
+    ]
 
     # Lay the page out first so the canvas is exactly as tall as its contents.
     # It used to be a hard-coded 1320, which silently clipped anything added.
@@ -148,14 +161,14 @@ def draw(kind, spec):
     d.text((40, 100), spec["subtitle"], font=font(30), fill=(110, 110, 110))
 
     canvas.paste(picker, (40, top))
-    d.rounded_rectangle((40, top, 40 + WIDTH, top + picker.height), radius=14,
-                        outline=(205, 205, 205), width=2)
+    d.rounded_rectangle((40, top, 40 + WIDTH, top + picker.height), radius=14, outline=(205, 205, 205), width=2)
     x0, y0, x1, y1 = ROW
-    d.rounded_rectangle((40 + int(x0 * scale),
-                         top + int(y0 * scale),
-                         40 + int(x1 * scale),
-                         top + int(y1 * scale)),
-                        radius=16, outline=(230, 60, 70), width=6)
+    d.rounded_rectangle(
+        (40 + int(x0 * scale), top + int(y0 * scale), 40 + int(x1 * scale), top + int(y1 * scale)),
+        radius=16,
+        outline=(230, 60, 70),
+        width=6,
+    )
 
     y = steps_y
     for line in steps:
@@ -163,21 +176,23 @@ def draw(kind, spec):
         y += 44
 
     canvas.paste(result, (40, result_y))
-    d.rounded_rectangle((40, result_y, 40 + WIDTH, result_y + result.height),
-                        radius=14, outline=(205, 205, 205), width=2)
+    d.rounded_rectangle(
+        (40, result_y, 40 + WIDTH, result_y + result.height), radius=14, outline=(205, 205, 205), width=2
+    )
 
     # One line at 26 runs 906px wide against 856 of room; 24 fits with the
     # sentence intact, which beats rewording it to save two points.
-    d.text((44, foot_y),
-           "Location Services for Shortcuts must be Always, "
-           "or the geofence never fires.",
-           font=font(24), fill=(120, 120, 120))
+    d.text(
+        (44, foot_y),
+        "Location Services for Shortcuts must be Always, or the geofence never fires.",
+        font=font(24),
+        fill=(120, 120, 120),
+    )
 
     # 64 colors is lossless enough for flat UI art and a third of the bytes,
     # which matters because this ends up base64'd inside the shortcut.
     out = ASSETS / f"setup-{kind}.png"
-    canvas.convert("P", palette=Image.ADAPTIVE, colors=64).save(
-        out, format="PNG", optimize=True)
+    canvas.convert("P", palette=Image.Palette.ADAPTIVE, colors=64).save(out, format="PNG", optimize=True)
     return out, out.stat().st_size
 
 

@@ -26,9 +26,10 @@ So this script needs the network on a cold cache. That is why `docs/img/og.png`
 is committed alongside it: nothing in the build depends on this running, and it
 only needs to run again when the card itself changes.
 """
-import re
+
+from __future__ import annotations
+
 import sys
-import textwrap
 import urllib.request
 from pathlib import Path
 
@@ -59,21 +60,21 @@ BRAND = "#4f52d6"
 HEADLINE = "Effortless check-in."
 STANDFIRST = "Check your kids in and out of Brightwheel automatically on iOS"
 DOMAIN = "code.steverice.org"
-ICON = 140           # big enough that the ring resolves rather than speckles
-FOOT_PAD = 56        # the mark sits closer to the edge than the text margin, so
-                     # it has room to grow without crowding the standfirst
-TOP = 118            # headline baseline, pulled up to free that room
+ICON = 140  # big enough that the ring resolves rather than speckles
+FOOT_PAD = 56  # the mark sits closer to the edge than the text margin, so
+# it has room to grow without crowding the standfirst
+TOP = 118  # headline baseline, pulled up to free that room
 
 # Variable fonts from the upstream repo. The bracketed axis list is part of the
 # filename, so it has to be percent-encoded to survive the URL.
 FONTS = {
     "outfit.ttf": "https://github.com/google/fonts/raw/main/ofl/outfit/Outfit%5Bwght%5D.ttf",
     "nunito.ttf": "https://github.com/google/fonts/raw/main/ofl/nunitosans/"
-                  "NunitoSans%5BYTLC%2Copsz%2Cwdth%2Cwght%5D.ttf",
+    "NunitoSans%5BYTLC%2Copsz%2Cwdth%2Cwght%5D.ttf",
 }
 
 
-def font_file(name):
+def font_file(name: str) -> Path:
     """The cached TrueType, downloaded on first use."""
     path = FONT_CACHE / name
     if path.exists():
@@ -90,14 +91,14 @@ def font_file(name):
     return path
 
 
-def face(name, size, instance):
+def face(name: str, size: int, instance: str) -> ImageFont.FreeTypeFont:
     """One weight of a variable font, picked by its named instance."""
     f = ImageFont.truetype(str(font_file(name)), size)
     f.set_variation_by_name(instance)
     return f
 
 
-def assert_renderable(font, text, label):
+def assert_renderable(font: ImageFont.FreeTypeFont, text: str, label: str) -> None:
     """Stop if the font lacks a glyph, rather than drawing a tofu box.
 
     FreeType silently substitutes .notdef for a missing character, and a card is
@@ -106,18 +107,16 @@ def assert_renderable(font, text, label):
     no font defines: anything that draws identically to that is .notdef.
     """
     notdef = bytes(font.getmask(""))
-    missing = {c for c in set(text) if not c.isspace()
-               and bytes(font.getmask(c)) == notdef}
+    missing = {c for c in set(text) if not c.isspace() and bytes(font.getmask(c)) == notdef}
     if missing:
-        sys.exit(f"{label}: {font.getname()[0]} has no glyph for "
-                 f"{', '.join(repr(c) for c in sorted(missing))}")
+        sys.exit(f"{label}: {font.getname()[0]} has no glyph for {', '.join(repr(c) for c in sorted(missing))}")
 
 
-def width(draw, text, font):
+def width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) -> float:
     return draw.textbbox((0, 0), text, font=font)[2]
 
 
-def wrap(draw, text, font, limit):
+def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, limit: float) -> list[str]:
     """Greedy wrap to a pixel width, so editing the standfirst cannot overflow."""
     lines, line = [], ""
     for word in text.split():
@@ -132,7 +131,7 @@ def wrap(draw, text, font, limit):
     return lines
 
 
-def main():
+def main() -> None:
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
 
@@ -169,21 +168,21 @@ def main():
     mark = make_icons.rasterize(make_icons.ring_svg(themed=False), ICON)
     mark_top = H - FOOT_PAD - ICON
     if mark_top < y + 8:
-        sys.exit(f"the mark at {ICON}px would overlap the standfirst "
-                 f"(mark top {mark_top}, text bottom {y}) — shrink ICON, "
-                 f"raise TOP, or cut FOOT_PAD")
+        sys.exit(
+            f"the mark at {ICON}px would overlap the standfirst "
+            f"(mark top {mark_top}, text bottom {y}) — shrink ICON, "
+            f"raise TOP, or cut FOOT_PAD"
+        )
     img.paste(mark, (PAD, mark_top), mark)
     # Domain centered on the mark rather than sharing a baseline with it: the
     # mark has no baseline, so optical centering is the only alignment there is.
     dw = width(d, DOMAIN, domain)
     dbox = d.textbbox((0, 0), DOMAIN, font=domain)
-    d.text((W - PAD - dw, mark_top + ICON // 2 - (dbox[3] + dbox[1]) // 2),
-           DOMAIN, font=domain, fill=MUTED)
+    d.text((W - PAD - dw, mark_top + ICON // 2 - (dbox[3] + dbox[1]) // 2), DOMAIN, font=domain, fill=MUTED)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     img.save(OUT, "PNG", optimize=True)
-    print(f"  wrote {OUT.relative_to(REPO)}  {img.size[0]}x{img.size[1]}  "
-          f"{OUT.stat().st_size // 1024} KB")
+    print(f"  wrote {OUT.relative_to(REPO)}  {img.size[0]}x{img.size[1]}  {OUT.stat().st_size // 1024} KB")
 
 
 if __name__ == "__main__":

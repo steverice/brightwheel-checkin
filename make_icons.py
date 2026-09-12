@@ -50,6 +50,9 @@ rasters cannot drift apart, so there is nothing to keep in sync and no parity
 check to run. Needs `librsvg` — `brew install librsvg`. The rendered files are
 committed, so nothing in the build depends on it.
 """
+
+from __future__ import annotations
+
 import colorsys
 import math
 import struct
@@ -63,17 +66,17 @@ from PIL import Image
 REPO = Path(__file__).resolve().parent
 DOCS = REPO / "docs"
 
-BRAND = "#4f52d6"      # --brand, straight from the page's :root
-PAPER = "#f5f6fb"      # --paper
-INK = "#1f1c46"        # --ink
+BRAND = "#4f52d6"  # --brand, straight from the page's :root
+PAPER = "#f5f6fb"  # --paper
+INK = "#1f1c46"  # --ink
 
-BOX = 64               # viewBox for both marks
+BOX = 64  # viewBox for both marks
 
 # --- the ring mark -------------------------------------------------------
 COUNT = 8
 RING_R = 24.0
 CAP_L, CAP_W = 15.4, 6.7
-CAP_TILT = 20                                   # degrees clockwise
+CAP_TILT = 20  # degrees clockwise
 RING_CHECK = [(11.0, 33.0), (26.0, 48.0), (54.5, 15.0)]
 RING_CHECK_W = 15.0
 # Drawn at full size the check fouls the ring: its left cap sits at 177°, against
@@ -88,43 +91,45 @@ RING_CHECK_SCALE = 0.82
 TILE_RADIUS = 14
 TILE_CHECK = [(17.0, 33.0), (26.0, 42.0), (47.0, 21.0)]
 TILE_CHECK_W = 8.0
-TILE_INSET = 0.78      # shrink the ring group so it clears the tile's corners
+TILE_INSET = 0.78  # shrink the ring group so it clears the tile's corners
 
 
-def ramp(lo, hi):
+def ramp(lo: float, hi: float) -> list[str]:
     """A light-to-dark scale of the brand hue, standing in for the rainbow."""
-    r, g, b = (int(BRAND[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    r, g, b = (int(BRAND[i : i + 2], 16) / 255 for i in (1, 3, 5))
     h, _, s = colorsys.rgb_to_hls(r, g, b)
-    return ["#%02x%02x%02x" % tuple(int(v * 255) for v in
-                                    colorsys.hls_to_rgb(h, lo + (i / (COUNT - 1)) * (hi - lo), s))
-            for i in range(COUNT)]
+    return [
+        "#{:02x}{:02x}{:02x}".format(
+            *(int(v * 255) for v in colorsys.hls_to_rgb(h, lo + (i / (COUNT - 1)) * (hi - lo), s))
+        )
+        for i in range(COUNT)
+    ]
 
 
-LIGHT_RAMP = ramp(0.34, 0.68)     # on a light strip
-DARK_RAMP = ramp(0.55, 0.88)      # on a dark one, shifted up to stay visible
+LIGHT_RAMP = ramp(0.34, 0.68)  # on a light strip
+DARK_RAMP = ramp(0.55, 0.88)  # on a dark one, shifted up to stay visible
 
 
-def capsule(i):
+def capsule(i: int) -> tuple[float, float, float]:
     """Centre and rotation for one capsule of the ring."""
     a = math.radians(i * 360 / COUNT - 90)
-    return (BOX / 2 + RING_R * math.cos(a),
-            BOX / 2 + RING_R * math.sin(a),
-            i * 360 / COUNT + CAP_TILT)
+    return (BOX / 2 + RING_R * math.cos(a), BOX / 2 + RING_R * math.sin(a), i * 360 / COUNT + CAP_TILT)
 
 
-def path_of(points):
+def path_of(points: list[tuple[float, float]]) -> str:
     return " ".join(f"{'ML'[n > 0]}{x:.2f} {y:.2f}" for n, (x, y) in enumerate(points))
 
 
-def ring_check():
+def ring_check() -> tuple[list[tuple[float, float]], float]:
     """The ring mark's check, pulled in so its caps clear the spokes."""
     c = BOX / 2
-    return ([(c + (x - c) * RING_CHECK_SCALE, c + (y - c) * RING_CHECK_SCALE)
-             for x, y in RING_CHECK],
-            RING_CHECK_W * RING_CHECK_SCALE)
+    return (
+        [(c + (x - c) * RING_CHECK_SCALE, c + (y - c) * RING_CHECK_SCALE) for x, y in RING_CHECK],
+        RING_CHECK_W * RING_CHECK_SCALE,
+    )
 
 
-def ring_svg(themed=True, dark=False, ground=None):
+def ring_svg(themed: bool = True, dark: bool = False, ground: str | None = None) -> str:
     """The ring mark.
 
     `themed` embeds the `prefers-color-scheme` swap, for the SVG a browser
@@ -135,31 +140,39 @@ def ring_svg(themed=True, dark=False, ground=None):
     """
     ramp = DARK_RAMP if dark else LIGHT_RAMP
     check = PAPER if dark else INK
-    style = ["    " + " ".join(f".c{i}{{fill:{c}}}" for i, c in enumerate(ramp)),
-             f"    .k{{stroke:{check}}}"]
+    style = ["    " + " ".join(f".c{i}{{fill:{c}}}" for i, c in enumerate(ramp)), f"    .k{{stroke:{check}}}"]
     if themed:
         swap = " ".join(f".c{i}{{fill:{c}}}" for i, c in enumerate(DARK_RAMP))
-        style.append("    @media (prefers-color-scheme: dark){"
-                     f"{swap} .k{{stroke:{PAPER}}}}}")
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {BOX} {BOX}" '
-           f'role="img" aria-label="Brightwheel Check-In Shortcuts">',
-           "  <style>", *style, "  </style>"]
+        style.append(f"    @media (prefers-color-scheme: dark){{{swap} .k{{stroke:{PAPER}}}}}")
+    out = [
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {BOX} {BOX}" '
+            f'role="img" aria-label="Brightwheel Check-In Shortcuts">'
+        ),
+        "  <style>",
+        *style,
+        "  </style>",
+    ]
     if ground:
         out.append(f'  <rect width="{BOX}" height="{BOX}" fill="{ground}"/>')
     for i in range(COUNT):
         px, py, deg = capsule(i)
-        out.append(f'  <rect class="c{i}" x="{px - CAP_L / 2:.2f}" y="{py - CAP_W / 2:.2f}" '
-                   f'width="{CAP_L}" height="{CAP_W}" rx="{CAP_W / 2}" '
-                   f'transform="rotate({deg:.0f} {px:.2f} {py:.2f})"/>')
+        out.append(
+            f'  <rect class="c{i}" x="{px - CAP_L / 2:.2f}" y="{py - CAP_W / 2:.2f}" '
+            f'width="{CAP_L}" height="{CAP_W}" rx="{CAP_W / 2}" '
+            f'transform="rotate({deg:.0f} {px:.2f} {py:.2f})"/>'
+        )
     pts, width = ring_check()
-    out.append(f'  <path class="k" d="{path_of(pts)}" fill="none" '
-               f'stroke-width="{width:.2f}" stroke-linecap="round" '
-               f'stroke-linejoin="round"/>')
+    out.append(
+        f'  <path class="k" d="{path_of(pts)}" fill="none" '
+        f'stroke-width="{width:.2f}" stroke-linecap="round" '
+        f'stroke-linejoin="round"/>'
+    )
     out.append("</svg>\n")
     return "\n".join(out)
 
 
-def tile_svg(ring=False):
+def tile_svg(ring: bool = False) -> str:
     """The tiled mark: the dark palette on a solid ink tile, with the ring around
     the check at sizes big enough to hold it.
 
@@ -175,50 +188,61 @@ def tile_svg(ring=False):
     capsules and the check floating, which is the groundless look the SVG uses
     there anyway.
     """
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {BOX} {BOX}" '
-           f'role="img" aria-label="Brightwheel Check-In Shortcuts">',
-           f'  <rect width="{BOX}" height="{BOX}" rx="{TILE_RADIUS}" fill="{INK}"/>']
+    out = [
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {BOX} {BOX}" '
+            f'role="img" aria-label="Brightwheel Check-In Shortcuts">'
+        ),
+        f'  <rect width="{BOX}" height="{BOX}" rx="{TILE_RADIUS}" fill="{INK}"/>',
+    ]
     if ring:
         # The ring mark is drawn to fill its own square, so on a tile its
         # capsules run into the rounded corners. Inset the whole group — ring
         # and check together, so their relationship is untouched.
         c = BOX / 2
-        out.append(f'  <g transform="translate({c} {c}) scale({TILE_INSET}) '
-                   f'translate({-c} {-c})">')
+        out.append(f'  <g transform="translate({c} {c}) scale({TILE_INSET}) translate({-c} {-c})">')
         for i, color in enumerate(DARK_RAMP):
             px, py, deg = capsule(i)
-            out.append(f'    <rect x="{px - CAP_L / 2:.2f}" y="{py - CAP_W / 2:.2f}" '
-                       f'width="{CAP_L}" height="{CAP_W}" rx="{CAP_W / 2}" '
-                       f'fill="{color}" '
-                       f'transform="rotate({deg:.0f} {px:.2f} {py:.2f})"/>')
+            out.append(
+                f'    <rect x="{px - CAP_L / 2:.2f}" y="{py - CAP_W / 2:.2f}" '
+                f'width="{CAP_L}" height="{CAP_W}" rx="{CAP_W / 2}" '
+                f'fill="{color}" '
+                f'transform="rotate({deg:.0f} {px:.2f} {py:.2f})"/>'
+            )
         pts, width = ring_check()
-        out.append(f'    <path d="{path_of(pts)}" fill="none" stroke="{PAPER}" '
-                   f'stroke-width="{width:.2f}" stroke-linecap="round" '
-                   f'stroke-linejoin="round"/>')
-        out.append('  </g>')
+        out.append(
+            f'    <path d="{path_of(pts)}" fill="none" stroke="{PAPER}" '
+            f'stroke-width="{width:.2f}" stroke-linecap="round" '
+            f'stroke-linejoin="round"/>'
+        )
+        out.append("  </g>")
     else:
-        out.append(f'  <path d="{path_of(TILE_CHECK)}" fill="none" stroke="{PAPER}" '
-                   f'stroke-width="{TILE_CHECK_W}" stroke-linecap="round" '
-                   f'stroke-linejoin="round"/>')
+        out.append(
+            f'  <path d="{path_of(TILE_CHECK)}" fill="none" stroke="{PAPER}" '
+            f'stroke-width="{TILE_CHECK_W}" stroke-linecap="round" '
+            f'stroke-linejoin="round"/>'
+        )
     out.append("</svg>\n")
     return "\n".join(out)
 
 
-def rasterize(svg_text, px):
+def rasterize(svg_text: str, px: int) -> Image.Image:
     """One PNG straight from the vector at the size it will be shown."""
     with tempfile.TemporaryDirectory() as tmp:
         s, o = Path(tmp) / "i.svg", Path(tmp) / "i.png"
         s.write_text(svg_text)
         try:
-            subprocess.run(["rsvg-convert", "--width", str(px), "--height", str(px),
-                            "--output", str(o), str(s)],
-                           check=True, capture_output=True)
+            subprocess.run(
+                ["rsvg-convert", "--width", str(px), "--height", str(px), "--output", str(o), str(s)],
+                check=True,
+                capture_output=True,
+            )
         except FileNotFoundError:
             sys.exit("rsvg-convert not found — brew install librsvg")
         return Image.open(o).convert("RGBA").copy()
 
 
-def write_ico(path, images):
+def write_ico(path: Path, images: list[Image.Image]) -> None:
     """An .ico holding one PNG per size.
 
     Pillow's writer takes a single image and resizes it, which would undo the
@@ -234,7 +258,8 @@ def write_ico(path, images):
             blobs.append(p.read_bytes())
     offset = 6 + 16 * len(blobs)
     out = [struct.pack("<HHH", 0, 1, len(blobs))]
-    for im, blob in zip(images, blobs):
+    # blobs was built by appending exactly one entry per image, in order.
+    for im, blob in zip(images, blobs, strict=True):
         w = 0 if im.width >= 256 else im.width
         h = 0 if im.height >= 256 else im.height
         out.append(struct.pack("<BBBBHHII", w, h, 0, 0, 1, 32, len(blob), offset))
@@ -242,26 +267,28 @@ def write_ico(path, images):
     path.write_bytes(b"".join(out + blobs))
 
 
-def main():
+def main() -> None:
     DOCS.mkdir(parents=True, exist_ok=True)
 
     (DOCS / "icon.svg").write_text(ring_svg())
-    print(f"  wrote docs/icon.svg  ring, theme-aware  "
-          f"{(DOCS / 'icon.svg').stat().st_size} bytes")
+    print(f"  wrote docs/icon.svg  ring, theme-aware  {(DOCS / 'icon.svg').stat().st_size} bytes")
 
     # The ring only earns its space from 32px up; at 16 its capsules fall below
     # a pixel each and read as speckle around the check, so that entry drops it.
     entries = [(16, False), (32, True), (48, True)]
-    write_ico(DOCS / "favicon.ico",
-              [rasterize(tile_svg(ring=r), n) for n, r in entries])
-    print("  wrote docs/favicon.ico  " +
-          ", ".join(f"{n}{'=ring' if r else '=plain'}" for n, r in entries) +
-          f"  {(DOCS / 'favicon.ico').stat().st_size} bytes")
+    write_ico(DOCS / "favicon.ico", [rasterize(tile_svg(ring=r), n) for n, r in entries])
+    print(
+        "  wrote docs/favicon.ico  "
+        + ", ".join(f"{n}{'=ring' if r else '=plain'}" for n, r in entries)
+        + f"  {(DOCS / 'favicon.ico').stat().st_size} bytes"
+    )
 
     touch = rasterize(ring_svg(themed=False, dark=True, ground=INK), 180).convert("RGB")
     touch.save(DOCS / "apple-touch-icon.png", "PNG", optimize=True)
-    print(f"  wrote docs/apple-touch-icon.png  ring, dark, opaque  180x180  "
-          f"{(DOCS / 'apple-touch-icon.png').stat().st_size} bytes")
+    print(
+        f"  wrote docs/apple-touch-icon.png  ring, dark, opaque  180x180  "
+        f"{(DOCS / 'apple-touch-icon.png').stat().st_size} bytes"
+    )
 
 
 if __name__ == "__main__":

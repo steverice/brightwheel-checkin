@@ -16,6 +16,8 @@ The signed file's *name on disk* becomes its name in the library, so the
 generator names the files after the shortcuts, which is what the wrappers call.
 """
 
+from __future__ import annotations
+
 import shutil
 import subprocess
 import sys
@@ -31,7 +33,7 @@ OUT = REPO / "dist-test"
 NAMES = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 
 
-def build(api_base, dest=OUT):
+def build(api_base: str, dest: str | Path = OUT) -> dict[str, Path]:
     dest = Path(dest)
     if dest.exists():
         shutil.rmtree(dest)
@@ -39,7 +41,15 @@ def build(api_base, dest=OUT):
 
     # The generator validates and signs by itself; the signed files land in dest.
     subprocess.run(
-        [sys.executable, str(REPO / "build_shortcuts.py"), str(dest), "--env-file", str(TEST_ENV), "--api-base", api_base],
+        [
+            sys.executable,
+            str(REPO / "build_shortcuts.py"),
+            str(dest),
+            "--env-file",
+            str(TEST_ENV),
+            "--api-base",
+            api_base,
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -63,7 +73,7 @@ if __name__ == "__main__":
 SETUP_PROBE_PLACEHOLDER = probes.SETUP_PROBE_PLACEHOLDER
 
 
-def build_setup_probe(name, dest=OUT):
+def build_setup_probe(name: str, dest: str | Path = OUT) -> Path:
     """A two-action shortcut whose only value comes from an import question.
 
     Small on purpose: when the setup flow breaks, this says so without any of

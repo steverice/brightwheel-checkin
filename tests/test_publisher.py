@@ -7,6 +7,9 @@ page uses and hands back the markup `update_links.py` reads.
 
 Run with the file named: pytest tests/test_publisher.py
 """
+
+from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path
@@ -14,12 +17,12 @@ from pathlib import Path
 TOOLS = Path(__file__).resolve().parent.parent / "tools"
 sys.path.insert(0, str(TOOLS))
 
-import build_publisher as P  # noqa: E402
+import build_publisher as publisher  # noqa: E402
 from update_links import NAMES  # noqa: E402
 
 
 def actions():
-    return P.build()["WFWorkflowActions"]
+    return publisher.build()["WFWorkflowActions"]
 
 
 def ident(a):
@@ -31,13 +34,13 @@ def params(a):
 
 
 def test_targets_are_the_names_the_page_uses():
-    assert P.TARGETS == NAMES
+    assert publisher.TARGETS == NAMES
 
 
 def test_target_names_need_no_regex_escaping():
     # The patterns interpolate the names raw, which is safe only while they
     # hold nothing but letters and spaces.
-    for t in P.TARGETS:
+    for t in publisher.TARGETS:
         assert re.fullmatch(r"[A-Za-z ]+", t), t
 
 
@@ -49,7 +52,7 @@ def test_clipboard_gets_the_markup_update_links_reads():
     for t in NAMES:
         assert f'">{t}</a></li>' in token["string"]
     used = {v.get("VariableName") for v in token["attachmentsByRange"].values()}
-    assert used == {f"{t} Link" for t in P.TARGETS}
+    assert used == {f"{t} Link" for t in publisher.TARGETS}
     assert sum(1 for a in acts if ident(a) == "is.workflow.actions.setclipboard") == 1
 
 
@@ -60,5 +63,5 @@ def test_it_says_what_to_run_next():
 
 
 def test_it_asks_no_setup_questions():
-    assert P.build()["WFWorkflowImportQuestions"] == []
-    assert P.build()["WFWorkflowName"] == P.NAME
+    assert publisher.build()["WFWorkflowImportQuestions"] == []
+    assert publisher.build()["WFWorkflowName"] == publisher.NAME

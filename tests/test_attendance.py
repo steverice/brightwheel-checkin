@@ -8,6 +8,9 @@ only says what the shortcut believes.
 
 Run with ./test.sh. See TESTING.md for what the harness had to work around.
 """
+
+from __future__ import annotations
+
 import json
 import pathlib
 import subprocess
@@ -15,16 +18,20 @@ import sys
 import time
 import urllib.parse
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shortcut_forge_lib.sim.certs import ensure_certs
 from shortcut_forge_lib.sim.harness import Simulator
+
+if TYPE_CHECKING:
+    from typing import Any
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
+import testbuild  # noqa: E402
 from mock_brightwheel import MockBrightwheel, Scenario  # noqa: E402
-import testbuild                                   # noqa: E402
 
 # The throwaway CA the simulator is told to trust. Disposable and gitignored.
 TLS_DIR = Path(__file__).parent / "tls"
@@ -51,11 +58,11 @@ ARTIFACTS = Path(__file__).parent / "artifacts"
 class Suite:
     """Shared, expensive setup: one build, one install, many scenarios."""
 
-    def __init__(self, erase=False, runtime="iOS 27"):
+    def __init__(self, erase: bool = False, runtime: str = "iOS 27") -> None:
         self.erase = erase
         self.runtime = runtime
 
-    def setup(self):
+    def setup(self) -> None:
         ca, server = ensure_certs(TLS_DIR, ca_name="Brightwheel Test CA")
         self.sim = Simulator.find(runtime=self.runtime, artifacts=ARTIFACTS)
         print(f"  runtime {self.runtime}")
@@ -80,17 +87,17 @@ class Suite:
 
         self._prime()
 
-    def _prime(self):
+    def _prime(self) -> None:
         """One throwaway run so the consent prompts are answered up front."""
         self.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "in", CHILD_B: "in"}))
         self.run_and_settle(CHECK_IN, timeout=90)
         print(f"  consent primed ({len(self.mock.requests)} requests)")
 
-    def teardown(self):
+    def teardown(self) -> None:
         self.mock.stop()
 
     # -- the run loop ----------------------------------------------------
-    def run_and_settle(self, shortcut, timeout=180, quiet=10.0, min_wait=18.0):
+    def run_and_settle(self, shortcut: str, timeout: float = 180, quiet: float = 10.0, min_wait: float = 18.0) -> None:
         """Start a shortcut, clear any prompts it raises, wait for it to stop.
 
         A consent prompt blocks the run and produces no traffic, so "no new
@@ -108,9 +115,7 @@ class Suite:
             time.sleep(0.8)
             # A run URL delivered while Shortcuts is still shutting down is
             # silently dropped; nothing happens and no error is raised.
-            if (not relaunched and seen == 0
-                    and time.time() - started > 20
-                    and not self.sim.blue_buttons()):
+            if not relaunched and seen == 0 and time.time() - started > 20 and not self.sim.blue_buttons():
                 self.sim.run_shortcut(shortcut)
                 relaunched = True
                 stable = time.time()
@@ -122,20 +127,18 @@ class Suite:
             if self.sim.tap_affirmative():
                 stable = time.time()
                 continue
-            if (time.time() - started >= min_wait
-                    and time.time() - stable >= quiet):
+            if time.time() - started >= min_wait and time.time() - stable >= quiet:
                 return
         raise AssertionError(f"{shortcut} did not settle within {timeout}s")
 
     # -- assertion helpers ----------------------------------------------
-    def targets_of(self, posts):
+    def targets_of(self, posts: list[dict[str, Any]]) -> list[str | None]:
         out = []
         for r in posts:
-            for entry in (r["body"] or {}).get("checkins", []):
-                out.append((entry.get("target") or {}).get("object_id"))
+            out.extend((entry.get("target") or {}).get("object_id") for entry in (r["body"] or {}).get("checkins", []))
         return out
 
-    def unique_name(self, base):
+    def unique_name(self, base: str) -> str:
         """A library name not already taken, so a re-run is still meaningful."""
         existing = set(self.sim.library())
         if base not in existing:
@@ -150,15 +153,14 @@ class Suite:
 # Tests. Each gets a fresh scenario; the installed shortcuts never change.
 # ---------------------------------------------------------------------------
 
+
 def test_skips_children_already_in_the_wanted_state(s):
     """The idempotency guard: no POST at all when nothing needs changing."""
     s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "in", CHILD_B: "in"}))
     s.run_and_settle(CHECK_IN)
 
-    assert _roster_requests(s), \
-        "the run should have read the roster to learn the current state"
-    assert s.mock.checkins == [], \
-        f"expected no check-in to be sent, got {len(s.mock.checkins)}"
+    assert _roster_requests(s), "the run should have read the roster to learn the current state"
+    assert s.mock.checkins == [], f"expected no check-in to be sent, got {len(s.mock.checkins)}"
 
 
 def test_checks_both_children_in(s):
@@ -168,19 +170,14 @@ def test_checks_both_children_in(s):
 
     posts = s.mock.checkins
     assert len(posts) == 2, f"expected 2 check-ins, got {len(posts)}"
-    assert sorted(s.targets_of(posts)) == sorted([CHILD_A, CHILD_B]), \
-        f"wrong targets: {s.targets_of(posts)}"
+    assert sorted(s.targets_of(posts)) == sorted([CHILD_A, CHILD_B]), f"wrong targets: {s.targets_of(posts)}"
     for r in posts:
         body = r["body"]
         entry = body["checkins"][0]
-        assert entry["checked_in"] is True, \
-            f"checked_in should be true for a check-in, got {entry['checked_in']!r}"
-        assert body["secret"] == "test-school-secret", \
-            f"school secret not sent: {body.get('secret')!r}"
-        assert body["school_id"] == SCHOOL_ID, \
-            f"school_id not sent: {body.get('school_id')!r}"
-        assert body["checkin_code"] == "1234", \
-            f"checkin_code not sent: {body.get('checkin_code')!r}"
+        assert entry["checked_in"] is True, f"checked_in should be true for a check-in, got {entry['checked_in']!r}"
+        assert body["secret"] == "test-school-secret", f"school secret not sent: {body.get('secret')!r}"
+        assert body["school_id"] == SCHOOL_ID, f"school_id not sent: {body.get('school_id')!r}"
+        assert body["checkin_code"] == "1234", f"checkin_code not sent: {body.get('checkin_code')!r}"
         assert entry["target"]["object_id"], "target object_id was empty"
 
 
@@ -193,8 +190,7 @@ def test_check_out_sends_checked_in_false(s):
     assert len(posts) == 2, f"expected 2 check-outs, got {len(posts)}"
     for r in posts:
         entry = r["body"]["checkins"][0]
-        assert entry["checked_in"] is False, \
-            f"checked_in should be false for a check-out, got {entry['checked_in']!r}"
+        assert entry["checked_in"] is False, f"checked_in should be false for a check-out, got {entry['checked_in']!r}"
 
 
 def test_stale_school_code_causes_a_second_pass(s):
@@ -207,18 +203,22 @@ def test_stale_school_code_causes_a_second_pass(s):
     part that lives in the shortcut: the stale reply is recognized, and a
     second pass happens.
     """
-    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"},
-                         checkin_outcomes=["stale_secret", "stale_secret", "ok"]))
+    s.mock.load(
+        Scenario(
+            roster=ROSTER_ROWS,
+            states={CHILD_A: "out", CHILD_B: "out"},
+            checkin_outcomes=["stale_secret", "stale_secret", "ok"],
+        )
+    )
     s.run_and_settle(CHECK_IN, timeout=120)
 
     posts = s.mock.checkins
-    assert len(posts) > 2, \
-        f"expected a retry beyond the first pass, got {len(posts)} check-ins"
+    assert len(posts) > 2, f"expected a retry beyond the first pass, got {len(posts)} check-ins"
     stored = s.sim.stored_content()
-    assert "BrightwheelSchoolCode" in stored, \
-        f"school code should be stored again after the retry, saw {list(stored)}"
-    assert "test-school-secret" in (stored["BrightwheelSchoolCode"] or ""), \
+    assert "BrightwheelSchoolCode" in stored, f"school code should be stored again after the retry, saw {list(stored)}"
+    assert "test-school-secret" in (stored["BrightwheelSchoolCode"] or ""), (
         f"stored school code looks wrong: {stored['BrightwheelSchoolCode']!r}"
+    )
 
 
 def test_expired_token_signs_in_again(s):
@@ -248,22 +248,21 @@ def test_expired_token_signs_in_again(s):
         raise AssertionError("shortcut never asked Brightwheel to send a code")
 
     time.sleep(4)
-    assert s.sim.answer_prompt(scenario.two_fa_code), \
-        "no code prompt appeared to answer"
+    assert s.sim.answer_prompt(scenario.two_fa_code), "no code prompt appeared to answer"
 
     s.mock.quiet_for(6, timeout=120)
 
-    exchanges = [r for r in s.mock.requests
-                 if r["method"] == "POST" and r["path"].endswith("/sessions")]
+    exchanges = [r for r in s.mock.requests if r["method"] == "POST" and r["path"].endswith("/sessions")]
     assert exchanges, "the code was never exchanged for a token"
-    assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code, \
+    assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code, (
         f"wrong code sent: {exchanges[0]['body'].get('2fa_code')!r}"
+    )
     assert s.mock.checkins, "sign-in recovered but nobody was checked in"
 
     stored = s.sim.stored_content()
-    assert stored.get("BrightwheelSessionToken") == scenario.issued_token, \
+    assert stored.get("BrightwheelSessionToken") == scenario.issued_token, (
         f"the new token should have been stored, saw {stored}"
-
+    )
 
 
 def test_setup_questions_commit_their_answers(s):
@@ -280,7 +279,7 @@ def test_setup_questions_commit_their_answers(s):
     not a simulator artifact.
     Verified working on iOS 26.5 (23F77) and on iOS 27 beta 24A5355p, so the
     question shape is right and this is a regression to wait out. When this
-    starts passing, drop the expected_broken marker.
+    starts passing, drop its entry from KNOWN_BROKEN.
 
     This still tests "Add Shortcut", deliberately, because that is the button
     whose repair we are waiting on. Skip Setup does commit the answers on
@@ -290,12 +289,11 @@ def test_setup_questions_commit_their_answers(s):
     """
     name = s.unique_name("Setup Canary")
     path = testbuild.build_setup_probe(name)
-    marker = "246813"          # digits: immune to the keyboard's autocapitalization
+    marker = "246813"  # digits: immune to the keyboard's autocapitalization
 
     s.sim.terminate_shortcuts()
     time.sleep(1.2)
-    subprocess.run(["xcrun", "simctl", "openurl", s.sim.udid,
-                    "file://" + urllib.parse.quote(str(path))], check=True)
+    subprocess.run(["xcrun", "simctl", "openurl", s.sim.udid, "file://" + urllib.parse.quote(str(path))], check=True)
     time.sleep(4)
 
     assert s.sim.tap_affirmative(), "no Set Up Shortcut button on the import sheet"
@@ -303,29 +301,33 @@ def test_setup_questions_commit_their_answers(s):
 
     img = s.sim.image()
     w, h = img.size
-    s.sim.tap(int(w * 0.33), int(h * 0.335), device_size=img.size)   # the answer field
+    s.sim.tap(int(w * 0.33), int(h * 0.335), device_size=img.size)  # the answer field
     time.sleep(0.8)
     s.sim.type_text(marker)
     time.sleep(0.5)
     assert s.sim.tap_affirmative(), "no Add Shortcut button after answering"
     time.sleep(4)
 
-    assert name in s.sim.library(), \
-        "answering the setup question left the shortcut uninstalled"
+    assert name in s.sim.library(), "answering the setup question left the shortcut uninstalled"
     actions = s.sim.shortcut_actions(name)
     value = actions[0]["WFWorkflowActionParameters"]["WFTextActionText"]
-    assert value == marker, \
-        f"setup answer did not reach the action: {value!r} (wanted {marker!r})"
+    assert value == marker, f"setup answer did not reach the action: {value!r} (wanted {marker!r})"
 
 
-test_setup_questions_commit_their_answers.expected_broken = (
-    "iOS 27 regression: Add Shortcut is inert once a question is answered "
-    "(works on iOS 26.5 and on iOS 27 beta 24A5355p; still broken on a device "
-    "at beta 7, 24A5424a, and on the 27.0 release candidate, 24A434). "
-    "Skip Setup commits the answers and is the documented way through.")
+# Keyed by function rather than stashed as an attribute on it, so a type
+# checker can see the mapping's shape instead of a dynamic attribute nothing
+# declares.
+KNOWN_BROKEN = {
+    test_setup_questions_commit_their_answers: (
+        "iOS 27 regression: Add Shortcut is inert once a question is answered "
+        "(works on iOS 26.5 and on iOS 27 beta 24A5355p; still broken on a device "
+        "at beta 7, 24A5424a, and on the 27.0 release candidate, 24A434). "
+        "Skip Setup commits the answers and is the documented way through."
+    ),
+}
 
 
-def _roster_requests(s):
+def _roster_requests(s: Suite) -> list[dict[str, Any]]:
     return s.mock.matching(contains="students_for_checkin")
 
 
@@ -338,8 +340,9 @@ def test_reads_the_roster_at_runtime(s):
     s.run_and_settle(CHECK_IN)
     assert _roster_requests(s), "the shortcut never asked for a roster"
     posts = s.mock.checkins
-    assert sorted(s.targets_of(posts)) == sorted([CHILD_A, CHILD_B]), \
+    assert sorted(s.targets_of(posts)) == sorted([CHILD_A, CHILD_B]), (
         f"expected both children from the roster, got {s.targets_of(posts)}"
+    )
 
 
 def test_the_roster_call_carries_the_guardian_id(s):
@@ -357,8 +360,7 @@ def test_the_roster_call_carries_the_guardian_id(s):
     s.run_and_settle(CHECK_IN)
     calls = _roster_requests(s)
     assert calls, "the shortcut never asked for a roster"
-    assert f"/guardians/{GUARDIAN_ID}/" in calls[0]["path"], \
-        f"the roster call lost its guardian id: {calls[0]['path']}"
+    assert f"/guardians/{GUARDIAN_ID}/" in calls[0]["path"], f"the roster call lost its guardian id: {calls[0]['path']}"
 
 
 def test_an_unreadable_guardian_id_stops_loudly(s):
@@ -368,13 +370,10 @@ def test_an_unreadable_guardian_id_stops_loudly(s):
     answers it 404 with no students in the body — indistinguishable downstream
     from a school with nobody enrolled. So the run has to stop at the read.
     """
-    s.mock.load(Scenario(roster=ROSTER_ROWS, guardian_id_readable=False,
-                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, guardian_id_readable=False, states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "an unidentified account must not check anybody in"
-    assert not _roster_requests(s), \
-        "the run should stop at the guardian id, not ask for a roster without one"
+    assert not s.mock.checkins, "an unidentified account must not check anybody in"
+    assert not _roster_requests(s), "the run should stop at the guardian id, not ask for a roster without one"
 
 
 def test_a_failed_roster_stops_loudly(s):
@@ -384,20 +383,16 @@ def test_a_failed_roster_stops_loudly(s):
     positive test the run does nothing at all and says nothing — which looks
     exactly like the trigger never firing.
     """
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="error",
-                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="error", states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "a failed roster call must not check anybody in"
+    assert not s.mock.checkins, "a failed roster call must not check anybody in"
 
 
 def test_a_restructured_roster_stops(s):
     """Students present, child shape changed: nobody has a room to send to."""
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="restructured",
-                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="restructured", states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "a roster whose child shape changed must not check anybody in"
+    assert not s.mock.checkins, "a roster whose child shape changed must not check anybody in"
 
 
 def test_a_child_in_two_rooms_stops(s):
@@ -406,20 +401,16 @@ def test_a_child_in_two_rooms_stops(s):
     Proceeding would check the child into the room they are not in, which the
     right teacher sees as an absence.
     """
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="two_rooms",
-                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="two_rooms", states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "a child with two room_states must not be checked into a guessed room"
+    assert not s.mock.checkins, "a child with two room_states must not be checked into a guessed room"
 
 
 def test_a_dropped_child_stops(s):
     """One child with no room means the run stops, rather than half-runs."""
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="empty_room_states",
-                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="empty_room_states", states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "a child dropped from the parse must stop the run"
+    assert not s.mock.checkins, "a child dropped from the parse must stop the run"
 
 
 def test_a_room_with_no_state_stops(s):
@@ -430,11 +421,9 @@ def test_a_room_with_no_state_stops(s):
     comparison of children against `"checked_in"` keys catches it, and this is
     the only test that exercises that guard.
     """
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="unreadable_state",
-                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="unreadable_state", states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "a room with no check-in state must not check anybody in"
+    assert not s.mock.checkins, "a room with no check-in state must not check anybody in"
 
 
 def test_two_children_canceling_out_stops(s):
@@ -451,11 +440,9 @@ def test_two_children_canceling_out_stops(s):
     two children ends the run on a failed lookup instead, which is the right
     outcome for the wrong reason and proves nothing.
     """
-    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="canceling",
-                         states={CHILD_A: "out", CHILD_B: "out"}))
+    s.mock.load(Scenario(roster=ROSTER_ROWS, roster_shape="canceling", states={CHILD_A: "out", CHILD_B: "out"}))
     s.run_and_settle(CHECK_IN)
-    assert not s.mock.checkins, \
-        "two children failing in opposite directions must stop the run"
+    assert not s.mock.checkins, "two children failing in opposite directions must stop the run"
 
 
 def test_a_rotated_secret_on_the_roster_call_recovers(s):
@@ -466,12 +453,12 @@ def test_a_rotated_secret_on_the_roster_call_recovers(s):
     """
     # The school has rotated: the code the shortcut holds is no longer the one
     # the API accepts, so the roster call is the first thing to be rejected.
-    sc = Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"},
-                  required_secret="a-freshly-rotated-secret")
+    sc = Scenario(
+        roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}, required_secret="a-freshly-rotated-secret"
+    )
     s.mock.load(sc)
     s.run_and_settle(CHECK_IN, timeout=120)
-    assert len(_roster_requests(s)) > 1, \
-        "a rotated secret should make the run ask for the roster again"
+    assert len(_roster_requests(s)) > 1, "a rotated secret should make the run ask for the roster again"
 
 
 TESTS = [
@@ -494,7 +481,7 @@ TESTS = [
 ]
 
 
-def _audit_tests():
+def _audit_tests() -> None:
     """Fail before the simulator boots if a test cannot fail.
 
     A test whose body was lost to an edit still prints PASS, and a test written
@@ -502,30 +489,29 @@ def _audit_tests():
     this file's own syntax tree and refuses to start on either.
     """
     import ast
+
     tree = ast.parse(pathlib.Path(__file__).read_text())
-    defined = {n.name: n for n in tree.body
-               if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")}
+    defined = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")}
     registered = {t.__name__ for t in TESTS}
 
-    problems = []
-    for name in sorted(defined.keys() - registered):
-        problems.append(f"{name} is defined but not in TESTS, so it never runs")
-    for name in sorted(registered - defined.keys()):
-        problems.append(f"{name} is in TESTS but not defined in this file")
-    for name in sorted(registered & defined.keys()):
-        if not any(isinstance(s, ast.Assert) for s in ast.walk(defined[name])):
-            problems.append(f"{name} has no assert, so it cannot fail")
+    problems = [f"{name} is defined but not in TESTS, so it never runs" for name in sorted(defined.keys() - registered)]
+    problems.extend(f"{name} is in TESTS but not defined in this file" for name in sorted(registered - defined.keys()))
+    problems.extend(
+        f"{name} has no assert, so it cannot fail"
+        for name in sorted(registered & defined.keys())
+        if not any(isinstance(s, ast.Assert) for s in ast.walk(defined[name]))
+    )
     if problems:
         raise SystemExit("test suite is not sound:\n  " + "\n  ".join(problems))
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     _audit_tests()
     runtime = "iOS 27"
     if "--runtime" in argv:
         i = argv.index("--runtime")
         runtime = argv[i + 1]
-        argv = argv[:i] + argv[i + 2:]
+        argv = argv[:i] + argv[i + 2 :]
     only = [a for a in argv if not a.startswith("-")]
     suite = Suite(erase="--erase" in argv, runtime=runtime)
     print("setup:")
@@ -537,31 +523,30 @@ def main(argv):
     for t in chosen:
         label = t.__name__.replace("_", " ")
         print(f"  … {label}", flush=True)
-        broken = getattr(t, "expected_broken", None)
+        broken = KNOWN_BROKEN.get(t)
         try:
             t(suite)
             if broken:
-                print(f"  \033[32mFIXED\033[0m {label}\n"
-                      f"        this was expected to fail — drop the "
-                      f"expected_broken marker\n")
+                print(
+                    f"  \033[32mFIXED\033[0m {label}\n"
+                    f"        this was expected to fail — drop the "
+                    f"expected_broken marker\n"
+                )
             else:
                 print(f"  \033[32mPASS\033[0m {label}\n")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a failing test must not stop the suite
             shot = suite.sim.screenshot(f"FAIL-{t.__name__}.png")
             if broken:
-                print(f"  \033[33mKNOWN\033[0m {label}\n        {broken}\n"
-                      f"        (failed as expected: {exc})\n")
+                print(f"  \033[33mKNOWN\033[0m {label}\n        {broken}\n        (failed as expected: {exc})\n")
                 known.append(t.__name__)
             else:
-                print(f"  \033[31mFAIL\033[0m {label}\n        {exc}\n"
-                      f"        screenshot: {shot}\n")
+                print(f"  \033[31mFAIL\033[0m {label}\n        {exc}\n        screenshot: {shot}\n")
                 failures.append(t.__name__)
     suite.teardown()
 
     print("-" * 60)
     if known:
-        print(f"{len(known)} known-broken (not counted as failures): "
-              f"{', '.join(known)}")
+        print(f"{len(known)} known-broken (not counted as failures): {', '.join(known)}")
     if failures:
         print(f"{len(failures)} failed: {', '.join(failures)}")
         return 1

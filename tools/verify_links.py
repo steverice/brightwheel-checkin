@@ -17,6 +17,9 @@ Checks per link (`shortcut_forge_lib.sim.links.check_link`): the installed short
 has the expected name, the same action identifiers in the same order as
 `dist/<name>.xml`, and the same number of import questions.
 """
+
+from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
@@ -27,17 +30,14 @@ from shortcut_forge_lib.sim.links import check_link
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from update_links import NAMES, PREFIX, from_clipboard    # noqa: E402
+from update_links import NAMES, PREFIX, from_clipboard  # noqa: E402
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--clipboard", action="store_true",
-                    help="read the links from the clipboard (the default)")
-    ap.add_argument("--erase", action="store_true",
-                    help="wipe the simulator's library first")
-    ap.add_argument("--dist", default=str(REPO / "dist"), type=Path,
-                    help="where the built .xml files are")
+    ap.add_argument("--clipboard", action="store_true", help="read the links from the clipboard (the default)")
+    ap.add_argument("--erase", action="store_true", help="wipe the simulator's library first")
+    ap.add_argument("--dist", default=str(REPO / "dist"), type=Path, help="where the built .xml files are")
     args = ap.parse_args()
 
     links = from_clipboard()
