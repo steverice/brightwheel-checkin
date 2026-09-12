@@ -93,9 +93,16 @@ are when it runs.
 
 Either command generates all three shortcuts, validates them against iOS 27,
 signs them, and writes both the unsigned `.xml` and the signed `.shortcut` to the
-target directory. It fails on any validator error except the waivers named in
-`build.sh`, each of which is listed there with the reason it is waived, so a red
-build is a real problem.
+target directory. It fails on any structural check, and on any validator error
+except the waivers named in `build_shortcuts.py`, each of which is listed there
+with the reason it is waived, so a red build is a real problem.
+
+The plist primitives, the checks, the validate-and-sign pipeline, and the
+simulator harness come from [shortcut-forge](../shortcut-forge), which
+`pyproject.toml` takes as an editable path dependency from the sibling checkout.
+`uv sync --dev` sets that up; every script here runs Python through `uv run`.
+Validating and signing still need the shortcuts-playground plugin's
+`validate-shortcut` and `sign-shortcut` on `PATH`.
 
 **Never edit a shortcut on the phone.** `build_shortcuts.py` is the source of
 truth and the next build overwrites everything else. The only values meant to be
@@ -115,15 +122,15 @@ that finds each of the three in your library, calls
 on the clipboard as the three `<li>` lines the page wants.
 
 ```bash
-python3 tools/build_publisher.py     # -> dist-tools/, validated and signed
-pytest tests/test_publisher.py       # name the file; see below
+uv run python tools/build_publisher.py     # -> dist-tools/, validated and signed
+uv run pytest tests/test_publisher.py
 ```
 
 Import it once on iOS 27 or macOS 27. There is nothing to pick: it finds each of
 the three by name every time it runs, so after a release it simply finds the new
 copies. A picker couldn't do that. It stores a workflow identifier, which every
-re-import replaces, and it can't be pre-seeded by name (`TESTING.md` has the
-measurements).
+re-import replaces, and it can't be pre-seeded by name (shortcut-forge's
+`docs/simulator-harness.md` has the measurements).
 
 > ### Mint links from a library that holds none of your own copies
 >
@@ -135,7 +142,8 @@ measurements).
 > password, baked in if it is a debug build and stored as your answers if it is
 > not. In a synced library that is the copy it would find, and every check would
 > pass. The confirmation tap would be the only thing between your password and
-> the internet, and a link cannot be revoked afterward (`TESTING.md`).
+> the internet, and a link cannot be revoked afterward (shortcut-forge's
+> `docs/simulator-harness.md`).
 >
 > Sync off also keeps a release import from landing on your phone beside your own
 > copies, where the wrappers find Brightwheel Attendance by name. If sync is ever
@@ -160,12 +168,13 @@ argument reads to pytest as a missing fixture.
 them**:
 
 ```bash
-python3 tools/verify_links.py --clipboard --erase   # imports each on a simulator
-python3 tools/update_links.py --clipboard           # then writes them into the page
+uv run python tools/verify_links.py --clipboard --erase   # imports each on a simulator
+uv run python tools/update_links.py --clipboard           # then writes them into the page
 ```
 
 Verification exists because a link can arrive without its setup questions. It
-happened once here and nobody has explained it — see `TESTING.md`. The failure
+happened once here and nobody has explained it — see shortcut-forge's
+`docs/simulator-harness.md`. The failure
 is silent: the shortcut installs in one tap, looks correct, and leaves `not set`
 in the email, password and check-in code actions, so the first sign of trouble is
 somebody whose check-in never works. `verify_links.py` imports each link on an
@@ -201,11 +210,11 @@ the real API.
 A test build is generated with fake credentials and its API base pointed at the
 mock, so **no test can reach the real Brightwheel** or check a real child in.
 
-The release tools have plain pytest files that need no simulator. Name them, so
-pytest doesn't also collect `test_attendance.py`:
+The release tools have a plain pytest file that needs no simulator, and
+`pyproject.toml` keeps pytest away from `test_attendance.py`:
 
 ```bash
-pytest tests/test_publisher.py tests/test_verify_links.py
+uv run pytest
 ```
 
 `TESTING.md` covers what it needs, what it cannot cover — the QR scanning path
