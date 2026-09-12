@@ -9,7 +9,13 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "commitizen>=4.18.0",
+    "cz-conventional-gitmoji>=0.7.0",
+    "pre-commit>=4.6.2",
     "pytest>=8.0",
+    "pytest-mock>=3.15.1",
+    "ruff>=0.16.7",
+    "ty>=0.0.80",
 ]
 
 # The library lives in a sibling checkout and changes alongside this project,
@@ -26,3 +32,62 @@ pythonpath = [".", "tools"]
 # The integration suite is its own runner, started by ./test.sh; pytest would
 # only trip over it.
 addopts = "--ignore=tests/test_attendance.py"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["dist", "dist-debug", "dist-test", "dist-tools", "docs", "assets"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F",          # pycodestyle + pyflakes
+    "I", "TID", "TCH",      # imports: isort, tidy-imports, type-checking
+    "UP", "FA", "YTT",      # modernization: pyupgrade, future-annotations, 2020
+    "ANN",                   # type annotations
+    "B", "SIM", "C4",       # bugs: bugbear, simplify, comprehensions
+    "RSE", "PIE", "PERF",   # bugs: raise, pie, performance
+    "RET",                   # return style
+    "S",                     # security: bandit
+    "BLE",                   # blind except
+    "RUF", "PT",             # ruff-specific, pytest style
+    "ERA",                   # eradicate (no commented-out code)
+    "FLY", "ISC",            # f-strings, implicit string concat
+    "T10", "T20",            # no debugger, no print
+    "PTH",                   # pathlib over os.path
+    "A", "SLF", "N",        # no builtin shadowing, no private access, PEP 8 naming
+    "ASYNC",                 # async anti-patterns
+    "PGH",                   # no blanket noqa/type:ignore
+    "INP",                   # no implicit namespace packages
+]
+
+ignore = [
+    "ANN204",   # __init__ return type is always None — obvious, no value
+    "ANN401",   # Any is sometimes the right type (dict values, kwargs, JSON)
+    # Project-specific:
+    "S603",     # every subprocess call passes a fixed argv (the generator, xcrun, pbpaste, gh)
+    "S607",     # those tools are found on PATH by name on purpose
+    "INP001",   # flat script layout: the generator, tools/, and tests/ are scripts, not packages
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",                   # assert is how tests assert
+    "S105", "S106", "S108",  # fake secrets/paths in test fixtures
+    "ANN",                    # test functions don't need type annotations
+    "SLF001",                 # tests legitimately access private members
+    "TC",                     # tests use runtime imports freely
+    "PTH",                    # tests can use open() directly
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["build_shortcuts", "build_publisher", "update_links", "verify_links", "mock_brightwheel", "testbuild"]
+
+[tool.ty.environment]
+python-version = "3.10"
+root = [".", "tools", "tests"]
+
+[tool.commitizen]
+name = "cz_gitmoji"
+version_provider = "pep621"
+tag_format = "v$version"
+update_changelog_on_bump = true

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    # macOS, because shortcut-forge's sim extra depends on pyobjc, which has no Linux wheels.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      # The library is an editable path dependency on a sibling checkout.
+      - uses: actions/checkout@v6
+        with:
+          repository: steverice/shortcut-forge
+          path: ../shortcut-forge
+      - uses: astral-sh/setup-uv@v8.0.0
+        with:
+          python-version: "3.13"
+      - run: uv sync --dev
+      - run: make lint
+
+  commit-check:
+    name: Commit Messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v8.0.0
+        with:
+          python-version: "3.13"
+      - run: uv run --no-project --with commitizen --with cz-conventional-gitmoji cz check --rev-range origin/main..HEAD
+
+  unit-test:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          repository: steverice/shortcut-forge
+          path: ../shortcut-forge
+      - uses: astral-sh/setup-uv@v8.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --dev
+      - run: make test
