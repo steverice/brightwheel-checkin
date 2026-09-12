@@ -56,6 +56,8 @@ import pathlib
 
 from PIL import Image, ImageDraw, ImageFont
 
+from console import info
+
 HERE = pathlib.Path(__file__).parent
 ASSETS = HERE / "assets"
 
@@ -199,4 +201,4 @@ def draw(kind: str, spec: dict[str, str]) -> tuple[pathlib.Path, int]:
 if __name__ == "__main__":
     for kind, spec in PLAN.items():
         path, size = draw(kind, spec)
-        print(f"{path.name:24} {size:>7} bytes")
+        info(f"{path.name:24} {size:>7} bytes")

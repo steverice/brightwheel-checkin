@@ -27,16 +27,22 @@ published page handing out the previous build's links.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import Any
 
+import argcomplete
 from shortcut_forge_lib.build import Shortcut, build_all
+from shortcut_forge_lib.checks import CheckError
 from shortcut_forge_lib.publisher import share_links_shortcut
+from shortcut_forge_lib.toolchain import SigningError, ToolNotFoundError, ValidationError
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from console import error, success  # noqa: E402
 from update_links import NAMES  # noqa: E402
 
 NAME = "Brightwheel Share Links"
@@ -59,13 +65,37 @@ def build() -> dict[str, Any]:
     )
 
 
-def main() -> int:
-    dest = Path(sys.argv[1] if len(sys.argv) > 1 else REPO / "dist-tools")
+class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="examples:\n  %(prog)s\n  %(prog)s /tmp/publisher",
+        formatter_class=Formatter,
+        allow_abbrev=False,
+    )
+    ap.add_argument("dest", nargs="?", default=REPO / "dist-tools", type=Path, help="directory to build into")
+    argcomplete.autocomplete(ap)
+    return ap
+
+
+def run(args: argparse.Namespace) -> None:
     plist = build()
-    built = build_all(dest, [Shortcut(NAME, plist)], waived=WAIVED, mode="anyone", known_shortcuts=TARGETS)
-    print(f"{NAME}: {len(plist['WFWorkflowActions'])} actions, validated, signed -> {built[NAME]}")
-    return 0
+    built = build_all(args.dest, [Shortcut(NAME, plist)], waived=WAIVED, mode="anyone", known_shortcuts=TARGETS)
+    success(f"{NAME}: {len(plist['WFWorkflowActions'])} actions, validated, signed -> {built[NAME]}")
+
+
+def main() -> None:
+    try:
+        run(build_parser().parse_args())
+    except KeyboardInterrupt:
+        pass
+    except (CheckError, ValidationError, SigningError, ToolNotFoundError, OSError) as e:  # the CLI boundary
+        error(str(e))
+        raise SystemExit(1) from e
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

@@ -63,6 +63,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from console import info
+
 REPO = Path(__file__).resolve().parent
 DOCS = REPO / "docs"
 
@@ -271,13 +273,13 @@ def main() -> None:
     DOCS.mkdir(parents=True, exist_ok=True)
 
     (DOCS / "icon.svg").write_text(ring_svg())
-    print(f"  wrote docs/icon.svg  ring, theme-aware  {(DOCS / 'icon.svg').stat().st_size} bytes")
+    info(f"  wrote docs/icon.svg  ring, theme-aware  {(DOCS / 'icon.svg').stat().st_size} bytes")
 
     # The ring only earns its space from 32px up; at 16 its capsules fall below
     # a pixel each and read as speckle around the check, so that entry drops it.
     entries = [(16, False), (32, True), (48, True)]
     write_ico(DOCS / "favicon.ico", [rasterize(tile_svg(ring=r), n) for n, r in entries])
-    print(
+    info(
         "  wrote docs/favicon.ico  "
         + ", ".join(f"{n}{'=ring' if r else '=plain'}" for n, r in entries)
         + f"  {(DOCS / 'favicon.ico').stat().st_size} bytes"
@@ -285,7 +287,7 @@ def main() -> None:
 
     touch = rasterize(ring_svg(themed=False, dark=True, ground=INK), 180).convert("RGB")
     touch.save(DOCS / "apple-touch-icon.png", "PNG", optimize=True)
-    print(
+    info(
         f"  wrote docs/apple-touch-icon.png  ring, dark, opaque  180x180  "
         f"{(DOCS / 'apple-touch-icon.png').stat().st_size} bytes"
     )

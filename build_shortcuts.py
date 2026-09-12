@@ -15,8 +15,10 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import argcomplete
 from shortcut_forge_lib.actions import ActionList
 from shortcut_forge_lib.build import Shortcut, build_all
+from shortcut_forge_lib.checks import CheckError
 from shortcut_forge_lib.plist import (
     EXTENSION_INPUT,
     act,
@@ -32,7 +34,10 @@ from shortcut_forge_lib.plist import (
     ts,
     var,
 )
+from shortcut_forge_lib.toolchain import SigningError, ToolNotFoundError, ValidationError
 from shortcut_forge_lib.uuids import random_uuids
+
+from console import error, info, warning
 
 if TYPE_CHECKING:
     from typing import Any
@@ -1947,13 +1952,30 @@ def build_wrapper(direction: str) -> tuple[str, dict[str, Any]]:
     return title, document(title, actions, glyph=glyph, color=color, input_classes=[])
 
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Generate, validate, and sign the Brightwheel Shortcuts.")
-    ap.add_argument("dest", nargs="?", default=".", help="directory to write the .xml and .shortcut files into")
+class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description="Generate, validate, and sign the Brightwheel Shortcuts.",
+        epilog=(
+            "examples:\n"
+            "  %(prog)s dist\n"
+            "  %(prog)s dist-debug --debug\n"
+            "  %(prog)s dist-test --env-file tests/fixtures/test.env --api-base https://localhost:8788/api/v1"
+        ),
+        formatter_class=Formatter,
+        allow_abbrev=False,
+    )
+    ap.add_argument(
+        "dest", nargs="?", default=Path(), type=Path, help="directory to write the .xml and .shortcut files into"
+    )
     ap.add_argument("--debug", action="store_true", help="bake .env values in and emit no setup questions")
     ap.add_argument(
         "--env-file",
         metavar="PATH",
+        type=Path,
         help="bake this env file in instead of .env; use for test builds so real credentials never reach the artifact",
     )
     ap.add_argument(
@@ -1963,20 +1985,25 @@ if __name__ == "__main__":
         help="point the shortcuts at a different API root; used by the integration tests to reach the mock Brightwheel",
     )
     ap.add_argument("--unsigned", action="store_true", help="write and validate the XML but do not sign it")
-    args = ap.parse_args()
+    argcomplete.autocomplete(ap)
+    return ap
 
-    # build() reads these at call time, so setting them here is enough.
+
+def run(args: argparse.Namespace) -> None:
+    """Build all three shortcuts into `args.dest`."""
+    # build() reads BASE at call time, so setting it here is enough.
+    global BASE
     BASE = args.api_base
 
     env = None
     if args.env_file:
         env = load_env(args.env_file)
-        print(f"BAKED BUILD from {args.env_file}")
+        warning(f"BAKED BUILD from {args.env_file}")
     elif args.debug:
         env = load_env(Path(__file__).parent / ".env")
-        print("DEBUG BUILD — real credentials are baked in; do not commit or share")
+        warning("DEBUG BUILD — real credentials are baked in; do not commit or share")
     if BASE != DEFAULT_BASE:
-        print(f"API base overridden: {BASE}")
+        warning(f"API base overridden: {BASE}")
 
     shortcuts = []
     name, pl = build(env=env)
@@ -1985,7 +2012,7 @@ if __name__ == "__main__":
         name, pl = build_wrapper(d)
         shortcuts.append(Shortcut(name, pl))
     for sc in shortcuts:
-        print(
+        info(
             f"{sc.name}: {len(sc.document['WFWorkflowActions'])} actions, "
             f"{len(sc.document['WFWorkflowImportQuestions'])} setup questions"
         )
@@ -1996,4 +2023,18 @@ if __name__ == "__main__":
     # in Contacts — a release built that way would fail for every stranger and
     # succeed for you. The library defaults to anyone; it is named here so a
     # release never depends on a variable nobody remembers setting.
-    build_all(Path(args.dest), shortcuts, waived=WAIVED, mode="anyone", sign=not args.unsigned, on_step=print)
+    build_all(args.dest, shortcuts, waived=WAIVED, mode="anyone", sign=not args.unsigned, on_step=info)
+
+
+def main() -> None:
+    try:
+        run(build_parser().parse_args())
+    except KeyboardInterrupt:
+        pass
+    except (CheckError, ValidationError, SigningError, ToolNotFoundError, OSError) as e:  # the CLI boundary
+        error(str(e))
+        raise SystemExit(1) from e
+
+
+if __name__ == "__main__":
+    main()

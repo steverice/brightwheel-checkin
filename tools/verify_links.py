@@ -24,54 +24,71 @@ import argparse
 import sys
 from pathlib import Path
 
+import argcomplete
 from shortcut_forge_lib.sim.harness import Simulator
 from shortcut_forge_lib.sim.links import check_link
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from console import error, info  # noqa: E402
 from update_links import NAMES, PREFIX, from_clipboard  # noqa: E402
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="examples:\n  %(prog)s --clipboard --erase",
+        formatter_class=Formatter,
+        allow_abbrev=False,
+    )
     ap.add_argument("--clipboard", action="store_true", help="read the links from the clipboard (the default)")
     ap.add_argument("--erase", action="store_true", help="wipe the simulator's library first")
-    ap.add_argument("--dist", default=str(REPO / "dist"), type=Path, help="where the built .xml files are")
-    args = ap.parse_args()
+    ap.add_argument("--dist", default=REPO / "dist", type=Path, help="where the built .xml files are")
+    argcomplete.autocomplete(ap)
+    return ap
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     links = from_clipboard()
     missing = [n for n in NAMES if n not in links]
     if missing:
-        print(f"No link on the clipboard for: {', '.join(missing)}", file=sys.stderr)
+        error(f"No link on the clipboard for: {', '.join(missing)}")
         return 1
     bad = [n for n in NAMES if not links[n].startswith(PREFIX)]
     if bad:
-        print(f"Not iCloud links: {', '.join(bad)}", file=sys.stderr)
+        error(f"Not iCloud links: {', '.join(bad)}")
         return 1
 
     sim = Simulator.find(runtime="iOS 27")
     if args.erase:
-        print("erasing the simulator's library")
+        info("erasing the simulator's library")
         sim.erase()
     sim.prepare_window()
-    print(f"verifying on {sim.udid}\n")
+    info(f"verifying on {sim.udid}\n")
 
     failed = False
     for name in NAMES:
         problems = check_link(sim, name, links[name], args.dist / f"{name}.xml")
         if problems:
             failed = True
-            print(f"  FAIL  {name}")
+            error(f"  FAIL  {name}")
             for p in problems:
-                print(f"        {p}")
+                error(f"        {p}")
         else:
-            print(f"  ok    {name}")
-    print()
+            info(f"  ok    {name}")
+    info("")
     if failed:
-        print("Do not publish these links.", file=sys.stderr)
+        error("Do not publish these links.")
         return 1
-    print("All three links deliver the build.")
+    info("All three links deliver the build.")
     return 0
 
 

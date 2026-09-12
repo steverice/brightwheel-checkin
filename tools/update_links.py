@@ -20,7 +20,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-PAGE = Path(__file__).resolve().parent.parent / "docs" / "index.html"
+import argcomplete
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+from console import error, info  # noqa: E402
+
+PAGE = REPO / "docs" / "index.html"
 NAMES = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 PREFIX = "https://www.icloud.com/shortcuts/"
 
@@ -47,8 +54,8 @@ def from_clipboard() -> dict[str, str]:
 
 
 def ask() -> dict[str, str]:
-    print("Paste each iCloud link. In Shortcuts, run Brightwheel Share Links,")
-    print("or share each shortcut and choose Copy iCloud Link.\n")
+    info("Paste each iCloud link. In Shortcuts, run Brightwheel Share Links,")
+    info("or share each shortcut and choose Copy iCloud Link.\n")
     found = {}
     for name in NAMES:
         value = input(f"  {name}: ").strip()
@@ -57,10 +64,24 @@ def ask() -> dict[str, str]:
     return found
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="examples:\n  %(prog)s --clipboard",
+        formatter_class=Formatter,
+        allow_abbrev=False,
+    )
     ap.add_argument("--clipboard", action="store_true", help="read the links from the clipboard instead of asking")
-    args = ap.parse_args()
+    argcomplete.autocomplete(ap)
+    return ap
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     page = PAGE.read_text(encoding="utf-8")
     links = from_clipboard() if args.clipboard else ask()
@@ -68,15 +89,15 @@ def main() -> int:
     missing = [n for n in NAMES if n not in links]
     if missing:
         where = "on the clipboard" if args.clipboard else "given"
-        print(f"\nNo link {where} for: {', '.join(missing)}. Page unchanged.", file=sys.stderr)
+        error(f"\nNo link {where} for: {', '.join(missing)}. Page unchanged.")
         return 1
 
     bad = {n: u for n, u in links.items() if not u.startswith(PREFIX)}
     if bad:
-        print("\nThese do not look like iCloud shortcut links, so nothing was written:", file=sys.stderr)
+        error("\nThese do not look like iCloud shortcut links, so nothing was written:")
         for n, u in bad.items():
-            print(f"  {n}: {u}", file=sys.stderr)
-        print(f"An iCloud link starts with {PREFIX}", file=sys.stderr)
+            error(f"  {n}: {u}")
+        error(f"An iCloud link starts with {PREFIX}")
         return 1
 
     changed = []
@@ -84,16 +105,16 @@ def main() -> int:
         pattern = anchor(name)
         match = pattern.search(page)
         if not match:
-            print(f"\n{PAGE.name} has no link for {name}. Page unchanged.", file=sys.stderr)
+            error(f"\n{PAGE.name} has no link for {name}. Page unchanged.")
             return 1
         was = match.group(2)
         page = pattern.sub(lambda m, name=name: m.group(1) + links[name] + m.group(3), page, count=1)
         changed.append((name, was, links[name]))
 
     PAGE.write_text(page, encoding="utf-8")
-    print(f"\nUpdated {PAGE}:")
+    info(f"\nUpdated {PAGE}:")
     for name, was, now in changed:
-        print(f"  {name}\n    was {was}\n    now {now}")
+        info(f"  {name}\n    was {was}\n    now {now}")
     return 0
 
 

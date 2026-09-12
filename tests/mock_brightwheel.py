@@ -134,8 +134,9 @@ class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server: _MockServer
 
-    # Quiet: the harness prints its own summary.
-    def log_message(self, *a: Any) -> None:
+    # Quiet: the harness prints its own summary. The parameter is named as the
+    # base class names it, which is what makes this a valid override.
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         pass
 
     # -- plumbing -------------------------------------------------------

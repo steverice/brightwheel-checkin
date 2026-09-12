@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
 import testbuild  # noqa: E402
+from console import error, info, success, warning  # noqa: E402
 from mock_brightwheel import MockBrightwheel, Scenario  # noqa: E402
 
 # The throwaway CA the simulator is told to trust. Disposable and gitignored.
@@ -65,25 +66,25 @@ class Suite:
     def setup(self) -> None:
         ca, server = ensure_certs(TLS_DIR, ca_name="Brightwheel Test CA")
         self.sim = Simulator.find(runtime=self.runtime, artifacts=ARTIFACTS)
-        print(f"  runtime {self.runtime}")
-        print(f"  simulator {self.sim.udid}")
+        info(f"  runtime {self.runtime}")
+        info(f"  simulator {self.sim.udid}")
         if self.erase:
-            print("  erasing device for a clean library")
+            info("  erasing device for a clean library")
             self.sim.erase()
         self.sim.prepare_window()
         self.sim.add_root_cert(ca)
 
         self.mock = MockBrightwheel(PORT, server).start()
-        print(f"  mock Brightwheel on {self.mock.base}")
+        info(f"  mock Brightwheel on {self.mock.base}")
 
         paths = testbuild.build(self.mock.base)
-        print(f"  built and signed {len(paths)} shortcuts against the mock")
+        info(f"  built and signed {len(paths)} shortcuts against the mock")
 
         # Order is irrelevant — Run Shortcut resolves by name at run time,
         # not at import — but all three must exist before anything runs.
         for name in (ATTENDANCE, CHECK_IN, CHECK_OUT):
             fresh = self.sim.install(paths[name], expect_name=name)
-            print(f"  {'installed' if fresh else 'already present'}: {name}")
+            info(f"  {'installed' if fresh else 'already present'}: {name}")
 
         self._prime()
 
@@ -91,7 +92,7 @@ class Suite:
         """One throwaway run so the consent prompts are answered up front."""
         self.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "in", CHILD_B: "in"}))
         self.run_and_settle(CHECK_IN, timeout=90)
-        print(f"  consent primed ({len(self.mock.requests)} requests)")
+        info(f"  consent primed ({len(self.mock.requests)} requests)")
 
     def teardown(self) -> None:
         self.mock.stop()
@@ -514,43 +515,41 @@ def main(argv: list[str]) -> int:
         argv = argv[:i] + argv[i + 2 :]
     only = [a for a in argv if not a.startswith("-")]
     suite = Suite(erase="--erase" in argv, runtime=runtime)
-    print("setup:")
+    info("setup:")
     suite.setup()
 
     chosen = [t for t in TESTS if not only or any(o in t.__name__ for o in only)]
-    print(f"\nrunning {len(chosen)} test(s):\n")
+    info(f"\nrunning {len(chosen)} test(s):\n")
     failures, known = [], []
     for t in chosen:
         label = t.__name__.replace("_", " ")
-        print(f"  … {label}", flush=True)
+        info(f"  … {label}")
         broken = KNOWN_BROKEN.get(t)
         try:
             t(suite)
             if broken:
-                print(
-                    f"  \033[32mFIXED\033[0m {label}\n"
-                    f"        this was expected to fail — drop the "
-                    f"expected_broken marker\n"
+                success(
+                    f"[green]FIXED[/green] {label}\n        this was expected to fail — drop it from KNOWN_BROKEN\n"
                 )
             else:
-                print(f"  \033[32mPASS\033[0m {label}\n")
+                success(f"[green]PASS[/green] {label}\n")
         except Exception as exc:  # noqa: BLE001 - a failing test must not stop the suite
             shot = suite.sim.screenshot(f"FAIL-{t.__name__}.png")
             if broken:
-                print(f"  \033[33mKNOWN\033[0m {label}\n        {broken}\n        (failed as expected: {exc})\n")
+                warning(f"[yellow]KNOWN[/yellow] {label}\n        {broken}\n        (failed as expected: {exc})\n")
                 known.append(t.__name__)
             else:
-                print(f"  \033[31mFAIL\033[0m {label}\n        {exc}\n        screenshot: {shot}\n")
+                error(f"[red]FAIL[/red] {label}\n        {exc}\n        screenshot: {shot}\n")
                 failures.append(t.__name__)
     suite.teardown()
 
-    print("-" * 60)
+    info("-" * 60)
     if known:
-        print(f"{len(known)} known-broken (not counted as failures): {', '.join(known)}")
+        info(f"{len(known)} known-broken (not counted as failures): {', '.join(known)}")
     if failures:
-        print(f"{len(failures)} failed: {', '.join(failures)}")
+        error(f"{len(failures)} failed: {', '.join(failures)}")
         return 1
-    print(f"all {len(chosen) - len(known)} passed")
+    success(f"all {len(chosen) - len(known)} passed")
     return 0
 
 

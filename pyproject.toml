@@ -4,6 +4,8 @@ version = "0.0.0"
 description = "Signed iOS Shortcuts that check children in or out of Brightwheel, fired by location triggers"
 requires-python = ">=3.10"
 dependencies = [
+    "argcomplete>=3.7.2",
+    "rich>=15.0.0",
     "shortcut-forge[sim]",
 ]
 

@@ -32,10 +32,12 @@ from __future__ import annotations
 import sys
 import urllib.request
 from pathlib import Path
+from typing import Any, cast
 
 from PIL import Image, ImageDraw, ImageFont
 
 import make_icons
+from console import info
 
 REPO = Path(__file__).resolve().parent
 OUT = REPO / "docs" / "img" / "og.png"
@@ -80,8 +82,10 @@ def font_file(name: str) -> Path:
     if path.exists():
         return path
     FONT_CACHE.mkdir(exist_ok=True)
-    print(f"  fetching {name}")
-    data = urllib.request.urlopen(FONTS[name], timeout=60).read()
+    info(f"  fetching {name}")
+    # Every entry in FONTS is a literal https URL to github.com; the lookup is
+    # by name, which is what the rule cannot see.
+    data = urllib.request.urlopen(FONTS[name], timeout=60).read()  # noqa: S310
     # A TrueType file starts with 0x00010000 or "true"; anything else means the
     # host handed back a redirect page or a web font, and PIL's later failure
     # would not say which.
@@ -106,8 +110,10 @@ def assert_renderable(font: ImageFont.FreeTypeFont, text: str, label: str) -> No
     eye, render each character alone and compare it with a private-use codepoint
     no font defines: anything that draws identically to that is .notdef.
     """
-    notdef = bytes(font.getmask(""))
-    missing = {c for c in set(text) if not c.isspace() and bytes(font.getmask(c)) == notdef}
+    # `getmask` returns an ImagingCore, which supports the buffer protocol at
+    # run time but whose stub does not say so; the cast tells the checker.
+    notdef = bytes(cast("Any", font.getmask("")))
+    missing = {c for c in set(text) if not c.isspace() and bytes(cast("Any", font.getmask(c))) == notdef}
     if missing:
         sys.exit(f"{label}: {font.getname()[0]} has no glyph for {', '.join(repr(c) for c in sorted(missing))}")
 
@@ -182,7 +188,7 @@ def main() -> None:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     img.save(OUT, "PNG", optimize=True)
-    print(f"  wrote {OUT.relative_to(REPO)}  {img.size[0]}x{img.size[1]}  {OUT.stat().st_size // 1024} KB")
+    info(f"  wrote {OUT.relative_to(REPO)}  {img.size[0]}x{img.size[1]}  {OUT.stat().st_size // 1024} KB")
 
 
 if __name__ == "__main__":

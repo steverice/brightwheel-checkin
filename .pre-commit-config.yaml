@@ -10,7 +10,7 @@ repos:
     hooks:
       - id: ty
         name: ty check
-        entry: uv run ty check build_shortcuts.py make_diagrams.py make_icons.py make_og_image.py tools/ tests/
+        entry: uv run ty check build_shortcuts.py console.py make_diagrams.py make_icons.py make_og_image.py tools/ tests/
         language: system
         pass_filenames: false
 

@@ -28,6 +28,10 @@ from shortcut_forge_lib.plist import write_xml
 from shortcut_forge_lib.sim import probes
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+from console import info  # noqa: E402
+
 TEST_ENV = Path(__file__).parent / "fixtures" / "test.env"
 OUT = REPO / "dist-test"
 NAMES = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
@@ -67,7 +71,7 @@ def build(api_base: str, dest: str | Path = OUT) -> dict[str, Path]:
 if __name__ == "__main__":
     base = sys.argv[1] if len(sys.argv) > 1 else "https://localhost:8788/api/v1"
     for name, path in build(base).items():
-        print(f"{name}: {path}")
+        info(f"{name}: {path}")
 
 
 SETUP_PROBE_PLACEHOLDER = probes.SETUP_PROBE_PLACEHOLDER
