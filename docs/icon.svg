@@ -1,4 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Brightwheel Check-In Shortcuts">
-  <rect width="64" height="64" rx="14" fill="#4f52d6"/>
-  <path d="M17 33 L26 42 L47 21" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <style>
+    .c0{fill:#20238c} .c1{fill:#2528a0} .c2{fill:#2a2db4} .c3{fill:#2e32c8} .c4{fill:#3e41d2} .c5{fill:#5255d6} .c6{fill:#6669db} .c7{fill:#7a7ce0}
+    .k{stroke:#1f1c46}
+    @media (prefers-color-scheme: dark){.c0{fill:#4448d3} .c1{fill:#585bd8} .c2{fill:#6b6edc} .c3{fill:#7f81e1} .c4{fill:#9294e5} .c5{fill:#a6a7ea} .c6{fill:#b9bbee} .c7{fill:#cdcef3} .k{stroke:#f5f6fb}}
+  </style>
+  <rect class="c0" x="24.30" y="4.65" width="15.4" height="6.7" rx="3.35" transform="rotate(20 32.00 8.00)"/>
+  <rect class="c1" x="41.27" y="11.68" width="15.4" height="6.7" rx="3.35" transform="rotate(65 48.97 15.03)"/>
+  <rect class="c2" x="48.30" y="28.65" width="15.4" height="6.7" rx="3.35" transform="rotate(110 56.00 32.00)"/>
+  <rect class="c3" x="41.27" y="45.62" width="15.4" height="6.7" rx="3.35" transform="rotate(155 48.97 48.97)"/>
+  <rect class="c4" x="24.30" y="52.65" width="15.4" height="6.7" rx="3.35" transform="rotate(200 32.00 56.00)"/>
+  <rect class="c5" x="7.33" y="45.62" width="15.4" height="6.7" rx="3.35" transform="rotate(245 15.03 48.97)"/>
+  <rect class="c6" x="0.30" y="28.65" width="15.4" height="6.7" rx="3.35" transform="rotate(290 8.00 32.00)"/>
+  <rect class="c7" x="7.33" y="11.68" width="15.4" height="6.7" rx="3.35" transform="rotate(335 15.03 15.03)"/>
+  <path class="k" d="M14.78 32.82 L27.08 45.12 L50.45 18.06" fill="none" stroke-width="12.30" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
