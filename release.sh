@@ -14,7 +14,7 @@
 # iCloud links, which carry the names too. See ARCHITECTURE.md.
 #
 # Drafts are the default because publishing a release is public and hard to take
-# back. Nothing here signs anything itself — build.sh does, pinned to
+# back. Nothing here signs anything itself — build_shortcuts.py does, pinned to
 # --mode anyone so the artifacts import for people who have never met you.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -79,17 +79,17 @@ case "$answer" in
         # and that failure is silent — the shortcut installs in one tap, looks
         # right, and never asks for credentials. Importing each link on a
         # simulator is the only way to see it before a parent does.
-        if python3 tools/verify_links.py --clipboard --erase; then
-            python3 tools/update_links.py --clipboard || true
+        if uv run python tools/verify_links.py --clipboard --erase; then
+            uv run python tools/update_links.py --clipboard || true
         else
             echo
             echo "Links not written. Re-mint them and run:"
-            echo "  python3 tools/verify_links.py --clipboard --erase"
-            echo "  python3 tools/update_links.py --clipboard"
+            echo "  uv run python tools/verify_links.py --clipboard --erase"
+            echo "  uv run python tools/update_links.py --clipboard"
         fi
         ;;
     *)
         echo "Skipped. Run this whenever you have them:"
-        echo "  python3 tools/update_links.py --clipboard"
+        echo "  uv run python tools/update_links.py --clipboard"
         ;;
 esac

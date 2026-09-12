@@ -1,0 +1,28 @@
+[project]
+name = "brightwheel-checkin"
+version = "0.0.0"
+description = "Signed iOS Shortcuts that check children in or out of Brightwheel, fired by location triggers"
+requires-python = ">=3.10"
+dependencies = [
+    "shortcut-forge[sim]",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+# The library lives in a sibling checkout and changes alongside this project,
+# so it is taken editable from there rather than pinned to a release.
+[tool.uv.sources]
+shortcut-forge = { path = "../shortcut-forge", editable = true }
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tools"]
+# The integration suite is its own runner, started by ./test.sh; pytest would
+# only trip over it.
+addopts = "--ignore=tests/test_attendance.py"

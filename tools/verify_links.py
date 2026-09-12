@@ -10,108 +10,24 @@ is a parent whose check-in never works.
 So every link gets imported on a simulator and compared against the build it is
 supposed to be carrying, before it goes anywhere near the page.
 
-    python3 tools/verify_links.py --clipboard        # what Share Links copied
-    python3 tools/verify_links.py --erase            # wipe the library first
+    uv run python tools/verify_links.py --clipboard        # what Share Links copied
+    uv run python tools/verify_links.py --erase            # wipe the library first
 
-Checks per link: the installed shortcut has the expected name, the same action
-identifiers in the same order as `dist/<name>.xml`, and the same number of
-import questions.
+Checks per link (`shortcut_forge.sim.links.check_link`): the installed shortcut
+has the expected name, the same action identifiers in the same order as
+`dist/<name>.xml`, and the same number of import questions.
 """
 import argparse
-import plistlib
-import sqlite3
-import subprocess
 import sys
-import time
 from pathlib import Path
 
+from shortcut_forge.sim.harness import Simulator
+from shortcut_forge.sim.links import check_link
+
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tests"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from simharness import Simulator, HOST                    # noqa: E402
 from update_links import NAMES, PREFIX, from_clipboard    # noqa: E402
-
-
-def questions(sim, name):
-    """Import questions on the installed copy, straight out of its database."""
-    con = sqlite3.connect(f"file:{sim._db}?mode=ro", uri=True)
-    try:
-        row = con.execute("SELECT ZIMPORTQUESTIONSDATA FROM ZSHORTCUT "
-                          "WHERE ZNAME = ? AND ZTOMBSTONED = 0", (name,)).fetchone()
-    finally:
-        con.close()
-    if not row or not row[0]:
-        return 0
-    return len(plistlib.loads(bytes(row[0])))
-
-
-def install(sim, link, timeout=45):
-    """Open a link and take whichever import path the sheet offers.
-
-    A sheet with questions offers Set Up Shortcut and then needs Skip Setup,
-    which is the only way to finish that keeps the questions. One without
-    questions installs on the first tap. Both are handled, because which one
-    appears is the thing being measured.
-
-    The link is opened a second time before giving up. On a freshly erased
-    simulator the first open left the home screen showing, and the same link
-    opened normally on the next try (TESTING.md), so one failure alone says
-    nothing about the link.
-    """
-    for attempt in (1, 2):
-        sim.terminate_shortcuts()
-        time.sleep(1.2)
-        subprocess.run(["xcrun", "simctl", "openurl", sim.udid, link], check=True)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            time.sleep(2)
-            if sim.blue_buttons():
-                break
-        else:
-            if attempt == 1:
-                print(f"        no import sheet after {timeout}s; opening it again")
-                continue
-            raise RuntimeError("no import sheet appeared on either try — "
-                               "is the link still live?")
-        break
-    sim.tap_affirmative()
-    time.sleep(4)
-    boxes = sim.blue_buttons()
-    if boxes:                       # the questions page: Skip Setup sits below
-        img = sim.image()
-        w, h = img.size
-        _, _, _, y1 = max(boxes, key=lambda b: (b[3], b[2]))
-        sim.tap(w // 2, int(y1 + h * 0.045), device_size=(w, h))
-        time.sleep(6)
-
-
-def check(sim, name, link, dist):
-    xml = dist / f"{name}.xml"
-    if not xml.exists():
-        return [f"no {xml} to compare against — build first"]
-    want = plistlib.load(xml.open("rb"))
-    if name in sim.library():
-        return [f"{name!r} is already installed, so the import would be "
-                f"silently skipped. Re-run with --erase."]
-
-    install(sim, link)
-
-    problems = []
-    if name not in sim.library():
-        return [f"{name!r} did not install"]
-    got = sim.shortcut_actions(name) or []
-    want_ids = [a["WFWorkflowActionIdentifier"] for a in want["WFWorkflowActions"]]
-    got_ids = [a["WFWorkflowActionIdentifier"] for a in got]
-    if got_ids != want_ids:
-        problems.append(f"actions differ: {len(got_ids)} installed, "
-                        f"{len(want_ids)} built")
-    want_q = len(want["WFWorkflowImportQuestions"])
-    got_q = questions(sim, name)
-    if got_q != want_q:
-        problems.append(f"import questions: {got_q} on the link, {want_q} built. "
-                        f"Anyone installing this is never asked for credentials.")
-    return problems
 
 
 def main():
@@ -143,7 +59,7 @@ def main():
 
     failed = False
     for name in NAMES:
-        problems = check(sim, name, links[name], args.dist)
+        problems = check_link(sim, name, links[name], args.dist / f"{name}.xml")
         if problems:
             failed = True
             print(f"  FAIL  {name}")

@@ -1,19 +1,34 @@
 #!/usr/bin/env python3
-"""Generate the two Brightwheel check-in/check-out Shortcuts plists.
+"""Generate, validate, and sign the three Brightwheel Shortcuts.
 
-Both shortcuts are structurally identical; only the `checked_in` literal,
-the display wording, and the icon differ. README.md has the endpoint
-contract.
+Brightwheel Attendance does the work; Check In and Check Out are wrappers
+that carry the triggers and hand it a direction. README.md has the endpoint
+contract. The plist primitives, the structural checks, and the validate-and-
+sign pipeline come from shortcut-forge.
 """
 import argparse
 import base64
 import json
-import plistlib
-import subprocess
 from pathlib import Path
 
-OBJ = "￼"  # U+FFFC placeholder for an inline variable
-
+from shortcut_forge.actions import ActionList
+from shortcut_forge.build import Shortcut, build_all
+from shortcut_forge.plist import (
+    EXTENSION_INPUT,
+    act,
+    attach,
+    comment,
+    cond_input,
+    dict_field,
+    document,
+    import_question,
+    kv,
+    kv_dict,
+    out,
+    ts,
+    var,
+)
+from shortcut_forge.uuids import random_uuids
 
 BASE = "https://schools.mybrightwheel.com/api/v1"
 # Kept so an overridden BASE can be reported as such. The integration tests
@@ -21,6 +36,42 @@ BASE = "https://schools.mybrightwheel.com/api/v1"
 DEFAULT_BASE = BASE
 CLIENT_NAME = "ios"
 CLIENT_VERSION = "3.103.0"
+
+ATTENDANCE = "Brightwheel Attendance"
+
+# Validator errors that are expected and deliberate. Anything else is real and
+# must stop the build.
+#   1. The Shortcuts Playground attribution comment was removed on purpose.
+#   2. is.workflow.actions.scanbarcode, on two counts. It has no row in the
+#      bundled iOS 27 ToolKit snapshot, so the validator calls it macOS-only,
+#      and the validator also demands an imageFile parameter. Neither holds for
+#      the iOS live scanner, which takes WFScanCodeActionMode and no image at
+#      all. Both are contradicted by a working shortcut exported off an iOS 27
+#      phone; the docs describe the macOS scan-an-image variant.
+#   3. Glyphs 62021 and 62022 (a plane departing / arriving). The validator
+#      checks against a 507-entry mapping; the device's own icon picker offers
+#      far more than that. Both numbers came out of real shortcuts built on a
+#      device, and both were rendered on a simulator to confirm. Waived by
+#      number rather than by rule, so a genuine typo in a glyph still fails.
+#   4. "Unit conversion detected". The wrappers carry the setup diagram as a
+#      base64 string, and ~100k characters of it trip the heuristic that
+#      looks for unit words in action text. There is no measurement action
+#      in either wrapper.
+#   5. The two comment-block rules. Both exist to keep the Shortcuts Playground
+#      attribution comment in the file; that comment was removed on purpose, so
+#      the second action is no longer a prompt block and the wrappers sit one
+#      under the density threshold. The comments that remain each explain a
+#      real block, and adding a fourth to satisfy a ratio would be noise in a
+#      shortcut whose working part is two actions.
+WAIVED = [
+    "Shortcuts Playground prompt text",
+    r"is\.workflow\.actions\.scanbarcode",
+    "Scan QR or Barcode missing imageFile",
+    "WFWorkflowIconGlyphNumber (62021|62022) is not in the official",
+    "Unit conversion detected",
+    "Second action must be the prompt Comment block",
+    "Insufficient Comment blocks",
+]
 
 
 ENV_KEYS = {
@@ -50,80 +101,6 @@ def load_env(path):
     if missing:
         raise SystemExit(f"{path} is missing or has empty: {', '.join(missing)}")
     return env
-
-
-def uuids(n):
-    out = subprocess.run(
-        ["bash", "-c", f"for i in $(seq 1 {n}); do uuidgen; done"],
-        capture_output=True, text=True, check=True,
-    ).stdout.split()
-    return [u.upper() for u in out]
-
-
-# --- serialization helpers ---------------------------------------------
-def ts(*parts):
-    """WFTextTokenString from interleaved literals and attachments."""
-    s, att = "", {}
-    for p in parts:
-        if isinstance(p, str):
-            s += p
-        else:
-            att["{%d, 1}" % len(s)] = p
-            s += OBJ
-    return {
-        "Value": {"attachmentsByRange": att, "string": s},
-        "WFSerializationType": "WFTextTokenString",
-    }
-
-
-def out(uuid, name):
-    return {"OutputUUID": uuid, "OutputName": name, "Type": "ActionOutput"}
-
-
-def var(name):
-    return {"Type": "Variable", "VariableName": name}
-
-
-def attach(value):
-    return {"Value": value, "WFSerializationType": "WFTextTokenAttachment"}
-
-
-def cond_input(value):
-    """If-condition input: Type=Variable wrapper around an attachment."""
-    return {"Type": "Variable", "Variable": attach(value)}
-
-
-def dict_field(items):
-    return {
-        "Value": {"WFDictionaryFieldValueItems": items},
-        "WFSerializationType": "WFDictionaryFieldValue",
-    }
-
-
-def kv(key, value):
-    return {"WFItemType": 0, "WFKey": ts(key), "WFValue": value}
-
-
-def kv_dict(key, items):
-    return {
-        "WFItemType": 1,
-        "WFKey": ts(key),
-        "WFValue": {"Value": dict_field(items),
-                    "WFSerializationType": "WFDictionaryFieldValue"},
-    }
-
-
-def act(identifier, **params):
-    return {
-        "WFWorkflowActionIdentifier": identifier,
-        "WFWorkflowActionParameters": params,
-    }
-
-
-def comment(text):
-    return act("is.workflow.actions.comment", WFCommentActionText=text)
-
-
 
 
 # --- shortcut assembly --------------------------------------------------
@@ -182,50 +159,24 @@ LAST_QUESTION_NOTE = (
 
 def build(env=None):
     """The shortcut that does the work. Direction arrives as Shortcut Input."""
-    name = "Brightwheel Attendance"
+    name = ATTENDANCE
     # 62329 is a ring of petals — close to the Brightwheel logo — on pink.
     # Both taken from a share link's icon_glyph / a resolved palette value and
     # then checked on a simulator, because the bundled glyph names are wrong.
     glyph, color = 62329, 3980825855
 
-    i = iter(uuids(260))
+    A = ActionList(random_uuids())
+    i = A.uuids
     U = {k: next(i) for k in ("code", "email", "password")}
-    A = []
     questions = []
 
-    def gate(src, name, pattern=r"\S"):
-        """Append Text -> Match Text -> Count for a value, returning the Count
-        action's UUID for use as a numeric If input.
-
-        Two Shortcuts behaviors force this. A Dictionary Value compared
-        directly in an If reads as blank and the branch never fires, and an
-        empty string still satisfies "has any value", so presence has to be
-        measured rather than tested. Counting matches handles both, and a
-        pattern turns the same helper into "does this response say X".
-
-        It is the branch that Get Dictionary Value cannot serve, not the read.
-        The roster is read with it, and so is the wording dictionary below, but
-        every one of those values is used as text. The moment a dictionary value
-        has to decide a branch, it comes back through here.
-        """
-        t, m, c = next(i), next(i), next(i)
-        # src may be an action UUID (with name), a variable name (name=None),
-        # or a ready-made attachment value such as {"Type": "ExtensionInput"}.
-        if isinstance(src, dict):
-            source = src
-        elif name is None:
-            source = var(src)
-        else:
-            source = out(src, name)
-        A.append(act("is.workflow.actions.gettext", UUID=t,
-                     WFTextActionText=ts(source)))
-        A.append(act("is.workflow.actions.text.match", UUID=m,
-                     WFMatchTextPattern=pattern, text=ts(out(t, "Text"))))
-        A.append(act("is.workflow.actions.count", UUID=c, WFCountType="Items",
-                     WFInput=attach(out(m, "Matches")),
-                     Input=attach(out(m, "Matches"))))
-        return c
-
+    # Every branch below goes through A.count_matches(): Text, Match Text,
+    # Count. A Dictionary Value compared directly in an If reads as blank and
+    # the branch never fires, and an empty string still satisfies "has any
+    # value", so presence has to be measured rather than tested. The roster
+    # and the wording dictionary are read with Get Dictionary Value, but every
+    # one of those values is used as text; the moment a dictionary value has
+    # to decide a branch, it comes back through the count.
     A.append(comment(
         "Brightwheel — Attendance\n\n"
         "Checks your children in or out by talking to the Brightwheel API "
@@ -275,12 +226,12 @@ def build(env=None):
     # the menu sends nothing.
     U_WORDS, U_CIV, U_VERB, U_ALREADY = (next(i) for _ in range(4))
     G_VALID = next(i)
-    EXT = {"Type": "ExtensionInput"}
+    EXT = EXTENSION_INPUT
 
     U_EXT, U_MIN, U_MOUT = next(i), next(i), next(i)
     G_MENU = next(i)
 
-    C_VALID = gate(EXT, None, "^(in|out)$")
+    C_VALID = A.count_matches(EXT, "^(in|out)$")
     A.append(comment(
         "Work out which direction this run goes.\n"
         "- Condition counts whether a direction was handed in\n"
@@ -336,7 +287,7 @@ def build(env=None):
     A.append(act("is.workflow.actions.getstoredcontent", UUID=U_QRC,
                  WFStoredContentKey="BrightwheelSchoolCode",
                  WFStoredContentGlobalValue=True))
-    C_QRC = gate(U_QRC, "Stored Content")
+    C_QRC = A.count_matches(out(U_QRC, "Stored Content"))
     G_QR = next(i)
     A.append(comment(
         "Draw the stored code, or say there is none.\n"
@@ -402,7 +353,7 @@ def build(env=None):
 
     # Wanted In is 1 for a check-in and 0 for a check-out, which later gets
     # compared against whether the child is already checked in.
-    C_DIR = gate("Direction", None, "^in$")
+    C_DIR = A.count_matches(var("Direction"), "^in$")
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Wanted In",
                  WFInput=attach(out(C_DIR, "Count"))))
     # One dictionary keyed by direction, instead of an If that set the same
@@ -412,7 +363,7 @@ def build(env=None):
     #
     # All three are read as text — into the request body and into notification
     # wording — never as an If input, which is the case a Dictionary Value
-    # cannot serve (see gate() above).
+    # cannot serve (see A.count_matches()).
     A.append(comment(
         "Set the wording and the value Brightwheel expects.\n"
         "- The key is the direction, so in and out read the same three fields\n"
@@ -452,13 +403,8 @@ def build(env=None):
             # Debug build: bake the real value in and ask nothing at import.
             default = env[ENV_KEYS[key]]
         else:
-            questions.append({
-                "ActionIndex": len(A),
-                "Category": "Parameter",
-                "DefaultValue": prompt_default,
-                "ParameterKey": param,
-                "Text": f"{prompt} — {blurb}" + QUESTION_NOTES.get(key, ""),
-            })
+            questions.append(import_question(
+                len(A), param, f"{prompt} — {blurb}" + QUESTION_NOTES.get(key, ""), prompt_default))
         A.append(act(ident, UUID=U[key], CustomOutputName=names[key],
                      **{param: default}))
     if questions:
@@ -502,7 +448,7 @@ def build(env=None):
                      kv("X-Client-Version", ts(CLIENT_VERSION)),
                  ])))
     # E1200 is what an expired or absent token returns.
-    C_BAD = gate(U_PROBE, "Contents of URL", "E1200")
+    C_BAD = A.count_matches(out(U_PROBE, "Contents of URL"), "E1200")
     A.append(act("is.workflow.actions.setvariable", WFVariableName="Needs Sign In",
                  WFInput=attach(out(C_BAD, "Count"))))
 
@@ -578,7 +524,7 @@ def build(env=None):
     # all skip the exchange, so the next pass calls /sessions/start again and a
     # new code is sent. Posting a junk code instead would burn an attempt and
     # risks the API treating it as a failed sign-in.
-    C_CODE = gate(U_CODE, "Provided Input", "^[0-9]{6}$")
+    C_CODE = A.count_matches(out(U_CODE, "Provided Input"), "^[0-9]{6}$")
     A.append(comment(
         "Only try the code if one was actually entered.\n"
         "- Condition counts whether the answer is six digits\n"
@@ -613,7 +559,7 @@ def build(env=None):
                  text=ts(out(U_TMATCH, "Text"))))
     A.append(act("is.workflow.actions.text.match.getgroup", UUID=U_TGRP,
                  WFGroupIndex="1", matches=attach(out(U_TM2, "Matches"))))
-    C_GOT = gate(U_TGRP, "Matched Text Group")
+    C_GOT = A.count_matches(out(U_TGRP, "Matched Text Group"))
     A.append(comment(
         "Keep the new token when the code was accepted.\n"
         "- Condition counts whether a token came back\n"
@@ -666,7 +612,7 @@ def build(env=None):
     # none. Ask again now that there is a working token. Gated on emptiness so
     # the ordinary path still makes exactly one /users/me call.
     G_GID = next(i)
-    C_NOGID = gate("Guardian Id", None)
+    C_NOGID = A.count_matches(var("Guardian Id"))
     A.append(comment(
         "Fetch the guardian id if signing in meant the first read missed it.\n"
         "- Condition counts whether an id was found on the probe\n"
@@ -707,7 +653,7 @@ def build(env=None):
     # Exit rather than a flag: this is still top level, before the attempt
     # Repeat, which is the only place this file uses Exit.
     G_HASGID = next(i)
-    C_HASGID = gate("Guardian Id", None)
+    C_HASGID = A.count_matches(var("Guardian Id"))
     A.append(comment(
         "Stop if the account could not be identified.\n"
         "- Condition counts whether a guardian id was read\n"
@@ -799,7 +745,7 @@ def build(env=None):
     A.append(act("is.workflow.actions.getstoredcontent", UUID=U_GC,
                  WFStoredContentKey="BrightwheelSchoolCode",
                  WFStoredContentGlobalValue=True))
-    C_CODE = gate(U_GC, "Stored Content")
+    C_CODE = A.count_matches(out(U_GC, "Stored Content"))
     A.append(comment(
         "Scan the school's code when there is none saved.\n"
         "- Condition counts whether anything is stored\n"
@@ -850,7 +796,7 @@ def build(env=None):
         A.append(act("is.workflow.actions.setvariable", WFVariableName=varname,
                      WFInput=attach(out(u_t, "Text"))))
 
-    C_SIGS = gate("School Code", None, r'"signatures_enabled"\s*:\s*(true|1)')
+    C_SIGS = A.count_matches(var("School Code"), r'"signatures_enabled"\s*:\s*(true|1)')
     A.append(comment(
         "Warn if the school has started requiring signatures.\n"
         "- Condition counts whether the scanned code says signatures are on\n"
@@ -912,7 +858,7 @@ def build(env=None):
     # the rescan has to be triggered from here as well as from the check-in
     # response. Deleting the stored code is what turns the next pass into a
     # fresh scan; without it the second pass reads the same stale code back.
-    C_STALE2 = gate(U_ROST, "Contents of URL", r'"secret"\s*:\s*"The given secret')
+    C_STALE2 = A.count_matches(out(U_ROST, "Contents of URL"), r'"secret"\s*:\s*"The given secret')
     A.append(comment(
         "Rescan if the school's code was rotated.\n"
         "- Condition counts whether the roster call rejected the code\n"
@@ -1117,7 +1063,7 @@ def build(env=None):
     # ^(01|10)$, so the literal "true" would give "true1", never match, and
     # every child would be skipped in both directions while the notification
     # said "no change".
-    C_IN = gate("Room State Text", None, r'"checked_in"\s*:\s*true')
+    C_IN = A.count_matches(var("Room State Text"), r'"checked_in"\s*:\s*true')
     # Two runtime numbers cannot be compared directly — an If tests a variable
     # against a literal, not against another variable. Pasting them together
     # gives 11 or 00 when they agree and 10 or 01 when they differ, which a
@@ -1125,7 +1071,7 @@ def build(env=None):
     u_pair = next(i)
     A.append(act("is.workflow.actions.gettext", UUID=u_pair,
                  WFTextActionText=ts(out(C_IN, "Count"), var("Wanted In"))))
-    C_SEND = gate(u_pair, "Text", "^(01|10)$")
+    C_SEND = A.count_matches(out(u_pair, "Text"), "^(01|10)$")
     A.append(comment(
         "Skip anyone who needs no change.\n"
         "- Condition counts whether their state and this run disagree\n"
@@ -1177,7 +1123,7 @@ def build(env=None):
                  ])))
     A.append(act("is.workflow.actions.gettext", UUID=U_RTEXT,
                  WFTextActionText=ts(out(U_RESP, "Contents of URL"))))
-    C_OK = gate(U_RESP, "Contents of URL", '"event_date"')
+    C_OK = A.count_matches(out(U_RESP, "Contents of URL"), '"event_date"')
     A.append(comment(
         "Report the result.\n"
         "- Condition counts whether Brightwheel really recorded something\n"
@@ -1192,8 +1138,7 @@ def build(env=None):
                      "✅ ", var("Child Name"), " ", out(U_VERB, "Verb"))))
     A.append(act("is.workflow.actions.conditional", UUID=next(i),
                  GroupingIdentifier=G_RES, WFControlFlowMode=1))
-    C_STALE = gate(U_RESP, "Contents of URL",
-                   r'"secret"\s*:\s*"The given secret')
+    C_STALE = A.count_matches(out(U_RESP, "Contents of URL"), r'"secret"\s*:\s*"The given secret')
     A.append(comment(
         "Tell a stale school code apart from anything else.\n"
         "- Condition counts whether Brightwheel rejected the school's code\n"
@@ -1238,20 +1183,8 @@ def build(env=None):
     A.append(act("is.workflow.actions.repeat.count", UUID=next(i),
                  GroupingIdentifier=G_ATTEMPT, WFControlFlowMode=2))
 
-    return name, {
-        "WFWorkflowActions": A,
-        "WFWorkflowClientVersion": "2700.0.4",
-        "WFWorkflowHasOutputFallback": False,
-        "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": glyph,
-                           "WFWorkflowIconStartColor": color},
-        "WFWorkflowImportQuestions": questions,
-        "WFWorkflowInputContentItemClasses": ["WFStringContentItem"],
-        "WFWorkflowMinimumClientVersion": 900,
-        "WFWorkflowMinimumClientVersionString": "900",
-        "WFWorkflowName": name,
-        "WFWorkflowOutputContentItemClasses": [],
-        "WFWorkflowTypes": [],
-    }
+    return name, document(name, A, glyph=glyph, color=color, questions=questions,
+                          input_classes=["WFStringContentItem"])
 
 
 def build_wrapper(direction):
@@ -1285,7 +1218,7 @@ def build_wrapper(direction):
     glyph = 62022 if checking_in else 62021
     color = 4292093695 if checking_in else 4282601983
 
-    i = iter(uuids(24))
+    i = random_uuids()
     u_text = next(i)
     u_seen, u_gt, u_gm, u_gc = next(i), next(i), next(i), next(i)
     u_b64, u_dec, u_mark = next(i), next(i), next(i)
@@ -1370,33 +1303,20 @@ def build_wrapper(direction):
         act("is.workflow.actions.gettext", UUID=u_text,
             CustomOutputName="Direction", WFTextActionText=word),
         act("is.workflow.actions.runworkflow",
-            WFWorkflowName="Brightwheel Attendance",
+            WFWorkflowName=ATTENDANCE,
             WFWorkflow={"isSelf": False,
                         "workflowIdentifier": next(i),
-                        "workflowName": "Brightwheel Attendance"},
+                        "workflowName": ATTENDANCE},
             WFInput=attach(out(u_text, "Direction"))),
     ]
-    return title, {
-        "WFWorkflowActions": A,
-        "WFWorkflowClientVersion": "2700.0.4",
-        "WFWorkflowHasOutputFallback": False,
-        "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": glyph,
-                           "WFWorkflowIconStartColor": color},
-        "WFWorkflowImportQuestions": [],
-        "WFWorkflowInputContentItemClasses": [],
-        "WFWorkflowMinimumClientVersion": 900,
-        "WFWorkflowMinimumClientVersionString": "900",
-        "WFWorkflowName": title,
-        "WFWorkflowOutputContentItemClasses": [],
-        "WFWorkflowTypes": [],
-    }
+    return title, document(title, A, glyph=glyph, color=color, input_classes=[])
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(
-        description="Generate the Brightwheel Shortcuts plists.")
+        description="Generate, validate, and sign the Brightwheel Shortcuts.")
     ap.add_argument("dest", nargs="?", default=".",
-                    help="directory to write the .xml files into")
+                    help="directory to write the .xml and .shortcut files into")
     ap.add_argument("--debug", action="store_true",
                     help="bake .env values in and emit no setup questions")
     ap.add_argument("--env-file", metavar="PATH",
@@ -1405,6 +1325,8 @@ if __name__ == "__main__":
     ap.add_argument("--api-base", metavar="URL", default=BASE,
                     help="point the shortcuts at a different API root; used by "
                          "the integration tests to reach the mock Brightwheel")
+    ap.add_argument("--unsigned", action="store_true",
+                    help="write and validate the XML but do not sign it")
     args = ap.parse_args()
 
     # build() reads these at call time, so setting them here is enough.
@@ -1420,14 +1342,21 @@ if __name__ == "__main__":
     if BASE != DEFAULT_BASE:
         print(f"API base overridden: {BASE}")
 
-    dest = Path(args.dest)
-    dest.mkdir(parents=True, exist_ok=True)
+    shortcuts = []
     name, pl = build(env=env)
-    (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
-    print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
-          f"{len(pl['WFWorkflowImportQuestions'])} setup questions")
+    shortcuts.append(Shortcut(name, pl))
     for d in ("in", "out"):
         name, pl = build_wrapper(d)
-        (dest / f"{name}.xml").write_bytes(plistlib.dumps(pl, fmt=plistlib.FMT_XML))
-        print(f"{name}: {len(pl['WFWorkflowActions'])} actions, "
-              f"{len(pl['WFWorkflowImportQuestions'])} setup questions")
+        shortcuts.append(Shortcut(name, pl))
+    for sc in shortcuts:
+        print(f"{sc.name}: {len(sc.document['WFWorkflowActions'])} actions, "
+              f"{len(sc.document['WFWorkflowImportQuestions'])} setup questions")
+
+    # --mode anyone is what makes the artifact shareable: Apple signs it on its
+    # server, and anybody can import it. The other mode, people-who-know-me,
+    # embeds your contact card and works only for people who already have you
+    # in Contacts — a release built that way would fail for every stranger and
+    # succeed for you. The library defaults to anyone; it is named here so a
+    # release never depends on a variable nobody remembers setting.
+    build_all(Path(args.dest), shortcuts, waived=WAIVED, mode="anyone",
+              sign=not args.unsigned, on_step=print)

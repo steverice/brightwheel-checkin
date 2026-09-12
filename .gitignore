@@ -24,6 +24,7 @@ brightwheel-checkin-shortcut-handoff.md
 # Python
 __pycache__/
 *.pyc
+.venv/
 
 # Integration-test scratch.
 dist-test/

@@ -24,4 +24,4 @@ if ! xcrun simctl list runtimes | grep --quiet "$RUNTIME"; then
     exit 1
 fi
 
-exec python3 tests/test_attendance.py "$@"
+exec uv run python tests/test_attendance.py "$@"

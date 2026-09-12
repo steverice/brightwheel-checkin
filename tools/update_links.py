@@ -5,8 +5,8 @@ An iCloud link is frozen at the moment you share it, so the page goes stale the
 moment you rebuild. "Brightwheel Share Links" (see tools/build_publisher.py)
 mints three new ones and copies them out; this drops them into the page.
 
-    python3 tools/update_links.py                 # asks for each of the three
-    python3 tools/update_links.py --clipboard     # takes what Share Links copied
+    uv run python tools/update_links.py                 # asks for each of the three
+    uv run python tools/update_links.py --clipboard     # takes what Share Links copied
 
 Nothing is written unless all three are present and look like iCloud links, so
 a half-finished paste cannot leave the page pointing two ways at once.

@@ -13,13 +13,17 @@ Two things separate a test build from `./build.sh`:
     the real Brightwheel and can never check a real child in.
 
 The signed file's *name on disk* becomes its name in the library, so the
-filenames here have to match what the wrappers call.
+generator names the files after the shortcuts, which is what the wrappers call.
 """
-import os
+
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from shortcut_forge import toolchain
+from shortcut_forge.plist import write_xml
+from shortcut_forge.sim import probes
 
 REPO = Path(__file__).resolve().parent.parent
 TEST_ENV = Path(__file__).parent / "fixtures" / "test.env"
@@ -33,25 +37,20 @@ def build(api_base, dest=OUT):
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
 
+    # The generator validates and signs by itself; the signed files land in dest.
     subprocess.run(
-        [sys.executable, str(REPO / "build_shortcuts.py"), str(dest),
-         "--env-file", str(TEST_ENV), "--api-base", api_base],
-        check=True, capture_output=True, text=True)
-
-    signed_dir = Path(os.environ.get(
-        "CLAUDE_PLUGIN_OPTION_OUTPUT_DIR",
-        Path.home() / "Documents" / "Shortcuts Playground"))
+        [sys.executable, str(REPO / "build_shortcuts.py"), str(dest), "--env-file", str(TEST_ENV), "--api-base", api_base],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
     paths = {}
     for name in NAMES:
-        xml = dest / f"{name}.xml"
-        if not xml.exists():
-            raise SystemExit(f"generator did not produce {xml}")
-        subprocess.run(["sign-shortcut", str(xml), "--name", name],
-                       check=True, capture_output=True, text=True)
-        target = dest / f"{name}.shortcut"
-        shutil.copy(signed_dir / f"{name}.shortcut", target)
-        paths[name] = target
+        signed = dest / f"{name}.shortcut"
+        if not signed.exists():
+            raise SystemExit(f"generator did not produce {signed}")
+        paths[name] = signed
     return paths
 
 
@@ -61,7 +60,7 @@ if __name__ == "__main__":
         print(f"{name}: {path}")
 
 
-SETUP_PROBE_PLACEHOLDER = "not set"
+SETUP_PROBE_PLACEHOLDER = probes.SETUP_PROBE_PLACEHOLDER
 
 
 def build_setup_probe(name, dest=OUT):
@@ -70,49 +69,7 @@ def build_setup_probe(name, dest=OUT):
     Small on purpose: when the setup flow breaks, this says so without any of
     the Brightwheel machinery being involved.
     """
-    import plistlib
-    import uuid
-
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
-    u = str(uuid.uuid4()).upper()
-    plist = {
-        "WFWorkflowActions": [
-            {"WFWorkflowActionIdentifier": "is.workflow.actions.gettext",
-             "WFWorkflowActionParameters": {
-                 "UUID": u, "CustomOutputName": "Answer",
-                 "WFTextActionText": SETUP_PROBE_PLACEHOLDER}},
-            {"WFWorkflowActionIdentifier": "is.workflow.actions.setclipboard",
-             "WFWorkflowActionParameters": {
-                 "WFInput": {"Value": {"OutputName": "Answer", "OutputUUID": u,
-                                       "Type": "ActionOutput"},
-                             "WFSerializationType": "WFTextTokenAttachment"}}},
-        ],
-        "WFWorkflowClientVersion": "2700.0.4",
-        "WFWorkflowHasOutputFallback": False,
-        "WFWorkflowIcon": {"WFWorkflowIconGlyphNumber": 59692,
-                           "WFWorkflowIconStartColor": 4292093695},
-        "WFWorkflowImportQuestions": [{
-            "ActionIndex": 0,
-            "Category": "Parameter",
-            "DefaultValue": "",
-            "ParameterKey": "WFTextActionText",
-            "Text": "Setup canary — type the digits shown by the test",
-        }],
-        "WFWorkflowInputContentItemClasses": [],
-        "WFWorkflowMinimumClientVersion": 900,
-        "WFWorkflowMinimumClientVersionString": "900",
-        "WFWorkflowName": name,
-        "WFWorkflowOutputContentItemClasses": [],
-        "WFWorkflowTypes": [],
-    }
-    xml = dest / f"{name}.xml"
-    xml.write_bytes(plistlib.dumps(plist, fmt=plistlib.FMT_XML))
-    subprocess.run(["sign-shortcut", str(xml), "--name", name],
-                   check=True, capture_output=True, text=True)
-    signed_dir = Path(os.environ.get(
-        "CLAUDE_PLUGIN_OPTION_OUTPUT_DIR",
-        Path.home() / "Documents" / "Shortcuts Playground"))
-    target = dest / f"{name}.shortcut"
-    shutil.copy(signed_dir / f"{name}.shortcut", target)
-    return target
+    xml = write_xml(probes.setup_probe(name), dest / f"{name}.xml")
+    return toolchain.sign(xml, name=name)

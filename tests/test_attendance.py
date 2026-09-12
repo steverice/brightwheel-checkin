@@ -16,14 +16,18 @@ import time
 import urllib.parse
 from pathlib import Path
 
+from shortcut_forge.sim.certs import ensure_certs
+from shortcut_forge.sim.harness import Simulator
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from certs import ensure_certs                     # noqa: E402
 from mock_brightwheel import MockBrightwheel, Scenario  # noqa: E402
-from simharness import Simulator                   # noqa: E402
 import testbuild                                   # noqa: E402
+
+# The throwaway CA the simulator is told to trust. Disposable and gitignored.
+TLS_DIR = Path(__file__).parent / "tls"
 
 PORT = 8788
 CHECK_IN = "Brightwheel Check In"
@@ -52,7 +56,7 @@ class Suite:
         self.runtime = runtime
 
     def setup(self):
-        ca, server = ensure_certs()
+        ca, server = ensure_certs(TLS_DIR, ca_name="Brightwheel Test CA")
         self.sim = Simulator.find(runtime=self.runtime, artifacts=ARTIFACTS)
         print(f"  runtime {self.runtime}")
         print(f"  simulator {self.sim.udid}")
