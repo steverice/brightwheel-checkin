@@ -4,10 +4,8 @@ Signed iOS Shortcuts that check your children in or out of Brightwheel without
 opening the app, fired unattended by location triggers.
 
 ## Just want it on your phone?
-
-You do not need to understand any of this page. **[Start
-here](https://steverice.github.io/brightwheel-checkin/)** — same instructions,
-written for someone who has never seen GitHub before.
+**[Start
+here](https://steverice.github.io/brightwheel-checkin/)**.
 
 The short version:
 
