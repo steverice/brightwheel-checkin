@@ -9,7 +9,7 @@ domain. This draws the missing picture at 1200x630 — the 1.91:1 that every
 scraper crops toward — and writes it to `docs/img/og.png`.
 
 The card is the page's own hero, rebuilt as a still: the headline, a brand rule,
-the standfirst, three dots for three shortcuts, and the domain. It carries **no
+the standfirst, the site's own mark, and the domain. It carries **no
 child's name and no school**, unlike the notification banners further down the
 page, because an `og:image` is fetched and cached by every service a link is
 ever pasted into and cannot be recalled from any of them.
@@ -34,6 +34,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+import make_icons
+
 REPO = Path(__file__).resolve().parent
 OUT = REPO / "docs" / "img" / "og.png"
 FONT_CACHE = REPO / ".fonts"
@@ -55,8 +57,12 @@ BRAND = "#4f52d6"
 # first one lacks; PIL does not, and Outfit has no U+2011, so it drew a tofu box
 # until this was an ASCII hyphen. Nothing wraps in a raster anyway.
 HEADLINE = "Effortless check-in."
-STANDFIRST = "Three shortcuts that check your kids in and out of Brightwheel"
+STANDFIRST = "Check your kids in and out of Brightwheel automatically on iOS"
 DOMAIN = "code.steverice.org"
+ICON = 140           # big enough that the ring resolves rather than speckles
+FOOT_PAD = 56        # the mark sits closer to the edge than the text margin, so
+                     # it has room to grow without crowding the standfirst
+TOP = 118            # headline baseline, pulled up to free that room
 
 # Variable fonts from the upstream repo. The bracketed axis list is part of the
 # filename, so it has to be percent-encoded to survive the URL.
@@ -140,7 +146,7 @@ def main():
 
     # Headline, optically flush left: textbbox reports the ink, so drawing at
     # -bbox[0] puts the glyph's left edge on the margin rather than its sidebearing.
-    top = 150
+    top = TOP
     bbox = d.textbbox((0, 0), HEADLINE, font=headline)
     d.text((PAD - bbox[0], top - bbox[1]), HEADLINE, font=headline, fill=INK)
     headline_bottom = top + (bbox[3] - bbox[1])
@@ -155,13 +161,24 @@ def main():
         d.text((PAD, y), line, font=stand, fill=MUTED)
         y += 56
 
-    # Footer: three dots for three shortcuts, and the domain opposite.
-    foot = H - PAD - 14
-    for i in range(3):
-        cx = PAD + 9 + i * 34
-        d.ellipse([cx - 9, foot - 9, cx + 9, foot + 9], fill=BRAND)
+    # Footer: the site's own mark, and the domain opposite. Rendered from
+    # make_icons rather than redrawn, so the card cannot drift from the favicon.
+    # Drawn large enough for the ring to resolve — at the size the three dots
+    # used to occupy it collapsed into the same speckle that makes the 16px
+    # favicon drop the ring entirely, and here there is no reason to be small.
+    mark = make_icons.rasterize(make_icons.ring_svg(themed=False), ICON)
+    mark_top = H - FOOT_PAD - ICON
+    if mark_top < y + 8:
+        sys.exit(f"the mark at {ICON}px would overlap the standfirst "
+                 f"(mark top {mark_top}, text bottom {y}) — shrink ICON, "
+                 f"raise TOP, or cut FOOT_PAD")
+    img.paste(mark, (PAD, mark_top), mark)
+    # Domain centered on the mark rather than sharing a baseline with it: the
+    # mark has no baseline, so optical centering is the only alignment there is.
     dw = width(d, DOMAIN, domain)
-    d.text((W - PAD - dw, foot - 16), DOMAIN, font=domain, fill=MUTED)
+    dbox = d.textbbox((0, 0), DOMAIN, font=domain)
+    d.text((W - PAD - dw, mark_top + ICON // 2 - (dbox[3] + dbox[1]) // 2),
+           DOMAIN, font=domain, fill=MUTED)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     img.save(OUT, "PNG", optimize=True)
