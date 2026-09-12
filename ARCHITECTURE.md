@@ -49,7 +49,7 @@ Inside `build_shortcuts.py`:
 
 | Symbol | Role |
 |---|---|
-| `ts()` / `attach()` / `var()` / `out()` | Serialization helpers, from `shortcut_forge.plist`. `ts()` computes `attachmentsByRange` offsets so placeholders always line up. |
+| `ts()` / `attach()` / `var()` / `out()` | Serialization helpers, from `shortcut_forge_lib.plist`. `ts()` computes `attachmentsByRange` offsets so placeholders always line up. |
 | `dict_field()` / `kv()` / `kv_dict()` | `WFDictionaryFieldValue` builders for HTTP headers and JSON bodies, also from the library. |
 | `act()` / `comment()` | Bare action constructors. |
 | `A.count_matches()` | Text → Match Text → Count, on an `ActionList`. The presence primitive; see below. Takes an attachment value: `out()`, `var()`, or `EXTENSION_INPUT`. |

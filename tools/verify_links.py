@@ -13,7 +13,7 @@ supposed to be carrying, before it goes anywhere near the page.
     uv run python tools/verify_links.py --clipboard        # what Share Links copied
     uv run python tools/verify_links.py --erase            # wipe the library first
 
-Checks per link (`shortcut_forge.sim.links.check_link`): the installed shortcut
+Checks per link (`shortcut_forge_lib.sim.links.check_link`): the installed shortcut
 has the expected name, the same action identifiers in the same order as
 `dist/<name>.xml`, and the same number of import questions.
 """
@@ -21,8 +21,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from shortcut_forge.sim.harness import Simulator
-from shortcut_forge.sim.links import check_link
+from shortcut_forge_lib.sim.harness import Simulator
+from shortcut_forge_lib.sim.links import check_link
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))

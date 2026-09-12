@@ -16,8 +16,8 @@ import time
 import urllib.parse
 from pathlib import Path
 
-from shortcut_forge.sim.certs import ensure_certs
-from shortcut_forge.sim.harness import Simulator
+from shortcut_forge_lib.sim.certs import ensure_certs
+from shortcut_forge_lib.sim.harness import Simulator
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))

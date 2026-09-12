@@ -9,7 +9,7 @@ three and puts them on the clipboard as the exact markup `docs/index.html`
 wants, which is what makes refreshing the page's links a scripted step rather
 than a chore.
 
-The shortcut itself is `shortcut_forge.publisher.share_links_shortcut`, which
+The shortcut itself is `shortcut_forge_lib.publisher.share_links_shortcut`, which
 finds each target **by name, every time it runs**, rather than through a
 picker, and refuses to mint anything if a name is duplicated, numbered, or
 missing. See `TESTING.md` for how that was measured.
@@ -28,8 +28,8 @@ published page handing out the previous build's links.
 import sys
 from pathlib import Path
 
-from shortcut_forge.build import Shortcut, build_all
-from shortcut_forge.publisher import share_links_shortcut
+from shortcut_forge_lib.build import Shortcut, build_all
+from shortcut_forge_lib.publisher import share_links_shortcut
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))

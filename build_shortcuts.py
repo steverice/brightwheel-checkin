@@ -11,9 +11,9 @@ import base64
 import json
 from pathlib import Path
 
-from shortcut_forge.actions import ActionList
-from shortcut_forge.build import Shortcut, build_all
-from shortcut_forge.plist import (
+from shortcut_forge_lib.actions import ActionList
+from shortcut_forge_lib.build import Shortcut, build_all
+from shortcut_forge_lib.plist import (
     EXTENSION_INPUT,
     act,
     attach,
@@ -28,7 +28,7 @@ from shortcut_forge.plist import (
     ts,
     var,
 )
-from shortcut_forge.uuids import random_uuids
+from shortcut_forge_lib.uuids import random_uuids
 
 BASE = "https://schools.mybrightwheel.com/api/v1"
 # Kept so an overridden BASE can be reported as such. The integration tests

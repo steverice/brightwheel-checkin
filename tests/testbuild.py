@@ -21,9 +21,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from shortcut_forge import toolchain
-from shortcut_forge.plist import write_xml
-from shortcut_forge.sim import probes
+from shortcut_forge_lib import toolchain
+from shortcut_forge_lib.plist import write_xml
+from shortcut_forge_lib.sim import probes
 
 REPO = Path(__file__).resolve().parent.parent
 TEST_ENV = Path(__file__).parent / "fixtures" / "test.env"

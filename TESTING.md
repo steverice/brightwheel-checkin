@@ -241,9 +241,9 @@ build_shortcuts.py --api-base https://localhost:8788/api/v1 --env-file …
 |---|---|
 | `test.sh` | Entry point |
 | `tests/test_attendance.py` | The scenarios, and the runner |
-| `shortcut_forge.sim.harness` | Driving the simulator: install, run, tap, type, read state (in shortcut-forge) |
+| `shortcut_forge_lib.sim.harness` | Driving the simulator: install, run, tap, type, read state (in shortcut-forge) |
 | `tests/mock_brightwheel.py` | The fake API and its scenario knobs |
-| `shortcut_forge.sim.certs` | Throwaway CA so the simulator trusts localhost (in shortcut-forge) |
+| `shortcut_forge_lib.sim.certs` | Throwaway CA so the simulator trusts localhost (in shortcut-forge) |
 | `tests/testbuild.py` | Builds and signs the shortcuts under test, and the setup canary |
 | `tests/fixtures/test.env` | Deliberately fake credentials |
 | `tests/fixtures/roster.json` | Deliberately fake children — "Alpha" and "Beta" at "Test School". No longer a build input: it is the dataset the mock serves |
