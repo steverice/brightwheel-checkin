@@ -87,6 +87,12 @@ That check is a one-off rather than a suite test, because Quick Look has no
 on-disk state to assert against — the evidence is pixels, and the decode has to
 happen outside the device.
 
+**A dismissed scan is guarded but unmeasured.** The menu's scan branch counts
+its result before drawing, so an empty scan reaches the "Still no school code
+saved" notification instead of Generate QR Code. Whether iOS returns an empty
+string or stops the run outright when the scanner is dismissed has not been
+checked on a phone: the guard covers the first, and the second needs no cover.
+
 ## Importing on a Mac, iCloud links, and the publisher
 
 How a Mac import and an iCloud link preserve a build, why a picked target
@@ -277,8 +283,10 @@ test would only restate the generator.
 
 - **Scan Code does not exist there**, and **triggers are not exercised**; see
   shortcut-forge's `docs/simulator-harness.md`. Test builds seed the school
-  code so the run never takes the scan branch, which means **the QR scanning
-  path is not covered by these tests** and still needs a device.
+  code so the run never takes the scan branch, which means **neither QR scanning
+  path is covered by these tests** — not the one at the top of a check attempt,
+  and not the one the menu's "Show the school's code" takes when nothing is
+  stored. Both still need a device.
 - **The real API contract.** The mock reproduces the response *shapes* recorded
   in README.md. If Brightwheel changes them, every test here still passes. The
   mock is only as true as the day it was written against the live API.

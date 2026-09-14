@@ -326,13 +326,15 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     actions.append(
         act("is.workflow.actions.setvariable", WFVariableName="Direction", WFInput=attach(out(u_mout, "Text")))
     )
-    # Puts the school's code back on screen as the QR it was scanned from.
-    # What is stored is the scanned payload verbatim, so the image this draws is
-    # the one taped up by the door — which is the point: a second phone can be
-    # set up from it, and it is a way back into the Brightwheel app when the
-    # shortcut is the thing misbehaving. It is not a secret being spread any
-    # further than it already is; the same string sits in this shortcut's own
-    # storage, which its owner can read. Sends nothing.
+    # Puts the school's code back on screen as the QR it was scanned from, and
+    # scans one when nothing is stored yet. What is stored is the scanned
+    # payload verbatim, so the image this draws is the one taped up by the
+    # door — which is the point: a second phone can be set up from it, and it
+    # is a way back into the Brightwheel app when the shortcut is the thing
+    # misbehaving. It is not a secret being spread any further than it already
+    # is; the same string sits in this shortcut's own storage, which its owner
+    # can read. Sends nothing to Brightwheel either way, so priming a second
+    # phone at the school costs neither a sign-in nor a check-in.
     actions.append(
         act(
             "is.workflow.actions.choosefrommenu",
@@ -352,15 +354,78 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         )
     )
     c_qrc = actions.count_matches(out(u_qrc, "Stored Content"))
-    g_qr = next(i)
+    g_scan = next(i)
+    u_qsc = next(i)
     actions.append(
         comment(
-            "Draw the stored code, or say there is none.\n"
+            "Scan a code when there is none saved.\n"
             "- Condition counts whether anything is stored, because an empty "
             'string still satisfies "has any value"\n'
             '- Condition 2 against 0 is "more than none", so the first branch is '
             "the one where a code exists\n"
-            "- Nothing is stored until the first run at the school has scanned it"
+            "- Nothing is stored until a run at the school has scanned it, so "
+            "the second branch is the first run and a rotated code alike\n"
+            "- Show Alert explains what to point the camera at, and its Cancel "
+            "is the answer away from the school, where there is nothing to scan"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_scan,
+            WFControlFlowMode=0,
+            WFCondition=2,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_qrc, "Count")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="Shown Code",
+            WFInput=attach(out(u_qrc, "Stored Content")),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_scan, WFControlFlowMode=1))
+    actions.append(
+        act(
+            "is.workflow.actions.alert",
+            WFAlertActionTitle=ts("No school code saved yet"),
+            WFAlertActionMessage=ts(
+                "Point the camera at the check-in code on the school's sign-in tablet, "
+                "and it will be saved and drawn back here."
+            ),
+            WFAlertActionCancelButtonShown=True,
+        )
+    )
+    actions.append(act("is.workflow.actions.scanbarcode", UUID=u_qsc, WFScanCodeActionMode=0))
+    actions.append(
+        act(
+            "is.workflow.actions.setstoredcontent",
+            WFStoredContentKey="BrightwheelSchoolCode",
+            WFStoredContentGlobalValue=True,
+            WFInput=ts(out(u_qsc, "QR/Barcodes")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="Shown Code",
+            WFInput=attach(out(u_qsc, "QR/Barcodes")),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_scan, WFControlFlowMode=2))
+
+    c_shown = actions.count_matches(var("Shown Code"))
+    g_qr = next(i)
+    actions.append(
+        comment(
+            "Draw the code, or say there is none.\n"
+            "- Condition counts the variable both branches above set, so a scan "
+            "that was dismissed lands here rather than in the QR action\n"
+            "- Drawing back what was just scanned is the confirmation that it "
+            "was read and stored whole"
         )
     )
     actions.append(
@@ -371,7 +436,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             WFControlFlowMode=0,
             WFCondition=2,
             WFNumberValue="0",
-            WFInput=cond_input(out(c_qrc, "Count")),
+            WFInput=cond_input(out(c_shown, "Count")),
         )
     )
     u_qri = next(i)
@@ -388,7 +453,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             UUID=u_qri,
             CustomOutputName="School Code QR",
             WFQRErrorCorrectionLevel="Low",
-            WFText=ts(out(u_qrc, "Stored Content")),
+            WFText=ts(var("Shown Code")),
         )
     )
     actions.append(act("is.workflow.actions.previewdocument", WFInput=attach(out(u_qri, "School Code QR"))))
@@ -396,9 +461,9 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     actions.append(
         act(
             "is.workflow.actions.notification",
-            WFNotificationActionTitle=ts("No school code saved yet"),
+            WFNotificationActionTitle=ts("Still no school code saved"),
             WFNotificationActionBody=ts(
-                "Run a check-in at the school once. It scans the code by the door and keeps it."
+                "Nothing was scanned. A check-in run at the school scans the code by the door and keeps it."
             ),
         )
     )

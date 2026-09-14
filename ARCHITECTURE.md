@@ -142,7 +142,10 @@ rather than a separate helper shortcut feeding the clipboard. The whole scanned
 blob is stored under one key and re-parsed on later runs, so `secret` and
 `school_id` share a single source and one code path extracts both. Scanning is
 interactive, so it sits behind an "is anything stored" check — the same shape as
-the sign-in prompt, and for the same reason.
+the sign-in prompt, and for the same reason. The menu's "Show the school's code"
+sits behind the same check and scans when it finds nothing to draw, so a phone
+can be primed at the school without a check-in. Both sites write the one key,
+so a code scanned from either is the code every later run reads.
 
 A rotated code self-heals **within the run**. Brightwheel rejects a stale secret
 with a distinct error, matched against the response text; the stored code is
@@ -207,7 +210,8 @@ notification.
 
 Three prompts exist, and each is reachable only when the run would otherwise fail
 or was started by hand: the 2FA code (the token has already expired), the QR scan
-(no school code is stored), and the direction menu (no input, so a person is
+(no school code is stored — whether a check attempt found none or the menu's
+"Show the school's code" did), and the direction menu (no input, so a person is
 driving). An earlier blanket ban on interactive actions was too broad — the rule
 belongs on the happy path, not the recovery paths.
 
@@ -261,9 +265,11 @@ rather than two.
 
 That keeps it Siri-safe without refusing to run. Saying its name cannot check
 anyone anywhere by itself — it can only open a menu, and canceling sends
-nothing. The menu's third item, "Forget saved sign-in and school code", is the
-only way to clear the stored school code from the device, and it sends nothing
-either. A wrapper never reaches the menu, because it hands in a direction.
+nothing. Neither item below the two directions sends anything either: "Show the
+school's code" draws the stored code, and scans one when there is none to draw,
+but it talks only to the camera; "Forget saved sign-in and school code" is the
+only way to clear the stored school code from the device. A wrapper never
+reaches the menu, because it hands in a direction.
 
 **Debug builds are isolated by construction.** `./build.sh --debug` bakes `.env`
 values in and emits no import questions. Such a build contains a real password,

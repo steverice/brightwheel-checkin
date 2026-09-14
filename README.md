@@ -58,8 +58,13 @@ below those:
   scanned from. What is stored is the scanned payload verbatim, so the image is
   the one taped up by the door: a second phone can be set up from it without a
   trip to the school, and it is a way back into the Brightwheel app when the
-  shortcut is the thing misbehaving. Verified by decoding the rendered image and
-  comparing it to the stored string — see `TESTING.md`.
+  shortcut is the thing misbehaving. With nothing stored yet it offers to scan
+  the code rather than reporting that there is none, so it is also how a second
+  phone is primed at the school: that scan sends nothing to Brightwheel, needs
+  no sign-in, and checks nobody in. The alert it opens with can be canceled,
+  which is the answer anywhere the code is not on the wall in front of you.
+  Verified by decoding the rendered image and comparing it to the stored
+  string — see `TESTING.md`.
 - **Forget saved sign-in and school code** clears what the shortcut has stored,
   and is the only way to do so.
 
