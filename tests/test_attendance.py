@@ -241,6 +241,7 @@ def test_expired_token_signs_in_again(s):
     _start_sign_in(s, CHECK_IN)
 
     time.sleep(4)
+    s.sim.screenshot("sent-code-prompt.png")
     assert s.sim.answer_prompt(scenario.two_fa_code), "no code prompt appeared to answer"
 
     s.mock.quiet_for(6, timeout=120)
@@ -289,6 +290,54 @@ def test_an_empty_code_answer_sends_another(s):
     assert len(exchanges) == 1, f"expected one exchange after the real answer, saw {len(exchanges)}"
     assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code
     assert s.mock.checkins, "sign-in recovered but nobody was checked in"
+
+
+def test_a_code_sent_minutes_ago_is_not_sent_again(s):
+    """Cancel the prompt, read the email, run again: no second code is sent.
+
+    The first run sends a code and stores when. The second run, minutes later,
+    must raise the prompt without touching /sessions/start, exchange the code
+    it is given, and forget the send time once the code is used up.
+
+    Runs last among the sign-in tests on purpose: a failure here can leave a
+    send time stored, and any sign-in test within ten minutes of it would then
+    skip its send and time out waiting for one.
+    """
+    scenario = Scenario(token_valid=False, roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"})
+    s.mock.load(scenario)
+    _start_sign_in(s, CHECK_IN)
+
+    time.sleep(4)
+    assert s.sim.cancel_prompt(), "no code prompt appeared to cancel"
+    s.mock.quiet_for(5, timeout=60)
+    assert len(s.mock.matching("POST", "/sessions/start")) == 1, "the canceled run should have sent exactly one code"
+    assert not _exchanges(s), "a canceled prompt must not exchange anything"
+    assert s.sim.stored_content().get("BrightwheelCodeSentAt"), "the send time should have been stored"
+
+    # Run again, as someone who went to read the email would.
+    s.mock.load(scenario)
+    s.sim.terminate_shortcuts()
+    time.sleep(1.2)
+    s.sim.run_shortcut(CHECK_IN)
+    deadline = time.time() + 75
+    while time.time() < deadline and not s.sim.blue_buttons():
+        time.sleep(1.0)
+    assert s.sim.blue_buttons(), "the second run never raised the code prompt"
+    s.sim.screenshot("remembered-send-prompt.png")
+    assert not s.mock.matching("POST", "/sessions/start"), "a code sent minutes ago was sent again"
+
+    time.sleep(1.5)
+    assert s.sim.answer_prompt(scenario.two_fa_code), "could not answer the remembered prompt"
+    s.mock.quiet_for(6, timeout=120)
+    exchanges = _exchanges(s)
+    assert len(exchanges) == 1, f"expected one exchange, saw {len(exchanges)}"
+    assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code
+    assert s.mock.checkins, "sign-in recovered but nobody was checked in"
+    stored = s.sim.stored_content()
+    assert stored.get("BrightwheelSessionToken") == scenario.issued_token, f"token not stored, saw {stored}"
+    assert not stored.get("BrightwheelCodeSentAt"), (
+        f"the send time should be cleared once the code is used, saw {stored}"
+    )
 
 
 def _start_sign_in(s, shortcut: str) -> None:
@@ -519,6 +568,7 @@ TESTS = [
     test_stale_school_code_causes_a_second_pass,
     test_expired_token_signs_in_again,
     test_an_empty_code_answer_sends_another,
+    test_a_code_sent_minutes_ago_is_not_sent_again,
     test_setup_questions_commit_their_answers,
     test_reads_the_roster_at_runtime,
     test_the_roster_call_carries_the_guardian_id,

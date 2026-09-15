@@ -277,7 +277,9 @@ it**, so a re-import signs in again; the school's code is kept separately and
 survives, because re-scanning it means being back at the school.
 
 **Sign-in is interactive**, so run one shortcut by hand once before relying on a
-trigger — a background run cannot answer the code prompt.
+trigger — a background run cannot answer the code prompt. It does still send
+the code, and the shortcut remembers that for ten minutes, so the run by hand
+that follows goes straight to the prompt instead of sending another.
 
 ### Triggers
 
@@ -329,8 +331,18 @@ answers `401 E2053`.
 **Code delivery is unreliable** — the first `/sessions/start` often sends
 nothing, and only a resend arrives. The loop runs five passes and calls
 `/sessions/start` each time, so the prompt doubles as a resend control: **leave
-the box empty and tap Done**, and another code is sent. Canceling stops the
-shortcut.
+the box empty and tap Done**, and another code is sent.
+
+**Canceling is how you go and read the email.** The prompt is a sheet over
+whatever you were doing, and Mail is awkward to reach underneath it. So a run
+that sends a code also stores when, and the next run within ten minutes asks
+for the code without sending another: cancel, open the email, come back, run
+again, type the code. A run that has just sent says which address to check,
+taken from the start response; a run that is reusing a recent send shows the
+shorter prompt. Once a code is accepted the send time is forgotten, and
+"Forget saved sign-in and school code" clears it too. The window is a guess at
+how long Brightwheel's codes stay valid; a code that has expired is simply
+rejected, and the next pass sends a fresh one.
 
 **The prompt is a number pad.** It keeps the sheet short, but a numeric field
 drops a leading zero as the next digit is typed, so `012345` shows as `12345`.

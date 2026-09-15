@@ -69,7 +69,9 @@ grep -c schools.mybrightwheel.com "dist-test/Brightwheel Attendance.xml"   # 0
 | `checks_both_children_in` | The happy path, plus the exact body: `checked_in`, both targets, secret, `school_id`, `checkin_code` |
 | `check_out_sends_checked_in_false` | Direction is structural — the wrapper decides it, not the clock |
 | `stale_school_code_causes_a_second_pass` | A rejected secret is recognized and retried instead of reported as a plain failure |
-| `expired_token_signs_in_again` | `E1200` → two-step 2FA → token stored → the run recovers and still sends |
+| `expired_token_signs_in_again` | `E1200` → two-step 2FA → token stored → the run recovers and still sends. The code has a leading zero, which the number pad drops and the shortcut pads back |
+| `an_empty_code_answer_sends_another` | Empty is the only resend control now. Done on an empty field reaches `/sessions/start` again and never `/sessions` |
+| `a_code_sent_minutes_ago_is_not_sent_again` | Cancel the prompt, run again within ten minutes: the prompt comes back with no second send, and the send time is cleared once the code is accepted |
 | `test_setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. Currently a **known-broken canary** — see the support matrix |
 
 Assertions are on **recorded traffic**, not on notifications. "Nobody was

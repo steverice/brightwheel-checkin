@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import argcomplete
-from shortcut_forge_lib.actions import ActionList
+from shortcut_forge_lib.actions import GREATER_THAN, LESS_THAN, ActionList
 from shortcut_forge_lib.build import Shortcut, build_all
 from shortcut_forge_lib.checks import CheckError
 from shortcut_forge_lib.plist import (
@@ -54,6 +54,26 @@ CLIENT_VERSION = "3.103.0"
 # sheet's own button name. Leading zeros are optional because the field is
 # numeric and drops one as the next digit is typed; the run pads them back.
 CODE_PROMPT = '6-digit code from Brightwheel, leading 0s optional. Leave empty and tap "Done" to re-send.'
+# The prompt on a run that has just sent a code, which can afford a line more:
+# the sheet is the first thing this person sees, and the masked address the
+# start response reports goes between the two halves.
+CODE_PROMPT_SENT = (
+    "Check ",
+    ' for a 6-digit code and enter here. Leading 0s optional. Leave empty and tap "Done" to re-send.',
+)
+CODE_PROMPT_SENT_NOWHERE = "your email"
+
+# When a code was sent, kept beside the token so a run a few minutes later
+# asks for the code instead of sending another. Text, not a Date: Store
+# Content keeps nothing of a Date object (measured: the archive holds zero
+# items), and this format reads back as a date, where the ISO form with a
+# zone offset came back hours off.
+CODE_SENT_KEY = "BrightwheelCodeSentAt"
+CODE_SENT_FORMAT = "yyyy-MM-dd HH:mm:ss"
+# Minutes since the send, as Get Time Between Dates reports them: negative
+# for a time in the past and truncated toward zero, so one digit with an
+# optional sign is "under ten minutes ago". Nothing stored yields no number.
+CODE_SENT_RECENT = r"^-?[0-9]$"
 
 ATTENDANCE = "Brightwheel Attendance"
 
@@ -500,6 +520,13 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     actions.append(
         act(
             "is.workflow.actions.deletestoredcontent",
+            WFStoredContentKey=CODE_SENT_KEY,
+            WFStoredContentGlobalValue=False,
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.deletestoredcontent",
             WFStoredContentKey="BrightwheelSchoolCode",
             WFStoredContentGlobalValue=True,
         )
@@ -713,13 +740,49 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         )
     )
 
+    # ---- was a code sent a few minutes ago? ----
+    #
+    # Canceling the code prompt to go and read the email leaves a code in the
+    # inbox. The send time is stored beside the token, and a run within ten
+    # minutes of it asks for that code instead of sending another. A scheduled
+    # run with a dead token gets the same benefit: it sends, stores the time,
+    # and dies at the prompt it cannot answer, and the run by hand that follows
+    # goes straight to the prompt. Read here, outside the sign-in branch, so
+    # the loop below sees one number rather than a stored value.
+    u_sent, u_now, u_since = next(i), next(i), next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.getstoredcontent",
+            UUID=u_sent,
+            WFStoredContentKey=CODE_SENT_KEY,
+            WFStoredContentGlobalValue=False,
+        )
+    )
+    actions.append(act("is.workflow.actions.date", UUID=u_now))
+    actions.append(
+        act(
+            "is.workflow.actions.gettimebetweendates",
+            UUID=u_since,
+            WFInput=ts(out(u_sent, "Stored Content")),
+            WFTimeUntilFromDate=ts(out(u_now, "Current Date")),
+            WFTimeUntilUnit="Minutes",
+        )
+    )
+    c_recent = actions.count_matches(out(u_since, "Time Between Dates"), CODE_SENT_RECENT)
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Sent Recently", WFInput=attach(out(c_recent, "Count")))
+    )
+
     actions.append(
         comment(
             "Sign in again, up to five times.\n"
-            "- Each pass asks Brightwheel to send a fresh code, then asks you for it\n"
+            "- The first pass skips the send when a code went out within ten "
+            "minutes, and asks for that one; every later pass sends a fresh code "
+            "first\n"
             "- Leaving the box empty sends another code instead of trying to "
             "use what was typed\n"
-            "- Canceling the code prompt stops the whole shortcut\n"
+            "- Canceling the code prompt stops the whole shortcut; the next run "
+            "within ten minutes asks for the code without sending again\n"
             "- A pass that gets a token clears Needs Sign In, so later passes do "
             "nothing"
         )
@@ -751,6 +814,26 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         )
     )
     actions.append(
+        comment(
+            "Send a code, unless one went out within the last ten minutes.\n"
+            "- Condition checks Sent Recently, which only the first pass can have\n"
+            "- The send stores its time, and the prompt says where the code went\n"
+            "- Otherwise the prompt is the short one, for a code already in hand"
+        )
+    )
+    g_send, g_addr = next(i), next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_send,
+            WFControlFlowMode=0,
+            WFCondition=LESS_THAN,
+            WFNumberValue="1",
+            WFInput=cond_input(var("Sent Recently")),
+        )
+    )
+    actions.append(
         act(
             "is.workflow.actions.downloadurl",
             UUID=u_start,
@@ -779,6 +862,103 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             ),
         )
     )
+    # Remember when the code went out, for the next run.
+    u_now2, u_fmt = next(i), next(i)
+    actions.append(act("is.workflow.actions.date", UUID=u_now2))
+    actions.append(
+        act(
+            "is.workflow.actions.format.date",
+            UUID=u_fmt,
+            WFDate=ts(out(u_now2, "Current Date")),
+            WFDateFormatStyle="Custom",
+            WFDateFormat=CODE_SENT_FORMAT,
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setstoredcontent",
+            WFStoredContentKey=CODE_SENT_KEY,
+            WFStoredContentGlobalValue=False,
+            WFInput=ts(out(u_fmt, "Formatted Date")),
+        )
+    )
+    # Where the code went. The start response lists the masked address it
+    # was sent to, and the prompt names it so someone with two inboxes opens
+    # the right one. Read into the prompt, never branched on directly: the
+    # branch below is only "was there one", through a count.
+    u_to = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.getvalueforkey",
+            UUID=u_to,
+            CustomOutputName="Sent To",
+            WFGetDictionaryValueType="Value",
+            WFDictionaryKey="2fa_code_sent_to",
+            WFInput=attach(out(u_start, "Contents of URL")),
+        )
+    )
+    c_to = actions.count_matches(out(u_to, "Sent To"))
+    actions.append(
+        comment(
+            "Name the inbox the code went to, when the response says.\n"
+            "- Condition counts whether the start response listed an address\n"
+            "- Otherwise the prompt says to check your email"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_addr,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_to, "Count")),
+        )
+    )
+    u_p_addr = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.gettext",
+            UUID=u_p_addr,
+            WFTextActionText=ts(CODE_PROMPT_SENT[0], out(u_to, "Sent To"), CODE_PROMPT_SENT[1]),
+        )
+    )
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Prompt Text", WFInput=attach(out(u_p_addr, "Text")))
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_addr, WFControlFlowMode=1))
+    u_p_none = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.gettext",
+            UUID=u_p_none,
+            WFTextActionText=CODE_PROMPT_SENT[0] + CODE_PROMPT_SENT_NOWHERE + CODE_PROMPT_SENT[1],
+        )
+    )
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Prompt Text", WFInput=attach(out(u_p_none, "Text")))
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_addr, WFControlFlowMode=2))
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_send, WFControlFlowMode=1))
+    u_p_short = next(i)
+    actions.append(act("is.workflow.actions.gettext", UUID=u_p_short, WFTextActionText=CODE_PROMPT))
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Prompt Text", WFInput=attach(out(u_p_short, "Text")))
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_send, WFControlFlowMode=2))
+    # Only the first pass may skip the send. A code that was not entered, or
+    # was rejected, means the next pass sends a fresh one.
+    u_zero_sent = next(i)
+    actions.append(act("is.workflow.actions.number", UUID=u_zero_sent, WFNumberActionNumber="0"))
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="Sent Recently",
+            WFInput=attach(out(u_zero_sent, "Number")),
+        )
+    )
+
     # A number field, so the number pad comes up rather than the full keyboard
     # and the sheet stays short enough to read an email around. The field is
     # numeric, so it drops a leading zero as the next digit is typed: 012345
@@ -787,7 +967,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         act(
             "is.workflow.actions.ask",
             UUID=u_code,
-            WFAskActionPrompt=CODE_PROMPT,
+            WFAskActionPrompt=ts(var("Prompt Text")),
             WFInputType="Number",
             WFAskActionAllowsDecimalNumbers=False,
             WFAskActionAllowsNegativeNumbers=False,
@@ -925,6 +1105,14 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             WFStoredContentKey="BrightwheelSessionToken",
             WFStoredContentGlobalValue=False,
             WFInput=ts(out(u_tgrp, "Matched Text Group")),
+        )
+    )
+    # The code is used up, so the next sign-in starts with a fresh send.
+    actions.append(
+        act(
+            "is.workflow.actions.deletestoredcontent",
+            WFStoredContentKey=CODE_SENT_KEY,
+            WFStoredContentGlobalValue=False,
         )
     )
     actions.append(
