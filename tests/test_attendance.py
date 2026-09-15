@@ -337,6 +337,42 @@ def test_an_empty_code_answer_sends_another(s):
     assert s.mock.checkins, "sign-in recovered but nobody was checked in"
 
 
+def test_rejected_credentials_stop_without_prompting(s):
+    """A wrong email or password stops the run instead of asking for a code.
+
+    Brightwheel only sends a code on a successful /sessions/start, so a run
+    that gets E2053 has nothing to ask for. Asking anyway is what made a
+    rejected password look like a code that never arrived.
+
+    One start is the whole assertion. The prompt is also the resend control —
+    an empty answer sends another code — so a run that still raised it would be
+    answered empty by run_and_settle and reach five starts, not one.
+
+    The send time matters as much as the prompt: stored on a rejected start, it
+    would make the next run within ten minutes skip the send entirely and ask
+    for a code that was never sent.
+    """
+    before = s.sim.stored_content().get("BrightwheelCodeSentAt")
+    assert not before, f"a previous test left a send time stored, so this one cannot tell: {before!r}"
+
+    scenario = Scenario(
+        token_valid=False, credentials_valid=False, roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}
+    )
+    s.mock.load(scenario)
+    s.set_device_clipboard("nothing to paste")
+    s.run_and_settle(CHECK_IN, timeout=120)
+
+    starts = s.mock.matching("POST", "/sessions/start")
+    assert len(starts) == 1, f"a rejected sign-in should be tried once and not prompted, saw {len(starts)} start(s)"
+    assert not _exchanges(s), f"nothing should be exchanged when no code was sent, saw {_exchanges(s)[0]['body']}"
+    assert not s.mock.checkins, f"a run that never signed in must send nothing, saw {s.targets_of(s.mock.checkins)}"
+
+    stored = s.sim.stored_content()
+    assert not stored.get("BrightwheelCodeSentAt"), (
+        f"a rejected start must not record a send time, saw {stored.get('BrightwheelCodeSentAt')!r}"
+    )
+
+
 def test_a_code_sent_minutes_ago_is_not_sent_again(s):
     """Cancel the prompt, read the email, run again: no second code is sent.
 
@@ -678,6 +714,7 @@ TESTS = [
     test_stale_school_code_causes_a_second_pass,
     test_expired_token_signs_in_again,
     test_an_empty_code_answer_sends_another,
+    test_rejected_credentials_stop_without_prompting,
     test_a_code_sent_minutes_ago_is_not_sent_again,
     test_a_code_on_the_clipboard_is_offered,
     test_setup_questions_commit_their_answers,

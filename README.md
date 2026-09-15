@@ -328,6 +328,17 @@ The token is a **top-level `token`**, 20 characters. Calling `/sessions` without
 `/start` and without a code answers `403 "Please start over"`; a wrong password
 answers `401 E2053`.
 
+**A rejected email or password stops the run, rather than asking for a code.**
+Step 1 is what sends the code, so `401 E2053` there means none was sent and none
+is coming; asking anyway is how a wrong password comes to look like a code that
+never arrived. The run notifies that Brightwheel rejected the sign-in, sends
+nothing about the children, and does not try again — five rejected sign-ins is
+how an account gets locked. Nor does it record a send time, which would
+otherwise make the next run within ten minutes skip its send and ask for that
+code that was never sent. Brightwheel answers the same `E2053` for a wrong
+password, a wrong address, and an address with no account, so the notice names
+the email and the password together instead of guessing.
+
 **Code delivery is unreliable** — the first `/sessions/start` often sends
 nothing, and only a resend arrives. The loop runs five passes and calls
 `/sessions/start` each time, so the prompt doubles as a resend control: **leave

@@ -66,6 +66,18 @@ CODE_PROMPT_SENT = (
 )
 CODE_PROMPT_SENT_NOWHERE = "your email"
 
+# What a rejected email or password gets instead of a code prompt. Brightwheel
+# only sends a code on a successful /sessions/start, so there is nothing to ask
+# for and no amount of re-sending will produce one. E2053 is the code it
+# answers; the same one comes back for an address with no account, so the
+# notice names both halves rather than guessing which is wrong.
+SIGN_IN_REJECTED_CODE = "E2053"
+SIGN_IN_REJECTED_NOTICE = (
+    "Brightwheel rejected your email or password, so no code was sent. "
+    "Check them by signing in to the Brightwheel app, then re-import to "
+    "answer the setup questions again."
+)
+
 # When a code was sent, kept beside the token so a run a few minutes later
 # asks for the code instead of sending another. Text, not a Date: Store
 # Content keeps nothing of a Date object (measured: the archive holds zero
@@ -649,6 +661,10 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     u_start, u_code, u_sess = next(i), next(i), next(i)
     u_tmatch, u_tgrp, u_zero = next(i), next(i), next(i)
     g_loop, g_signin, g_code, g_got, g_fail = (next(i) for _ in range(5))
+    # Four blocks around a rejected email or password: the branch that spots
+    # it, a gate so later passes do not try again, a gate so this pass does not
+    # ask for a code that was never sent, and the top-level notice that stops.
+    g_rejected, g_creds_pass, g_creds_ask, g_creds_stop = (next(i) for _ in range(4))
 
     actions.append(
         comment(
@@ -825,6 +841,19 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_clip, WFControlFlowMode=2))
 
+    # Starts at zero so the gates below read a number on the first pass. Only a
+    # rejected /sessions/start sets it, and nothing clears it: the credentials
+    # cannot change part-way through a run.
+    u_zero_creds = next(i)
+    actions.append(act("is.workflow.actions.number", UUID=u_zero_creds, WFNumberActionNumber="0"))
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="Bad Credentials",
+            WFInput=attach(out(u_zero_creds, "Number")),
+        )
+    )
+
     actions.append(
         comment(
             "Sign in again, up to five times.\n"
@@ -863,6 +892,25 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             WFCondition=2,
             WFNumberValue="0",
             WFInput=cond_input(var("Needs Sign In")),
+        )
+    )
+    actions.append(
+        comment(
+            "Stop once Brightwheel has rejected the email or password.\n"
+            "- Condition checks Bad Credentials, which only a rejected start sets\n"
+            "- Re-sending cannot help, and five rejected sign-ins is how an "
+            "account gets locked"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_creds_pass,
+            WFControlFlowMode=0,
+            WFCondition=LESS_THAN,
+            WFNumberValue="1",
+            WFInput=cond_input(var("Bad Credentials")),
         )
     )
     actions.append(
@@ -914,6 +962,43 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             ),
         )
     )
+    # Did Brightwheel take the email and password at all? A rejected start
+    # sends no code, so everything below — the send time, the address, the
+    # prompt — would be describing something that never happened. Counted out
+    # of the body rather than read as a dictionary value, like the E1200 probe.
+    c_rejected = actions.count_matches(out(u_start, "Contents of URL"), SIGN_IN_REJECTED_CODE)
+    actions.append(
+        comment(
+            "Give up when the email or password was rejected.\n"
+            "- Condition counts E2053 in the start response\n"
+            "- No code was sent, so no send time is stored and nothing is asked\n"
+            "- Otherwise carry on: remember the send, and name the inbox"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_rejected,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_rejected, "Count")),
+        )
+    )
+    u_one_creds = next(i)
+    actions.append(act("is.workflow.actions.number", UUID=u_one_creds, WFNumberActionNumber="1"))
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="Bad Credentials",
+            WFInput=attach(out(u_one_creds, "Number")),
+        )
+    )
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_rejected, WFControlFlowMode=1)
+    )
+
     # Remember when the code went out, for the next run.
     u_now2, u_fmt = next(i), next(i)
     actions.append(act("is.workflow.actions.date", UUID=u_now2))
@@ -992,6 +1077,9 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         act("is.workflow.actions.setvariable", WFVariableName="Prompt Text", WFInput=attach(out(u_p_none, "Text")))
     )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_addr, WFControlFlowMode=2))
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_rejected, WFControlFlowMode=2)
+    )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_send, WFControlFlowMode=1))
     u_p_short = next(i)
     actions.append(act("is.workflow.actions.gettext", UUID=u_p_short, WFTextActionText=CODE_PROMPT))
@@ -1009,6 +1097,25 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             "is.workflow.actions.setvariable",
             WFVariableName="Sent Recently",
             WFInput=attach(out(u_zero_sent, "Number")),
+        )
+    )
+
+    actions.append(
+        comment(
+            "Ask for a code only if one was actually sent.\n"
+            "- Condition checks Bad Credentials, set by a rejected start above\n"
+            "- A rejected pass falls through to the notice after the loop"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_creds_ask,
+            WFControlFlowMode=0,
+            WFCondition=LESS_THAN,
+            WFNumberValue="1",
+            WFInput=cond_input(var("Bad Credentials")),
         )
     )
 
@@ -1239,10 +1346,50 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_got, WFControlFlowMode=2))
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_code, WFControlFlowMode=2))
     actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_creds_ask, WFControlFlowMode=2)
+    )
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_creds_pass, WFControlFlowMode=2)
+    )
+    actions.append(
         act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_signin, WFControlFlowMode=2)
     )
     actions.append(
         act("is.workflow.actions.repeat.count", UUID=next(i), GroupingIdentifier=g_loop, WFControlFlowMode=2)
+    )
+
+    # Checked before the five-tries notice below, which would otherwise claim a
+    # code could be re-sent. Needs Sign In is deliberately left standing, so a
+    # miss here still lands in that block rather than running on unauthenticated.
+    actions.append(
+        comment(
+            "Say so when Brightwheel rejected the email or password.\n"
+            "- Condition checks Bad Credentials\n"
+            "- No code was ever sent, so re-sending is not the advice to give\n"
+            "- Nothing has been sent to Brightwheel about the children yet"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_creds_stop,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(var("Bad Credentials")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("Nobody ", out(u_verb, "Verb")),
+            WFNotificationActionBody=ts(SIGN_IN_REJECTED_NOTICE),
+        )
+    )
+    actions.append(act("is.workflow.actions.exit"))
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_creds_stop, WFControlFlowMode=2)
     )
 
     actions.append(

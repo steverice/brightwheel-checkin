@@ -82,6 +82,8 @@ GET /users/me
   └─ body contains E1200 ──> sign-in loop, up to 5 passes:
          POST /sessions/start          (skipped on the first pass if a code went out within
                                         ten minutes; stores the send time; later passes resend)
+           └─ body contains E2053 ──>  set Bad Credentials; no send time, no prompt, no
+                                        further pass; notify and exit after the loop
          Ask for the 6-digit code      (a six-digit clipboard is prefilled in a text field; else a
                                         number pad; left-padded to six digits; empty falls through)
          POST /sessions with 2fa_code  -> token -> Store Content

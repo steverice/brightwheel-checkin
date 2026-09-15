@@ -61,6 +61,23 @@ ROSTER_ERRORS = {
 }
 
 
+# What POST /sessions/start answers a wrong email or password. Captured from
+# the live API on 2026-09-15; the same body comes back for an address with no
+# account at all, so nothing downstream can tell the two apart. The shipped
+# detector counts "E2053" in this, which is why the code stays verbatim.
+SIGN_IN_REJECTED = {
+    "error": 'Invalid email or password. If you don\'t remember, click "Forgot password" below.',
+    "_errors": [
+        {
+            "title": "Sign in failed",
+            "message": 'Invalid email or password. If you don\'t remember, click "Forgot password" below.',
+            "code": "E2053",
+            "attribute": None,
+        }
+    ],
+}
+
+
 @dataclass
 class Scenario:
     """What the fake Brightwheel should do this run."""
@@ -70,6 +87,11 @@ class Scenario:
     token_valid: bool = True
     two_fa_code: str = "123456"
     issued_token: str = "SIMTOKEN0123456789AB"
+
+    # False makes POST /sessions/start answer E2053 instead of sending a code,
+    # which is what a wrong email or password gets. No code is ever sent in
+    # that case, so a run that goes on to ask for one is asking for nothing.
+    credentials_valid: bool = True
 
     # child object_id -> "in" | "out", served as each child's checked_in.
     # A successful check-in updates this, so a second pass sees the new state
@@ -225,7 +247,10 @@ class _Handler(BaseHTTPRequestHandler):
                 status = 401
 
         elif path.endswith("/sessions/start"):
-            resp = {"2fa_required": True, "2fa_code_sent_to": ["t***@example.invalid"]}
+            if sc.credentials_valid:
+                resp = {"2fa_required": True, "2fa_code_sent_to": ["t***@example.invalid"]}
+            else:
+                resp, status = SIGN_IN_REJECTED, 401
 
         elif path.endswith("/sessions"):
             supplied = (parsed or {}).get("2fa_code")
