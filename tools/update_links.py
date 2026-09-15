@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Put fresh iCloud links into docs/index.html.
+"""Put fresh iCloud links, and the release they carry, into docs/index.html.
 
 An iCloud link is frozen at the moment you share it, so the page goes stale the
 moment you rebuild. "Brightwheel Share Links" (see tools/build_publisher.py)
-mints three new ones and copies them out; this drops them into the page.
+mints three new ones and copies them out; this drops them into the page, and
+sets the version badge beside them to the release they were minted from.
 
     uv run python tools/update_links.py                 # asks for each of the three
     uv run python tools/update_links.py --clipboard     # takes what Share Links copied
+    uv run python tools/update_links.py --clipboard --version v1.4.0
 
-Nothing is written unless all three are present and look like iCloud links, so
-a half-finished paste cannot leave the page pointing two ways at once.
+Without --version the badge takes the latest published release on GitHub,
+asked of `gh`, which is right when this runs where release.sh runs it: just
+after that release was cut. Nothing is written unless all three links are
+present and look like iCloud links, so a half-finished paste cannot leave the
+page pointing two ways at once.
 """
 
 from __future__ import annotations
@@ -30,11 +35,28 @@ from console import error, info  # noqa: E402
 PAGE = REPO / "docs" / "index.html"
 NAMES = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 PREFIX = "https://www.icloud.com/shortcuts/"
+RELEASES = "https://github.com/steverice/brightwheel-checkin/releases/tag/"
+# The badge: one anchor whose href and text both carry the tag.
+VERSION = re.compile(r'(<a class="version" href=")' + re.escape(RELEASES) + r'([^"]*)(">)([^<]*)(</a>)')
 
 
 def anchor(name: str) -> re.Pattern[str]:
     """The page's own link for one shortcut, matched on its visible text."""
     return re.compile(r'(<a href=")([^"]*)("\s*>\s*' + re.escape(name) + r"\s*</a>)")
+
+
+def with_version(page: str, tag: str) -> str:
+    """The page with its version badge set to `tag`, or unchanged if it has no badge."""
+    return VERSION.sub(lambda m: m.group(1) + RELEASES + tag + m.group(3) + tag + m.group(5), page, count=1)
+
+
+def latest_release() -> str | None:
+    """The tag of the latest published release on GitHub, or None if `gh` cannot say."""
+    r = subprocess.run(
+        ["gh", "release", "view", "--json", "tagName", "--jq", ".tagName"], capture_output=True, text=True, check=False
+    )
+    tag = r.stdout.strip()
+    return tag if r.returncode == 0 and tag else None
 
 
 def from_clipboard() -> dict[str, str]:
@@ -76,6 +98,9 @@ def build_parser() -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     ap.add_argument("--clipboard", action="store_true", help="read the links from the clipboard instead of asking")
+    ap.add_argument(
+        "--version", metavar="TAG", help="the release the links carry; default: the latest release on GitHub"
+    )
     argcomplete.autocomplete(ap)
     return ap
 
@@ -111,10 +136,22 @@ def main() -> int:
         page = pattern.sub(lambda m, name=name: m.group(1) + links[name] + m.group(3), page, count=1)
         changed.append((name, was, links[name]))
 
+    tag = args.version or latest_release()
+    if not tag:
+        error("\nCould not learn the latest release from gh; pass --version. Page unchanged.")
+        return 1
+    badge = VERSION.search(page)
+    if not badge:
+        error(f"\n{PAGE.name} has no version badge. Page unchanged.")
+        return 1
+    was_tag = badge.group(4)
+    page = with_version(page, tag)
+
     PAGE.write_text(page, encoding="utf-8")
     info(f"\nUpdated {PAGE}:")
     for name, was, now in changed:
         info(f"  {name}\n    was {was}\n    now {now}")
+    info(f"  version badge\n    was {was_tag}\n    now {tag}")
     return 0
 
 

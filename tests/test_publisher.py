@@ -18,7 +18,7 @@ TOOLS = Path(__file__).resolve().parent.parent / "tools"
 sys.path.insert(0, str(TOOLS))
 
 import build_publisher as publisher  # noqa: E402
-from update_links import NAMES  # noqa: E402
+from update_links import NAMES, RELEASES, with_version  # noqa: E402
 
 
 def actions():
@@ -65,3 +65,17 @@ def test_it_says_what_to_run_next():
 def test_it_asks_no_setup_questions():
     assert publisher.build()["WFWorkflowImportQuestions"] == []
     assert publisher.build()["WFWorkflowName"] == publisher.NAME
+
+
+def test_the_version_badge_takes_a_new_tag_in_both_places():
+    page = f'<h3>Add all three <a class="version" href="{RELEASES}v1.4.0">v1.4.0</a></h3>'
+    out = with_version(page, "v1.5.0")
+    assert out == f'<h3>Add all three <a class="version" href="{RELEASES}v1.5.0">v1.5.0</a></h3>'
+    assert with_version("<h3>Add all three</h3>", "v1.5.0") == "<h3>Add all three</h3>"
+
+
+def test_the_shipped_page_has_exactly_one_badge():
+    page = (Path(__file__).resolve().parent.parent / "docs" / "index.html").read_text()
+    matches = re.findall(r'<a class="version" href="' + re.escape(RELEASES) + r'([^"]*)">([^<]*)</a>', page)
+    assert len(matches) == 1
+    assert matches[0][0] == matches[0][1]

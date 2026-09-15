@@ -164,6 +164,17 @@
   ol.steps p { color: var(--muted); }
   ol.steps p:last-child { margin-bottom: 0; }
 
+  a.version {
+    display: inline-block; vertical-align: 0.15em; margin-left: 0.5rem;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    background: var(--rule); color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;
+    text-decoration: none;
+  }
+  a.version:hover { background: var(--brand); color: #fff; }
+
   ul.downloads { list-style: none; margin: 0.9rem 0 1rem; padding: 0; display: grid; gap: 0.55rem; }
   ul.downloads a {
     display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
@@ -260,9 +271,11 @@
     <h2>Setup</h2>
     <ol class="steps">
       <li>
-        <h3>Add all three</h3>
-        <!-- Replace all three with real iCloud links: in Shortcuts, share each
-             shortcut and choose Copy iCloud Link. Until then these go nowhere. -->
+        <h3>Add all three <a class="version" href="https://github.com/steverice/brightwheel-checkin/releases/tag/v1.4.0">v1.4.0</a></h3>
+        <!-- The links and the version badge are both written by
+             tools/update_links.py after a release. An iCloud link is frozen
+             at the moment it was shared, so the badge says which release
+             these three links carry. -->
         <ul class="downloads">
           <li><a href="https://www.icloud.com/shortcuts/6952860a62c34c0ab93e68728fa5566e">Brightwheel Attendance</a></li>
           <li><a href="https://www.icloud.com/shortcuts/caeae9c8b2224e1f8845aab1960fe44b">Brightwheel Check In</a></li>
