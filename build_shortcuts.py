@@ -773,6 +773,55 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         act("is.workflow.actions.setvariable", WFVariableName="Sent Recently", WFInput=attach(out(c_recent, "Count")))
     )
 
+    # ---- a code already on the clipboard? ----
+    #
+    # Someone who canceled the prompt, copied the code out of the email and
+    # ran again should only have to tap Done. Read once, and only on a run
+    # that has to sign in: iOS can ask before a shortcut reads the clipboard,
+    # and an ordinary run has no business touching it. Kept only when it is
+    # exactly six digits, so a stray number is never offered.
+    g_clip = next(i)
+    actions.append(
+        comment(
+            "Look at the clipboard, only when a sign-in is needed.\n"
+            "- Condition checks Needs Sign In\n"
+            "- Prefill is the clipboard when it is exactly six digits, else empty"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_clip,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(var("Needs Sign In")),
+        )
+    )
+    u_clip, u_cm, u_ct = next(i), next(i), next(i)
+    actions.append(act("is.workflow.actions.getclipboard", UUID=u_clip))
+    actions.append(
+        act(
+            "is.workflow.actions.text.match",
+            UUID=u_cm,
+            WFMatchTextPattern=r"^[0-9]{6}$",
+            text=ts(out(u_clip, "Clipboard")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.gettext",
+            UUID=u_ct,
+            CustomOutputName="Clipboard Code",
+            WFTextActionText=ts(out(u_cm, "Matches")),
+        )
+    )
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Prefill", WFInput=attach(out(u_ct, "Clipboard Code")))
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_clip, WFControlFlowMode=2))
+
     actions.append(
         comment(
             "Sign in again, up to five times.\n"
@@ -947,8 +996,9 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         act("is.workflow.actions.setvariable", WFVariableName="Prompt Text", WFInput=attach(out(u_p_short, "Text")))
     )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_send, WFControlFlowMode=2))
-    # Only the first pass may skip the send. A code that was not entered, or
-    # was rejected, means the next pass sends a fresh one.
+    # Only the first pass may skip the send, and only the first pass is
+    # offered the clipboard. A code that was not entered, or was rejected,
+    # means the next pass sends a fresh one and asks with an empty field.
     u_zero_sent = next(i)
     actions.append(act("is.workflow.actions.number", UUID=u_zero_sent, WFNumberActionNumber="0"))
     actions.append(
@@ -959,10 +1009,58 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         )
     )
 
-    # A number field, so the number pad comes up rather than the full keyboard
-    # and the sheet stays short enough to read an email around. The field is
-    # numeric, so it drops a leading zero as the next digit is typed: 012345
+    # Two sheets, one of which is shown. With a code on the clipboard the
+    # field is a plain text one with that code already in it, and the short
+    # prompt, whatever this pass did: the person only has to tap Done. A text
+    # field is deliberate there — a number field formats its default through
+    # the locale and shows 654,321, while the value it returns is intact
+    # (measured); a text default is shown as given, leading zero and all.
+    #
+    # Otherwise a number field, so the number pad comes up rather than the
+    # full keyboard and the sheet stays short enough to read an email around.
+    # A numeric field drops a leading zero as the next digit is typed: 012345
     # displays and returns as 12345. The padding below puts it back.
+    c_pre = actions.count_matches(var("Prefill"), r"^[0-9]{6}$")
+    g_pre = next(i)
+    actions.append(
+        comment(
+            "Ask for the code, offering the clipboard when it holds one.\n"
+            "- Condition counts whether Prefill is six digits\n"
+            "- A text field shows the pasted code as it is; the number field "
+            "is for typing\n"
+            "- Both leave the answer in Answer"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_pre,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_pre, "Count")),
+        )
+    )
+    u_p_pre, u_code_pre = next(i), next(i)
+    actions.append(act("is.workflow.actions.gettext", UUID=u_p_pre, WFTextActionText=CODE_PROMPT))
+    actions.append(
+        act(
+            "is.workflow.actions.ask",
+            UUID=u_code_pre,
+            WFAskActionPrompt=ts(out(u_p_pre, "Text")),
+            WFInputType="Text",
+            WFAskActionDefaultAnswer=ts(var("Prefill")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="Answer",
+            WFInput=attach(out(u_code_pre, "Provided Input")),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_pre, WFControlFlowMode=1))
     actions.append(
         act(
             "is.workflow.actions.ask",
@@ -972,6 +1070,14 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             WFAskActionAllowsDecimalNumbers=False,
             WFAskActionAllowsNegativeNumbers=False,
         )
+    )
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Answer", WFInput=attach(out(u_code, "Provided Input")))
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_pre, WFControlFlowMode=2))
+    # A rejected clipboard code is not offered again: a zero is not six digits.
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Prefill", WFInput=attach(out(u_zero_sent, "Number")))
     )
     # Left-pad the answer to six digits and keep only a real code. Five zeros
     # go in front, not six, so an empty answer stays five characters and fails
@@ -990,7 +1096,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             "is.workflow.actions.gettext",
             UUID=u_pad,
             CustomOutputName="Padded Code",
-            WFTextActionText=ts("00000", out(u_code, "Provided Input")),
+            WFTextActionText=ts("00000", var("Answer")),
         )
     )
     actions.append(

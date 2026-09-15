@@ -72,6 +72,7 @@ grep -c schools.mybrightwheel.com "dist-test/Brightwheel Attendance.xml"   # 0
 | `expired_token_signs_in_again` | `E1200` → two-step 2FA → token stored → the run recovers and still sends. The code has a leading zero, which the number pad drops and the shortcut pads back |
 | `an_empty_code_answer_sends_another` | Empty is the only resend control now. Done on an empty field reaches `/sessions/start` again and never `/sessions` |
 | `a_code_sent_minutes_ago_is_not_sent_again` | Cancel the prompt, run again within ten minutes: the prompt comes back with no second send, and the send time is cleared once the code is accepted |
+| `a_code_on_the_clipboard_is_offered` | A six-digit clipboard prefills the prompt, and Done alone exchanges it. A pasted value carries provenance, so iOS asks before sending it ("send 1 text item to localhost?"); the test clears those and asserts the next run with the earned token asks nothing. Every sign-in test sets the simulator's pasteboard first, by way of the Mac's own (`simctl pbcopy` copies nothing under Xcode 27; `pbsync` does), and the suite restores the Mac's clipboard when it finishes |
 | `test_setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. Currently a **known-broken canary** — see the support matrix |
 
 Assertions are on **recorded traffic**, not on notifications. "Nobody was

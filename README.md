@@ -344,6 +344,18 @@ shorter prompt. Once a code is accepted the send time is forgotten, and
 how long Brightwheel's codes stay valid; a code that has expired is simply
 rejected, and the next pass sends a fresh one.
 
+**A copied code is offered.** If the clipboard holds exactly six digits when a
+run has to sign in, the prompt opens with them already in the field, so the
+whole round trip is: cancel, copy the code out of the email, run again, tap
+Done. The clipboard is read only on a run that needs to sign in. iOS may ask
+once whether the shortcut can paste, and it does ask, the first time a pasted
+code is used, whether the shortcut may send the pasted text to Brightwheel —
+because the value came off the clipboard, not because of what it is. On the
+simulator that was one prompt, in the run that used the pasted code, and none
+on the run after it. **Always Allow** is the answer; the shortcut's own
+settings, under Privacy, hold it. A code that is rejected is not offered again
+on the next pass.
+
 **The prompt is a number pad.** It keeps the sheet short, but a numeric field
 drops a leading zero as the next digit is typed, so `012345` shows as `12345`.
 The shortcut left-pads the answer to six digits before exchanging it, which is

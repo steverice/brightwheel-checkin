@@ -86,6 +86,10 @@ class Suite:
             fresh = self.sim.install(paths[name], expect_name=name)
             info(f"  {'installed' if fresh else 'already present'}: {name}")
 
+        # The sign-in tests set the device's pasteboard, which only takes by
+        # way of the Mac's own, so remember what was on it and put it back.
+        self.host_clipboard = subprocess.run(["pbpaste"], capture_output=True, text=True, check=False).stdout
+
         self._prime()
 
     def _prime(self) -> None:
@@ -96,6 +100,28 @@ class Suite:
 
     def teardown(self) -> None:
         self.mock.stop()
+        subprocess.run(["pbcopy"], input=self.host_clipboard, text=True, check=False)
+
+    def set_device_clipboard(self, text: str) -> None:
+        """Put text on the simulator's pasteboard, and confirm it landed.
+
+        `simctl pbcopy` reports success and copies nothing under Xcode 27, so
+        the text goes onto the Mac's pasteboard and is synced across. Both
+        commands need an unsandboxed shell; a sandboxed one also reports
+        success and copies nothing, which is why the read-back is asserted.
+        """
+        # The sync sometimes lags a beat behind the copy and reads back the
+        # previous value, so it is repeated until the read-back agrees.
+        got = None
+        for _ in range(6):
+            subprocess.run(["pbcopy"], input=text, text=True, check=True)
+            subprocess.run(["xcrun", "simctl", "pbsync", "host", self.sim.udid], check=True)
+            time.sleep(0.5)
+            got = subprocess.run(["xcrun", "simctl", "pbpaste", self.sim.udid], capture_output=True, text=True).stdout
+            if got == text:
+                return
+            time.sleep(1.5)
+        raise AssertionError(f"the simulator pasteboard reads {got!r} after copying {text!r}; is the shell sandboxed?")
 
     # -- the run loop ----------------------------------------------------
     def run_and_settle(self, shortcut: str, timeout: float = 180, quiet: float = 10.0, min_wait: float = 18.0) -> None:
@@ -111,6 +137,7 @@ class Suite:
         started = time.time()
         self.sim.run_shortcut(shortcut)
         seen, stable = len(self.mock.requests), time.time()
+        self.taps = 0
         relaunched = False
         while time.time() - started < timeout:
             time.sleep(0.8)
@@ -126,6 +153,7 @@ class Suite:
                 seen, stable = now, time.time()
                 continue
             if self.sim.tap_affirmative():
+                self.taps += 1
                 stable = time.time()
                 continue
             if time.time() - started >= min_wait and time.time() - stable >= quiet:
@@ -340,13 +368,72 @@ def test_a_code_sent_minutes_ago_is_not_sent_again(s):
     )
 
 
-def _start_sign_in(s, shortcut: str) -> None:
+def test_a_code_on_the_clipboard_is_offered(s):
+    """Copy the code, run again, tap Done: the pasted code is what gets exchanged.
+
+    The clipboard is read only on a run that has to sign in, and only a
+    six-digit value is offered. Nothing is typed here on purpose — Done alone
+    must submit what the sheet was prefilled with.
+    """
+    scenario = Scenario(
+        token_valid=False, two_fa_code="654321", roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}
+    )
+    s.mock.load(scenario)
+    _start_sign_in(s, CHECK_IN, clipboard=scenario.two_fa_code)
+
+    deadline = time.time() + 40
+    while time.time() < deadline and not s.sim.blue_buttons():
+        time.sleep(1.0)
+    time.sleep(1.5)
+    s.sim.screenshot("clipboard-prefilled-prompt.png")
+    assert s.sim.tap_affirmative(), "no code prompt appeared to accept"
+
+    # A value that came off the clipboard gets its own consent the first time
+    # it is sent anywhere: "Allow ... to send 1 text item to localhost?", with
+    # Always Allow as the bottom button. The primed consents do not cover it.
+    taps, seen, stable = 0, len(s.mock.requests), time.time()
+    deadline = time.time() + 150
+    while time.time() < deadline:
+        time.sleep(0.8)
+        now = len(s.mock.requests)
+        if now != seen:
+            seen, stable = now, time.time()
+            continue
+        if s.sim.tap_affirmative():
+            taps += 1
+            s.sim.screenshot(f"clipboard-consent-{taps}.png")
+            stable = time.time()
+            continue
+        if time.time() - stable >= 8:
+            break
+    info(f"    consents cleared after the pasted code: {taps}")
+    exchanges = _exchanges(s)
+    assert len(exchanges) == 1, f"expected one exchange, saw {len(exchanges)}"
+    assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code, (
+        f"the pasted code was not what got sent: {exchanges[0]['body'].get('2fa_code')!r}"
+    )
+    assert s.mock.checkins, "sign-in recovered but nobody was checked in"
+
+    # The token a pasted code earned is stored. A later run must not keep
+    # asking permission to send it.
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    s.run_and_settle(CHECK_IN)
+    assert s.mock.checkins, "the next run with the earned token checked nobody in"
+    assert s.taps == 0, f"a token earned with a pasted code kept asking permission: {s.taps} prompt(s) on the next run"
+
+
+def _start_sign_in(s, shortcut: str, clipboard: str = "nothing to paste") -> None:
     """Run a shortcut whose token is dead, and return once a code has been sent.
 
     Consent prompts are cleared only while nothing has been sent yet; once
     traffic starts, the next blue button belongs to the code prompt, and
     tapping it would submit an empty answer.
+
+    The clipboard is set first, because the shortcut offers a six-digit
+    clipboard as the answer. A leftover code from an earlier test would turn a
+    typed answer into twelve digits, so every sign-in starts from a known one.
     """
+    s.set_device_clipboard(clipboard)
     s.sim.terminate_shortcuts()
     time.sleep(1.2)
     s.sim.run_shortcut(shortcut)
@@ -569,6 +656,7 @@ TESTS = [
     test_expired_token_signs_in_again,
     test_an_empty_code_answer_sends_another,
     test_a_code_sent_minutes_ago_is_not_sent_again,
+    test_a_code_on_the_clipboard_is_offered,
     test_setup_questions_commit_their_answers,
     test_reads_the_roster_at_runtime,
     test_the_roster_call_carries_the_guardian_id,
