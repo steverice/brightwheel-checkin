@@ -350,10 +350,11 @@ whole round trip is: cancel, copy the code out of the email, run again, tap
 Done. The clipboard is read only on a run that needs to sign in. iOS may ask
 once whether the shortcut can paste, and it does ask, the first time a pasted
 code is used, whether the shortcut may send the pasted text to Brightwheel —
-because the value came off the clipboard, not because of what it is. On the
-simulator that was one prompt, in the run that used the pasted code, and none
-on the run after it. **Always Allow** is the answer; the shortcut's own
-settings, under Privacy, hold it. A code that is rejected is not offered again
+because the value came off the clipboard, not because of what it is. The
+prompt follows the value through the requests it feeds: on a fresh simulator
+it appeared four times in the run that used the pasted code, once on the run
+after, and never again. **Always Allow** each time; the shortcut's own
+settings, under Privacy, hold the answers. A code that is rejected is not offered again
 on the next pass.
 
 **The prompt is a number pad.** It keeps the sheet short, but a numeric field

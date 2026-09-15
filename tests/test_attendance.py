@@ -152,13 +152,30 @@ class Suite:
             if now != seen:
                 seen, stable = now, time.time()
                 continue
-            if self.sim.tap_affirmative():
+            if self.tap_when_settled():
                 self.taps += 1
                 stable = time.time()
                 continue
             if time.time() - started >= min_wait and time.time() - stable >= quiet:
                 return
         raise AssertionError(f"{shortcut} did not settle within {timeout}s")
+
+    def tap_when_settled(self) -> bool:
+        """Tap the affirmative button, but only once the sheet has stopped moving.
+
+        A consent sheet slides up, and a tap that lands mid-slide hits whatever
+        is at that spot in that frame — Allow Once instead of Always Allow, or
+        nothing. Two identical readings of the blue buttons, a beat apart, mean
+        the frame is stable.
+        """
+        first = self.sim.blue_buttons()
+        if not first:
+            return False
+        time.sleep(0.6)
+        img = self.sim.image()
+        if self.sim.blue_buttons(img) != first:
+            return False
+        return self.sim.tap_affirmative(img)
 
     # -- assertion helpers ----------------------------------------------
     def targets_of(self, posts: list[dict[str, Any]]) -> list[str | None]:
@@ -399,7 +416,7 @@ def test_a_code_on_the_clipboard_is_offered(s):
         if now != seen:
             seen, stable = now, time.time()
             continue
-        if s.sim.tap_affirmative():
+        if s.tap_when_settled():
             taps += 1
             s.sim.screenshot(f"clipboard-consent-{taps}.png")
             stable = time.time()
@@ -414,12 +431,18 @@ def test_a_code_on_the_clipboard_is_offered(s):
     )
     assert s.mock.checkins, "sign-in recovered but nobody was checked in"
 
-    # The token a pasted code earned is stored. A later run must not keep
-    # asking permission to send it.
-    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
-    s.run_and_settle(CHECK_IN)
-    assert s.mock.checkins, "the next run with the earned token checked nobody in"
-    assert s.taps == 0, f"a token earned with a pasted code kept asking permission: {s.taps} prompt(s) on the next run"
+    # The token a pasted code earned is stored, and it carries the clipboard's
+    # provenance with it: on a fresh device the run after this one asked once
+    # more, then no run asked again. Two follow-up runs, and the last must be
+    # silent — that is what "Always Allow" has to mean for this to be usable.
+    later = []
+    for _ in range(2):
+        s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+        s.run_and_settle(CHECK_IN)
+        assert s.mock.checkins, "a later run with the earned token checked nobody in"
+        later.append(s.taps)
+    info(f"    consents on the two runs after it: {later}")
+    assert later[-1] == 0, f"a token earned with a pasted code kept asking permission: {later} prompt(s) on later runs"
 
 
 def _start_sign_in(s, shortcut: str, clipboard: str = "nothing to paste") -> None:
