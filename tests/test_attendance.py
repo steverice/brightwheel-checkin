@@ -228,32 +228,24 @@ def test_expired_token_signs_in_again(s):
     Deliberately not using run_and_settle: this run raises an Ask for Input
     dialog whose Done button is iOS blue, and the generic prompt-clearing would
     submit it empty — which the shortcut treats as "send me another code".
+
+    The code starts with a zero on purpose. The prompt is a number field, which
+    drops a leading zero as the next digit is typed, and the shortcut pads the
+    answer back out to six digits before exchanging it. This is the case that
+    proves the padding, not just the happy path.
     """
-    scenario = Scenario(token_valid=False, roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"})
+    scenario = Scenario(
+        token_valid=False, two_fa_code="012345", roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}
+    )
     s.mock.load(scenario)
-
-    s.sim.terminate_shortcuts()
-    time.sleep(1.2)
-    s.sim.run_shortcut(CHECK_IN)
-
-    # Clear consent prompts only while nothing has been sent yet; once traffic
-    # starts, the next blue button belongs to the code prompt.
-    deadline = time.time() + 75
-    while time.time() < deadline:
-        if s.mock.matching("POST", "/sessions/start"):
-            break
-        if not s.mock.requests:
-            s.sim.tap_affirmative()
-        time.sleep(1.0)
-    else:
-        raise AssertionError("shortcut never asked Brightwheel to send a code")
+    _start_sign_in(s, CHECK_IN)
 
     time.sleep(4)
     assert s.sim.answer_prompt(scenario.two_fa_code), "no code prompt appeared to answer"
 
     s.mock.quiet_for(6, timeout=120)
 
-    exchanges = [r for r in s.mock.requests if r["method"] == "POST" and r["path"].endswith("/sessions")]
+    exchanges = _exchanges(s)
     assert exchanges, "the code was never exchanged for a token"
     assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code, (
         f"wrong code sent: {exchanges[0]['body'].get('2fa_code')!r}"
@@ -264,6 +256,64 @@ def test_expired_token_signs_in_again(s):
     assert stored.get("BrightwheelSessionToken") == scenario.issued_token, (
         f"the new token should have been stored, saw {stored}"
     )
+
+
+def test_an_empty_code_answer_sends_another(s):
+    """Leaving the code box empty is the resend control, and posts nothing.
+
+    The number pad has no way to type "resend", so empty is the only path to a
+    second code. Done with nothing in the field must reach /sessions/start
+    again without ever reaching /sessions — a junk exchange would burn an
+    attempt at Brightwheel.
+    """
+    scenario = Scenario(token_valid=False, roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"})
+    s.mock.load(scenario)
+    _start_sign_in(s, CHECK_IN)
+
+    time.sleep(4)
+    assert s.sim.answer_prompt(""), "no code prompt appeared to leave empty"
+
+    # The second pass sends again and raises the prompt again.
+    deadline = time.time() + 60
+    while time.time() < deadline and len(s.mock.matching("POST", "/sessions/start")) < 2:
+        time.sleep(1.0)
+    starts = s.mock.matching("POST", "/sessions/start")
+    assert len(starts) == 2, f"an empty answer should have sent a second code, saw {len(starts)} start(s)"
+    assert not _exchanges(s), f"an empty answer must not be exchanged, saw {_exchanges(s)[0]['body']}"
+
+    # Answer the second prompt properly so the run ends signed in, not stuck.
+    time.sleep(4)
+    assert s.sim.answer_prompt(scenario.two_fa_code), "no second code prompt appeared"
+    s.mock.quiet_for(6, timeout=120)
+    exchanges = _exchanges(s)
+    assert len(exchanges) == 1, f"expected one exchange after the real answer, saw {len(exchanges)}"
+    assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code
+    assert s.mock.checkins, "sign-in recovered but nobody was checked in"
+
+
+def _start_sign_in(s, shortcut: str) -> None:
+    """Run a shortcut whose token is dead, and return once a code has been sent.
+
+    Consent prompts are cleared only while nothing has been sent yet; once
+    traffic starts, the next blue button belongs to the code prompt, and
+    tapping it would submit an empty answer.
+    """
+    s.sim.terminate_shortcuts()
+    time.sleep(1.2)
+    s.sim.run_shortcut(shortcut)
+    deadline = time.time() + 75
+    while time.time() < deadline:
+        if s.mock.matching("POST", "/sessions/start"):
+            return
+        if not s.mock.requests:
+            s.sim.tap_affirmative()
+        time.sleep(1.0)
+    raise AssertionError("shortcut never asked Brightwheel to send a code")
+
+
+def _exchanges(s) -> list[dict[str, Any]]:
+    """Every POST /sessions, the step that trades a code for a token."""
+    return [r for r in s.mock.requests if r["method"] == "POST" and r["path"].endswith("/sessions")]
 
 
 def test_setup_questions_commit_their_answers(s):
@@ -468,6 +518,7 @@ TESTS = [
     test_check_out_sends_checked_in_false,
     test_stale_school_code_causes_a_second_pass,
     test_expired_token_signs_in_again,
+    test_an_empty_code_answer_sends_another,
     test_setup_questions_commit_their_answers,
     test_reads_the_roster_at_runtime,
     test_the_roster_call_carries_the_guardian_id,

@@ -49,6 +49,12 @@ DEFAULT_BASE = BASE
 CLIENT_NAME = "ios"
 CLIENT_VERSION = "3.103.0"
 
+# The sign-in code prompt. Short on purpose: the sheet sits over whatever the
+# email is being read in, and every line makes it taller. "Done" is the
+# sheet's own button name. Leading zeros are optional because the field is
+# numeric and drops one as the next digit is typed; the run pads them back.
+CODE_PROMPT = '6-digit code from Brightwheel, leading 0s optional. Leave empty and tap "Done" to re-send.'
+
 ATTENDANCE = "Brightwheel Attendance"
 
 # Validator errors that are expected and deliberate. Anything else is real and
@@ -711,8 +717,8 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         comment(
             "Sign in again, up to five times.\n"
             "- Each pass asks Brightwheel to send a fresh code, then asks you for it\n"
-            "- Leaving the box empty, or typing resend, sends another code instead "
-            "of trying to use what was typed\n"
+            "- Leaving the box empty sends another code instead of trying to "
+            "use what was typed\n"
             "- Canceling the code prompt stops the whole shortcut\n"
             "- A pass that gets a token clears Needs Sign In, so later passes do "
             "nothing"
@@ -773,26 +779,62 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             ),
         )
     )
+    # A number field, so the number pad comes up rather than the full keyboard
+    # and the sheet stays short enough to read an email around. The field is
+    # numeric, so it drops a leading zero as the next digit is typed: 012345
+    # displays and returns as 12345. The padding below puts it back.
     actions.append(
         act(
             "is.workflow.actions.ask",
             UUID=u_code,
-            WFAskActionPrompt="Enter the 6-digit code Brightwheel emailed. "
-            "No code yet? Leave this empty, or type "
-            "resend, and another will be sent. Cancel "
-            "stops the shortcut.",
-            WFInputType="Text",
+            WFAskActionPrompt=CODE_PROMPT,
+            WFInputType="Number",
+            WFAskActionAllowsDecimalNumbers=False,
+            WFAskActionAllowsNegativeNumbers=False,
         )
     )
-    # Only a six-digit answer is worth exchanging. Empty, "resend", or a typo
-    # all skip the exchange, so the next pass calls /sessions/start again and a
-    # new code is sent. Posting a junk code instead would burn an attempt and
-    # risks the API treating it as a failed sign-in.
-    c_code = actions.count_matches(out(u_code, "Provided Input"), "^[0-9]{6}$")
+    # Left-pad the answer to six digits and keep only a real code. Five zeros
+    # go in front, not six, so an empty answer stays five characters and fails
+    # the match, and empty remains "send me another". One to six digits pass
+    # and come out as exactly six; seven or more fail, as a typo should.
+    # Measured on an iOS 27 simulator: empty -> no match; 7 -> 000007; a typed
+    # 012345 arrives as 12345 and matches as 012345; 1234567 -> no match.
+    #
+    # Only a real code is worth exchanging. Anything else skips the exchange,
+    # so the next pass calls /sessions/start again and a new code is sent.
+    # Posting junk instead would burn an attempt and risks the API treating it
+    # as a failed sign-in.
+    u_pad, u_pm, u_pg = next(i), next(i), next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.gettext",
+            UUID=u_pad,
+            CustomOutputName="Padded Code",
+            WFTextActionText=ts("00000", out(u_code, "Provided Input")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.text.match",
+            UUID=u_pm,
+            WFMatchTextPattern=r"^0*([0-9]{6})$",
+            text=ts(out(u_pad, "Padded Code")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.text.match.getgroup",
+            UUID=u_pg,
+            CustomOutputName="Code",
+            WFGroupIndex="1",
+            matches=attach(out(u_pm, "Matches")),
+        )
+    )
+    c_code = actions.count_matches(out(u_pg, "Code"))
     actions.append(
         comment(
             "Only try the code if one was actually entered.\n"
-            "- Condition counts whether the answer is six digits\n"
+            "- Condition counts whether the padded answer made a six-digit code\n"
             "- Anything else falls through, and the next pass sends a new code"
         )
     )
@@ -832,7 +874,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
                             kv("password", ts(out(u["password"], "Account Password"))),
                         ],
                     ),
-                    kv("2fa_code", ts(out(u_code, "Provided Input"))),
+                    kv("2fa_code", ts(out(u_pg, "Code"))),
                 ]
             ),
         )

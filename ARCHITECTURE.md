@@ -81,7 +81,7 @@ Get Stored Content (shared)  ->  Session Token
 GET /users/me
   └─ body contains E1200 ──> sign-in loop, up to 5 passes:
          POST /sessions/start          (sends, and on later passes resends, a code)
-         Ask for the 6-digit code      (empty or "resend" falls through to the next pass)
+         Ask for the 6-digit code      (number pad; left-padded to six digits; empty falls through)
          POST /sessions with 2fa_code  -> token -> Store Content
 
 Repeat 2, but only while Send Needed:
