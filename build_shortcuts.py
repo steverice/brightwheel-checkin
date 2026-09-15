@@ -54,6 +54,9 @@ CLIENT_VERSION = "3.103.0"
 # sheet's own button name. Leading zeros are optional because the field is
 # numeric and drops one as the next digit is typed; the run pads them back.
 CODE_PROMPT = '6-digit code from Brightwheel, leading 0s optional. Leave empty and tap "Done" to re-send.'
+# The prompt over a code pasted from the clipboard. That sheet is a text
+# field, which keeps a leading zero, so the prompt does not mention them.
+CODE_PROMPT_PASTED = '6-digit code from Brightwheel. Leave empty and tap "Done" to re-send.'
 # The prompt on a run that has just sent a code, which can afford a line more:
 # the sheet is the first thing this person sees, and the masked address the
 # start response reports goes between the two halves.
@@ -1010,8 +1013,9 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     )
 
     # Two sheets, one of which is shown. With a code on the clipboard the
-    # field is a plain text one with that code already in it, and the short
-    # prompt, whatever this pass did: the person only has to tap Done. A text
+    # field is a plain text one with that code already in it, and a prompt
+    # that says nothing about leading zeros, whatever this pass did: the
+    # person only has to tap Done. A text
     # field is deliberate there — a number field formats its default through
     # the locale and shows 654,321, while the value it returns is intact
     # (measured); a text default is shown as given, leading zero and all.
@@ -1043,7 +1047,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         )
     )
     u_p_pre, u_code_pre = next(i), next(i)
-    actions.append(act("is.workflow.actions.gettext", UUID=u_p_pre, WFTextActionText=CODE_PROMPT))
+    actions.append(act("is.workflow.actions.gettext", UUID=u_p_pre, WFTextActionText=CODE_PROMPT_PASTED))
     actions.append(
         act(
             "is.workflow.actions.ask",
