@@ -3,8 +3,9 @@
 
 An iCloud link is frozen at the moment you share it, so the page goes stale the
 moment you rebuild. "Brightwheel Share Links" (see tools/build_publisher.py)
-mints three new ones and copies them out; this drops them into the page, and
-sets the version badge beside them to the release they were minted from.
+mints three new ones and copies them out; this drops them into the page, sets
+the version badge beside them to the release they were minted from, and redraws
+the link-preview card, which shows the same badge.
 
     uv run python tools/update_links.py                 # asks for each of the three
     uv run python tools/update_links.py --clipboard     # takes what Share Links copied
@@ -152,6 +153,14 @@ def main() -> int:
     for name, was, now in changed:
         info(f"  {name}\n    was {was}\n    now {now}")
     info(f"  version badge\n    was {was_tag}\n    now {tag}")
+
+    # The link-preview card carries the same badge, so redraw it with this
+    # tag. It is committed next to the page; see make_og_image.py for why.
+    info("\nRedrawing the link-preview card:")
+    card = subprocess.run([sys.executable, str(REPO / "make_og_image.py"), "--version", tag], check=False)
+    if card.returncode != 0:
+        error("The card was not redrawn; run make_og_image.py by hand. The page is updated.")
+        return 1
     return 0
 
 

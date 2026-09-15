@@ -172,7 +172,7 @@ them**:
 
 ```bash
 uv run python tools/verify_links.py --clipboard --erase   # imports each on a simulator
-uv run python tools/update_links.py --clipboard           # then writes them, and the version badge, into the page
+uv run python tools/update_links.py --clipboard           # then writes them into the page, with the version badge, and redraws the card
 ```
 
 Verification exists because a link can arrive without its setup questions. It

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Draw the link-preview card, the picture a shared link unfurls into.
 
-    python3 make_og_image.py
+    uv run python make_og_image.py                    # badge: the latest release on GitHub
+    uv run python make_og_image.py --version v1.4.0
 
 iMessage, Slack, Signal and the rest all read the same Open Graph tags out of
 `docs/index.html`, and without an `og:image` they render a bare title and a
@@ -24,22 +25,31 @@ in a gitignored `.fonts/` and are re-used on later runs.
 
 So this script needs the network on a cold cache. That is why `docs/img/og.png`
 is committed alongside it: nothing in the build depends on this running, and it
-only needs to run again when the card itself changes.
+only needs to run again when the card itself changes — or when the release
+does, since the card carries the same version badge as the page's download
+list. `tools/update_links.py` runs it with the release it just wrote into the
+page, so the two cannot disagree.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 import urllib.request
 from pathlib import Path
 from typing import Any, cast
 
+import argcomplete
 from PIL import Image, ImageDraw, ImageFont
 
 import make_icons
-from console import info
+from console import error, info
 
 REPO = Path(__file__).resolve().parent
+sys.path.insert(0, str(REPO / "tools"))
+
+from update_links import latest_release  # noqa: E402
+
 OUT = REPO / "docs" / "img" / "og.png"
 FONT_CACHE = REPO / ".fonts"
 
@@ -54,6 +64,7 @@ PAPER = "#f5f6fb"
 INK = "#1f1c46"
 MUTED = "#5c5f7a"
 BRAND = "#4f52d6"
+RULE = "#e4e5f1"
 
 # A plain hyphen, where the page uses U+2011. The page can afford the
 # non-breaking one because a browser falls back to another font for a glyph the
@@ -137,17 +148,38 @@ def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, lim
     return lines
 
 
-def main() -> None:
+class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="examples:\n  %(prog)s --version v1.4.0",
+        formatter_class=Formatter,
+        allow_abbrev=False,
+    )
+    ap.add_argument(
+        "--version", metavar="TAG", help="the release the badge names; default: the latest release on GitHub"
+    )
+    argcomplete.autocomplete(ap)
+    return ap
+
+
+def draw_card(tag: str) -> Image.Image:
+    """The card, with `tag` in the version badge."""
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
 
     headline = face("outfit.ttf", 96, "Bold")
     stand = face("nunito.ttf", 40, "Regular")
     domain = face("nunito.ttf", 30, "SemiBold")
+    badge = face("nunito.ttf", 26, "SemiBold")
 
     assert_renderable(headline, HEADLINE, "headline")
     assert_renderable(stand, STANDFIRST, "standfirst")
     assert_renderable(domain, DOMAIN, "domain")
+    assert_renderable(badge, tag, "version")
 
     # Headline, optically flush left: textbbox reports the ink, so drawing at
     # -bbox[0] puts the glyph's left edge on the margin rather than its sidebearing.
@@ -184,11 +216,33 @@ def main() -> None:
     # mark has no baseline, so optical centering is the only alignment there is.
     dw = width(d, DOMAIN, domain)
     dbox = d.textbbox((0, 0), DOMAIN, font=domain)
-    d.text((W - PAD - dw, mark_top + ICON // 2 - (dbox[3] + dbox[1]) // 2), DOMAIN, font=domain, fill=MUTED)
+    mid = mark_top + ICON // 2
+    d.text((W - PAD - dw, mid - (dbox[3] + dbox[1]) // 2), DOMAIN, font=domain, fill=MUTED)
 
+    # The version badge, the same pill the page shows beside its download
+    # list: which release the links a reader is about to tap actually carry.
+    # It sits left of the domain, centered on the mark like the domain is.
+    bbox = d.textbbox((0, 0), tag, font=badge)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    px, py = 22, 10
+    x1 = W - PAD - dw - 36
+    x0 = x1 - tw - 2 * px
+    y0 = mid - th // 2 - py
+    d.rounded_rectangle([x0, y0, x1, y0 + th + 2 * py], radius=(th + 2 * py) // 2, fill=RULE)
+    d.text((x0 + px - bbox[0], y0 + py - bbox[1]), tag, font=badge, fill=MUTED)
+    return img
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    tag = args.version or latest_release()
+    if not tag:
+        error("Could not learn the latest release from gh; pass --version.")
+        sys.exit(1)
+    img = draw_card(tag)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     img.save(OUT, "PNG", optimize=True)
-    info(f"  wrote {OUT.relative_to(REPO)}  {img.size[0]}x{img.size[1]}  {OUT.stat().st_size // 1024} KB")
+    info(f"  wrote {OUT.relative_to(REPO)}  {img.size[0]}x{img.size[1]}  {OUT.stat().st_size // 1024} KB  badge {tag}")
 
 
 if __name__ == "__main__":
