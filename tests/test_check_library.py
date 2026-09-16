@@ -1,16 +1,25 @@
 """The gate that stands between the Mac's library and an unrevocable link.
 
-Two failures motivate every case here, and both are ones the publisher's own
-checks pass without complaint. It cannot tell a clean build from the copy you
-use every day, so it would mint a link to your Brightwheel password. And it
-cannot tell one build from another, so it would mint links to last release's
-code — which is what the library was actually holding when v1.5.0 was cut.
+Every case here is a way the publisher's own checks say yes to something they
+should not. It cannot tell a clean build from a dev build or from the copy you
+use every day, and it cannot tell one release from another.
+
+Three of these were found by review on 2026-09-15 after the first version
+shipped, and all three failed *open* — the gate reported a clean library:
+
+- a target with no build in `dist/` left nothing to compare, and an empty
+  expectation set produced an empty problem list
+- a blob that would not parse counted as zero actions and zero answers
+- nothing compared import questions, so a debug build (which bakes credentials
+  in and emits no questions) and a shortcut that silently lost its questions on
+  import both read as fine
 
 Run with the file named: pytest tests/test_check_library.py
 """
 
 from __future__ import annotations
 
+import dataclasses
 import plistlib
 import sqlite3
 import sys
@@ -20,75 +29,131 @@ TOOLS = Path(__file__).resolve().parent.parent / "tools"
 sys.path.insert(0, str(TOOLS))
 
 import check_library  # noqa: E402
-from check_library import Installed, problems  # noqa: E402
+from check_library import Expected, Installed, problems  # noqa: E402
 
-EXPECTED = {"Brightwheel Attendance": 339, "Brightwheel Check In": 17, "Brightwheel Check Out": 17}
+WANTED = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
+EXPECTED = {
+    "Brightwheel Attendance": Expected(actions=339, questions=3),
+    "Brightwheel Check In": Expected(actions=17, questions=0),
+    "Brightwheel Check Out": Expected(actions=17, questions=0),
+}
 
 
 def clean() -> list[Installed]:
     """What a library holding exactly the fresh build looks like."""
     return [
-        Installed(name="Brightwheel Attendance", action_count=339, answered_questions=0, credential_text=False),
-        Installed(name="Brightwheel Check In", action_count=17, answered_questions=0, credential_text=False),
-        Installed(name="Brightwheel Check Out", action_count=17, answered_questions=0, credential_text=False),
+        Installed("Brightwheel Attendance", action_count=339, question_count=3, answered_questions=0),
+        Installed("Brightwheel Check In", action_count=17, question_count=0, answered_questions=0),
+        Installed("Brightwheel Check Out", action_count=17, question_count=0, answered_questions=0),
     ]
 
 
 def swap(installed: list[Installed], name: str, **changes: object) -> list[Installed]:
     """The same library with one shortcut altered."""
-    import dataclasses
-
     return [dataclasses.replace(i, **changes) if i.name == name else i for i in installed]  # type: ignore[arg-type]
 
 
 def test_a_library_holding_exactly_the_fresh_build_passes():
-    assert problems(clean(), EXPECTED) == []
+    assert problems(clean(), EXPECTED, WANTED) == []
 
 
 def test_a_missing_shortcut_is_refused():
     only_two = [i for i in clean() if i.name != "Brightwheel Check Out"]
-    found = problems(only_two, EXPECTED)
+    found = problems(only_two, EXPECTED, WANTED)
     assert any("Brightwheel Check Out" in p and "missing" in p for p in found), found
 
 
 def test_a_second_copy_under_the_same_name_is_refused():
     twice = [*clean(), clean()[0]]
-    found = problems(twice, EXPECTED)
+    found = problems(twice, EXPECTED, WANTED)
     assert any("Brightwheel Attendance" in p and "2" in p for p in found), found
 
 
 def test_a_numbered_copy_is_refused():
     """`Brightwheel Attendance 1` is what a second import leaves behind."""
-    numbered = [*clean(), Installed("Brightwheel Attendance 1", 339, 0, False)]
-    found = problems(numbered, EXPECTED)
+    numbered = [*clean(), Installed("Brightwheel Attendance 1", action_count=339, question_count=3)]
+    found = problems(numbered, EXPECTED, WANTED)
     assert any("Brightwheel Attendance 1" in p for p in found), found
 
 
 def test_an_answered_setup_question_is_refused():
     """The password hazard: answers mean this is somebody's configured copy."""
     configured = swap(clean(), "Brightwheel Attendance", answered_questions=3)
-    found = problems(configured, EXPECTED)
+    found = problems(configured, EXPECTED, WANTED)
     assert any("Brightwheel Attendance" in p and "answer" in p.lower() for p in found), found
 
 
 def test_credential_shaped_text_is_refused():
     baked = swap(clean(), "Brightwheel Attendance", credential_text=True)
-    found = problems(baked, EXPECTED)
+    found = problems(baked, EXPECTED, WANTED)
     assert any("Brightwheel Attendance" in p for p in found), found
 
 
 def test_a_stale_build_is_refused():
     """v1.4.0's Attendance is 317 actions where v1.5.0's is 339."""
     stale = swap(clean(), "Brightwheel Attendance", action_count=317)
-    found = problems(stale, EXPECTED)
+    found = problems(stale, EXPECTED, WANTED)
     assert any("317" in p and "339" in p for p in found), found
+
+
+# -- the three that failed open -------------------------------------------
+
+
+def test_a_target_with_no_build_to_compare_against_is_refused():
+    """The gate must never read "nothing to compare" as "nothing wrong".
+
+    `expected_builds` skips a name whose plist is absent, so pointing the gate
+    at a directory with no `.xml` files used to yield an empty expectation set
+    — and a library holding a stale, configured, credential-bearing copy then
+    produced no problems at all.
+    """
+    rotten = [Installed("Brightwheel Attendance", action_count=317, question_count=0, answered_questions=3)]
+    found = problems(rotten, {}, WANTED)
+    assert found, "an empty expectation set must refuse, not pass"
+    assert any("Brightwheel Attendance" in p and "dist" in p for p in found), found
+
+
+def test_an_unreadable_shortcut_is_refused():
+    """A blob that will not parse is a refusal, not a zero."""
+    broken = swap(clean(), "Brightwheel Attendance", unreadable=True)
+    found = problems(broken, EXPECTED, WANTED)
+    assert any("Brightwheel Attendance" in p and "read" in p.lower() for p in found), found
+
+
+def test_a_debug_build_is_refused():
+    """`./build.sh --debug` bakes credentials in and emits no setup questions.
+
+    The question count is the discriminator: a clean Attendance has 3, a debug
+    build has 0. This is what makes "never share a dev build" an assertion.
+    """
+    debug = swap(clean(), "Brightwheel Attendance", question_count=0, action_count=341)
+    found = problems(debug, EXPECTED, WANTED)
+    assert any("question" in p.lower() and "Brightwheel Attendance" in p for p in found), found
+
+
+def test_a_shortcut_that_lost_its_setup_questions_on_import_is_refused():
+    """The measured silent failure, and the reason this check exists.
+
+    `shortcut-forge/docs/simulator-harness.md` records a link that arrived with
+    zero import questions where its siblings had three; the only difference was
+    that its clicks were synthesized rather than made by a person. Such a copy
+    installs in one tap and leaves `not set` in the email, password and
+    check-in code, with no error. Its action count is unchanged, so only the
+    question count can see it.
+    """
+    lost = swap(clean(), "Brightwheel Attendance", question_count=0)
+    found = problems(lost, EXPECTED, WANTED)
+    assert any("question" in p.lower() for p in found), found
 
 
 def test_every_problem_is_reported_not_just_the_first():
     broken = swap(
         swap(clean(), "Brightwheel Attendance", action_count=317), "Brightwheel Check In", answered_questions=1
     )
-    assert len(problems(broken, EXPECTED)) >= 2
+    assert len(problems(broken, EXPECTED, WANTED)) >= 2
+
+
+# -- reading the database --------------------------------------------------
 
 
 def _fixture_db(path: Path, rows: list[tuple[str, bytes | None, bytes | None]]) -> None:
@@ -116,44 +181,67 @@ def _actions_blob(count: int, text: str = "not set") -> bytes:
     return plistlib.dumps({"WFWorkflowActions": [action] * count})
 
 
-def test_read_library_counts_actions_and_unanswered_questions(tmp_path):
-    questions = plistlib.dumps([{"ParameterKey": "WFTextActionText", "Text": "Your email", "DefaultValue": "not set"}])
+def _questions_blob(count: int, *, answered: bool = False) -> bytes:
+    q: dict[str, object] = {"ParameterKey": "WFTextActionText", "Text": "Your email", "DefaultValue": "not set"}
+    if answered:
+        q["ActualValue"] = "someone@example.invalid"
+    return plistlib.dumps([q] * count)
+
+
+def test_read_library_counts_actions_questions_and_answers(tmp_path):
     db = tmp_path / "Shortcuts.sqlite"
-    _fixture_db(db, [("Brightwheel Attendance", questions, _actions_blob(339))])
-
-    found = {i.name: i for i in check_library.read_library(db, prefix="Brightwheel")}
-
-    assert found["Brightwheel Attendance"].action_count == 339
-    assert found["Brightwheel Attendance"].answered_questions == 0
-    assert found["Brightwheel Attendance"].credential_text is False
-
-
-def test_read_library_spots_an_answered_question(tmp_path):
-    answered = plistlib.dumps(
-        [{"ParameterKey": "WFTextActionText", "Text": "Your email", "ActualValue": "someone@example.invalid"}]
-    )
-    db = tmp_path / "Shortcuts.sqlite"
-    _fixture_db(db, [("Brightwheel Attendance", answered, _actions_blob(339))])
+    _fixture_db(db, [("Brightwheel Attendance", _questions_blob(3), _actions_blob(339))])
 
     found = check_library.read_library(db, prefix="Brightwheel")[0]
 
-    assert found.answered_questions == 1
+    assert found.action_count == 339
+    assert found.question_count == 3
+    assert found.answered_questions == 0
+    assert found.credential_text is False
+    assert found.unreadable is False
+
+
+def test_read_library_spots_an_answered_question(tmp_path):
+    db = tmp_path / "Shortcuts.sqlite"
+    _fixture_db(db, [("Brightwheel Attendance", _questions_blob(3, answered=True), _actions_blob(339))])
+
+    found = check_library.read_library(db, prefix="Brightwheel")[0]
+
+    assert found.answered_questions == 3
     assert found.credential_text is True
 
 
 def test_read_library_spots_a_credential_baked_into_the_actions(tmp_path):
     """A debug build carries the address in the actions, with no question at all."""
     db = tmp_path / "Shortcuts.sqlite"
-    _fixture_db(db, [("Brightwheel Attendance", None, _actions_blob(339, text="parent@example.invalid"))])
+    _fixture_db(db, [("Brightwheel Attendance", None, _actions_blob(341, text="parent@example.invalid"))])
 
     found = check_library.read_library(db, prefix="Brightwheel")[0]
 
-    assert found.answered_questions == 0
+    assert found.question_count == 0
     assert found.credential_text is True
 
 
-def test_expected_counts_reads_the_built_plists(tmp_path):
-    xml = tmp_path / "Brightwheel Check In.xml"
-    xml.write_bytes(_actions_blob(17))
+def test_read_library_marks_an_unparseable_blob_unreadable(tmp_path):
+    """Not zero actions. Unreadable, so `problems` refuses it."""
+    db = tmp_path / "Shortcuts.sqlite"
+    _fixture_db(db, [("Brightwheel Attendance", None, b"this is not a plist")])
 
-    assert check_library.expected_counts(tmp_path, ["Brightwheel Check In"]) == {"Brightwheel Check In": 17}
+    found = check_library.read_library(db, prefix="Brightwheel")[0]
+
+    assert found.unreadable is True
+
+
+def test_expected_builds_reads_actions_and_questions(tmp_path):
+    doc = plistlib.loads(_actions_blob(17))
+    doc["WFWorkflowImportQuestions"] = [{"ParameterKey": "WFTextActionText"}] * 3
+    (tmp_path / "Brightwheel Check In.xml").write_bytes(plistlib.dumps(doc))
+
+    built = check_library.expected_builds(tmp_path, ["Brightwheel Check In"])
+
+    assert built == {"Brightwheel Check In": Expected(actions=17, questions=3)}
+
+
+def test_expected_builds_skips_a_name_with_no_plist(tmp_path):
+    """Skipping is fine here; `problems` is what refuses the gap."""
+    assert check_library.expected_builds(tmp_path, ["Brightwheel Check In"]) == {}

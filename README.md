@@ -180,6 +180,14 @@ It reads the Shortcuts database rather than the screen, and refuses on a missing
 shortcut, a duplicate or numbered copy, an answered setup question, an email
 address anywhere in a copy, or an action count that disagrees with `dist/`.
 
+**It also refuses a dev build**, by comparing setup-question counts: a clean
+Attendance carries three and a `--debug` build carries none, because it bakes
+the credentials in instead of asking. That is the same check that catches a copy
+which lost its questions on import — the silent failure where a link installs in
+one tap and leaves the email, password and check-in code unset. Everything fails
+closed: a build missing from `dist/` and a copy that will not parse are both
+refusals, never skips.
+
 `release.sh` asks for them as its last step, and **verifies them before writing
 them**:
 

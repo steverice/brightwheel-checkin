@@ -23,10 +23,31 @@ was built, and when v1.5.0 was cut the library was still holding v1.4.0 — 317
 actions where the new build has 339. The page would have been updated with
 three fresh links to the bug the release fixed.
 
+**A dev build.** `./build.sh --debug` bakes `.env` straight in and emits no
+setup questions at all, which is the whole reason a clean build carries no
+credentials: it asks instead. So the import-question count tells the two apart —
+three on a clean Attendance, zero on a debug one — and comparing it is what
+makes "never share a dev build" an assertion rather than a rule to remember.
+
+That same count is the only thing that can see a copy which **lost** its
+questions on import. `shortcut-forge/docs/simulator-harness.md` records a link
+that arrived with zero where its siblings had three, the one difference being
+that its clicks were synthesized rather than made by a person. Such a copy
+installs in one tap and leaves `not set` in the email, password and check-in
+code, with no error and no prompt; its action count is unchanged, so nothing
+else here would notice.
+
 So this reads the Shortcuts database rather than the screen, and compares what
 is installed against the plists in `dist/`. It reports every problem it finds,
 not just the first, because whoever is about to fix one wants to know about the
 rest before importing again.
+
+**Everything here fails closed.** A build missing from `dist/` is refused rather
+than skipped, and a blob that will not parse is refused rather than counted as
+zero — zero actions and zero questions are what a *wrong* build looks like, so
+neither may be what "I could not read it" produces. The first version of this
+file got both wrong, and reported a clean library for a stale, configured,
+credential-bearing copy.
 """
 
 from __future__ import annotations
@@ -72,30 +93,62 @@ class Installed:
     """One shortcut as the library holds it."""
 
     name: str
-    action_count: int
-    answered_questions: int
-    credential_text: bool
+    action_count: int = 0
+    question_count: int = 0
+    answered_questions: int = 0
+    credential_text: bool = False
+    # A blob that would not parse. It must never read as "zero of everything":
+    # zero actions and zero questions are what a *wrong* build looks like, so
+    # failing to read has to be its own refusal rather than a quiet count.
+    unreadable: bool = False
+
+
+@dataclass(frozen=True)
+class Expected:
+    """What the built plist in `dist/` says a clean copy should look like."""
+
+    actions: int
+    questions: int
+
+
+class UnreadableError(Exception):
+    """A blob that is not a plist this tool understands."""
+
+
+def _load(blob: bytes) -> object:
+    try:
+        return plistlib.loads(blob)
+    except (plistlib.InvalidFileException, ValueError, EOFError, TypeError) as exc:
+        raise UnreadableError(str(exc)) from exc
 
 
 def _count_actions(blob: bytes | None) -> int:
     if not blob:
         return 0
-    try:
-        parsed = plistlib.loads(blob)
-    except (plistlib.InvalidFileException, ValueError):
-        return 0
+    parsed = _load(blob)
     if isinstance(parsed, dict):
         return len(parsed.get("WFWorkflowActions", []))
+    return len(parsed) if isinstance(parsed, list) else 0
+
+
+def _count_questions(blob: bytes | None) -> int:
+    """How many setup questions the copy carries, answered or not.
+
+    A clean Attendance has three. A `--debug` build has none, because it bakes
+    the credentials in instead of asking — so this is what tells a dev build
+    from a release one. It is also the only thing that can see a copy that lost
+    its questions on import, since that leaves the action count untouched.
+    """
+    if not blob:
+        return 0
+    parsed = _load(blob)
     return len(parsed) if isinstance(parsed, list) else 0
 
 
 def _count_answers(blob: bytes | None) -> int:
     if not blob:
         return 0
-    try:
-        parsed = plistlib.loads(blob)
-    except (plistlib.InvalidFileException, ValueError):
-        return 0
+    parsed = _load(blob)
     if not isinstance(parsed, list):
         return 0
     return sum(1 for q in parsed if isinstance(q, dict) and any(v for k, v in q.items() if k not in QUESTION_KEYS))
@@ -121,33 +174,55 @@ def read_library(database: Path | str, prefix: str = PREFIX) -> list[Installed]:
     found = []
     for name, questions, actions in rows:
         blobs = [b for b in (questions, actions) if b]
-        found.append(
-            Installed(
-                name=name,
-                action_count=_count_actions(actions),
-                answered_questions=_count_answers(questions),
-                credential_text=any(EMAIL.search(b) for b in blobs),
+        credential = any(EMAIL.search(b) for b in blobs)
+        try:
+            found.append(
+                Installed(
+                    name=name,
+                    action_count=_count_actions(actions),
+                    question_count=_count_questions(questions),
+                    answered_questions=_count_answers(questions),
+                    credential_text=credential,
+                )
             )
-        )
+        except UnreadableError:
+            found.append(Installed(name=name, credential_text=credential, unreadable=True))
     return found
 
 
-def expected_counts(dist: Path, names: list[str]) -> dict[str, int]:
-    """How many actions each built plist has, by name."""
-    counts = {}
+def expected_builds(dist: Path, names: list[str]) -> dict[str, Expected]:
+    """What each built plist says a clean copy looks like, by name.
+
+    A name whose plist is absent is skipped rather than guessed at; `problems`
+    is what refuses the gap. Nothing here may invent an expectation, because an
+    invented one is indistinguishable from a met one.
+    """
+    built = {}
     for name in names:
         path = dist / f"{name}.xml"
-        if path.exists():
-            counts[name] = _count_actions(path.read_bytes())
-    return counts
+        if not path.exists():
+            continue
+        raw = path.read_bytes()
+        doc = _load(raw)
+        questions = doc.get("WFWorkflowImportQuestions", []) if isinstance(doc, dict) else []
+        built[name] = Expected(actions=_count_actions(raw), questions=len(questions))
+    return built
 
 
-def problems(installed: list[Installed], expected: dict[str, int]) -> list[str]:
-    """Every reason this library must not be published from."""
+def problems(installed: list[Installed], expected: dict[str, Expected], wanted: list[str]) -> list[str]:
+    """Every reason this library must not be published from.
+
+    `wanted` is the set of names that must be accounted for, and is why an
+    absent build refuses instead of passing: with no expectation to compare
+    against there is nothing to say about a copy, and "nothing to say" must
+    never come out as "nothing wrong".
+    """
     found: list[str] = []
     seen = Counter(i.name for i in installed)
 
-    for name in expected:
+    for name in wanted:
+        if name not in expected:
+            found.append(f"{name} has no build in dist/ to compare against; run ./build.sh first")
         if seen[name] == 0:
             found.append(f"{name} is missing from the library")
         elif seen[name] > 1:
@@ -155,11 +230,14 @@ def problems(installed: list[Installed], expected: dict[str, int]) -> list[str]:
 
     for shortcut in installed:
         numbered = NUMBERED.match(shortcut.name)
-        if numbered and numbered.group("base") in expected:
+        if numbered and numbered.group("base") in wanted:
             found.append(
                 f"{shortcut.name} is a numbered copy left by a second import; delete it and the one it shadows"
             )
-        if shortcut.name not in expected:
+        if shortcut.name not in wanted:
+            continue
+        if shortcut.unreadable:
+            found.append(f"{shortcut.name} could not be read out of the library, so nothing about it can be checked")
             continue
         if shortcut.answered_questions:
             found.append(
@@ -170,11 +248,19 @@ def problems(installed: list[Installed], expected: dict[str, int]) -> list[str]:
             found.append(
                 f"{shortcut.name} carries an email address, so it is a configured or debug copy, not a clean build"
             )
-        want = expected[shortcut.name]
-        if shortcut.action_count != want:
+        want = expected.get(shortcut.name)
+        if want is None:
+            continue
+        if shortcut.action_count != want.actions:
             found.append(
-                f"{shortcut.name} has {shortcut.action_count} actions but the build in dist/ has {want}; "
+                f"{shortcut.name} has {shortcut.action_count} actions but the build in dist/ has {want.actions}; "
                 f"the library is holding a different build"
+            )
+        if shortcut.question_count != want.questions:
+            found.append(
+                f"{shortcut.name} has {shortcut.question_count} setup question(s) but the build in dist/ has "
+                f"{want.questions}; a debug build has none, and a copy that lost its questions on import installs "
+                f"in one tap leaving the credentials unset"
             )
     return found
 
@@ -193,18 +279,24 @@ def main() -> int:
         error(f"no Shortcuts database at {args.database}")
         return 1
 
-    expected = expected_counts(args.dist, NAMES)
-    missing = [n for n in NAMES if n not in expected]
-    if missing:
-        error(f"{args.dist} has no build for: {', '.join(missing)} — run ./build.sh first")
-        return 1
+    # A missing build is reported by `problems` rather than short-circuited
+    # here, so that a caller using this module as a library gets the refusal
+    # too — the guard living only in `main` is what once let an empty
+    # expectation set read as a clean library.
+    expected = expected_builds(args.dist, NAMES)
 
     installed = read_library(args.database, prefix=args.prefix)
     info(f"library holds {len(installed)} shortcut(s) named {args.prefix}*; comparing against {args.dist}")
     for shortcut in installed:
-        info(f"  {shortcut.name}: {shortcut.action_count} actions, {shortcut.answered_questions} answered")
+        if shortcut.unreadable:
+            info(f"  {shortcut.name}: could not be read")
+            continue
+        info(
+            f"  {shortcut.name}: {shortcut.action_count} actions, "
+            f"{shortcut.question_count} question(s), {shortcut.answered_questions} answered"
+        )
 
-    found = problems(installed, expected)
+    found = problems(installed, expected, NAMES)
     if found:
         for problem in found:
             error(problem)
