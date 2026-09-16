@@ -70,7 +70,10 @@ fi
 # serving the previous version.
 echo
 echo "The page's iCloud links still point at the previous build."
-echo "Import this release on your phone, run Brightwheel Share Links, then:"
+echo "Import this release, then on the release Mac check the library before minting:"
+echo "  uv run python tools/check_library.py"
+echo "A non-zero exit means the library would publish a configured or stale copy."
+echo "Then run Brightwheel Share Links, and:"
 echo
 read -r -p "Paste the three links now? [y/N] " answer
 case "$answer" in

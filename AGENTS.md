@@ -9,7 +9,8 @@ build_shortcuts.py     The generator: Brightwheel Attendance and the two wrapper
                        checks, validates, and signs them through shortcut-forge.
 build.sh / release.sh  Build into dist/; cut a GitHub release with the zip.
 test.sh                The integration suite: real shortcuts on a simulator against a mock API.
-tools/                 build_publisher.py (Brightwheel Share Links), verify_links.py, update_links.py.
+tools/                 build_publisher.py (Brightwheel Share Links), check_library.py (the
+                       pre-mint gate), verify_links.py, update_links.py.
 tests/                 test_attendance.py (the runner), mock_brightwheel.py, testbuild.py, fixtures/,
                        test_publisher.py (plain pytest).
 make_*.py              Redraw the site's icons, the setup diagrams, and the link-preview card.

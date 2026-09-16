@@ -167,6 +167,19 @@ one: the hidden copy reappears, and you delete it too.
 A bare `pytest tests/` also collects `test_attendance.py`, whose custom `s`
 argument reads to pytest as a missing fixture.
 
+**Check the library before you mint.** The publisher's own checks pass a
+configured copy and a stale build alike, and both have nearly happened: the
+library was still holding v1.4.0 when v1.5.0 was cut, which would have put three
+fresh links to the old code on the page.
+
+```bash
+uv run python tools/check_library.py     # non-zero means do not mint
+```
+
+It reads the Shortcuts database rather than the screen, and refuses on a missing
+shortcut, a duplicate or numbered copy, an answered setup question, an email
+address anywhere in a copy, or an action count that disagrees with `dist/`.
+
 `release.sh` asks for them as its last step, and **verifies them before writing
 them**:
 
