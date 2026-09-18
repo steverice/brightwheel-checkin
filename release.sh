@@ -78,16 +78,17 @@ echo
 read -r -p "Paste the three links now? [y/N] " answer
 case "$answer" in
     [yY]*)
-        # Check before writing. A link can arrive without its setup questions,
-        # and that failure is silent — the shortcut installs in one tap, looks
-        # right, and never asks for credentials. Importing each link on a
-        # simulator is the only way to see it before a parent does.
-        if uv run python tools/verify_links.py --clipboard --erase; then
+        # Check before writing. A link can carry the wrong build or arrive
+        # without its setup questions, and both failures are silent — the
+        # shortcut installs in one tap, looks right, and never asks for
+        # credentials. Comparing each link's record against dist/ is how to
+        # see it before a parent does.
+        if uv run python tools/verify_links.py --clipboard; then
             uv run python tools/update_links.py --clipboard || true
         else
             echo
             echo "Links not written. Re-mint them and run:"
-            echo "  uv run python tools/verify_links.py --clipboard --erase"
+            echo "  uv run python tools/verify_links.py --clipboard"
             echo "  uv run python tools/update_links.py --clipboard"
         fi
         ;;

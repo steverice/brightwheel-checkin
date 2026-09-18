@@ -102,6 +102,6 @@ public and hard to take back.
 | Tool | Purpose | Required |
 |---|---|---|
 | `validate-shortcut`, `sign-shortcut` | from the shortcuts-playground plugin, via shortcut-forge | for any build |
-| `xcrun simctl`, Device Hub | the integration suite | for `test.sh` and `verify_links.py` |
+| `xcrun simctl`, Device Hub | the integration suite | for `test.sh` and `verify_links.py --simulator` |
 | `gh` | creating the release | for `release.sh` |
 | `shortcuts` (macOS) | running Brightwheel Share Links headless | for refreshing the page's links |

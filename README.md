@@ -195,19 +195,22 @@ refusals, never skips.
 them**:
 
 ```bash
-uv run python tools/verify_links.py --clipboard --erase   # imports each on a simulator
-uv run python tools/update_links.py --clipboard           # then writes them into the page, with the version badge, and redraws the card
+uv run python tools/verify_links.py --clipboard   # checks each link's record against dist/, no device
+uv run python tools/update_links.py --clipboard   # then writes them into the page, with the version badge, and redraws the card
 ```
 
-Verification exists because a link can arrive without its setup questions. It
-happened once here and nobody has explained it — see shortcut-forge's
-`docs/simulator-harness.md`. The failure
-is silent: the shortcut installs in one tap, looks correct, and leaves `not set`
-in the email, password and check-in code actions, so the first sign of trouble is
-somebody whose check-in never works. `verify_links.py` imports each link on an
-iOS 27 simulator and compares what lands against `dist/<name>.xml` — same action
-identifiers in the same order, same number of import questions — and refuses the
-lot if any of them disagrees.
+Verification exists because a link can carry the wrong build, or arrive without
+its setup questions. The second happened once here and nobody has explained it —
+see shortcut-forge's `docs/simulator-harness.md`. Both failures are silent: the
+shortcut installs in one tap, looks correct, and leaves `not set` in the email,
+password and check-in code actions, so the first sign of trouble is somebody
+whose check-in never works. `verify_links.py` fetches each link's record from
+iCloud, which serves the plist that was shared, and compares it against
+`dist/<name>.xml` — the same name, the same action identifiers in the same order,
+the same import questions, none of them answered — and refuses the lot if any of
+them disagrees. `--simulator` imports each link on an iOS 27 simulator instead,
+which cannot run under Xcode 27 until shortcut-forge's harness moves off Device
+Hub.
 
 It writes nothing unless all three are present and start with
 `https://www.icloud.com/shortcuts/`, so a half-finished paste cannot leave the
