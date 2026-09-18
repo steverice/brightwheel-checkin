@@ -245,3 +245,54 @@ def test_expected_builds_reads_actions_and_questions(tmp_path):
 def test_expected_builds_skips_a_name_with_no_plist(tmp_path):
     """Skipping is fine here; `problems` is what refuses the gap."""
     assert check_library.expected_builds(tmp_path, ["Brightwheel Check In"]) == {}
+
+
+# -- the gate a minting rig calls -------------------------------------------
+
+
+def _fixture_dist(path: Path) -> Path:
+    """A dist/ holding the three builds in `EXPECTED`."""
+    for name, want in EXPECTED.items():
+        doc = plistlib.loads(_actions_blob(want.actions))
+        doc["WFWorkflowImportQuestions"] = [{"ParameterKey": "WFTextActionText"}] * want.questions
+        (path / f"{name}.xml").write_bytes(plistlib.dumps(doc))
+    return path
+
+
+def test_gate_passes_a_library_holding_exactly_the_build(tmp_path):
+    db = tmp_path / "Shortcuts.sqlite"
+    _fixture_db(
+        db,
+        [
+            (name, _questions_blob(want.questions) if want.questions else None, _actions_blob(want.actions))
+            for name, want in EXPECTED.items()
+        ],
+    )
+
+    assert check_library.gate(db, _fixture_dist(tmp_path)) == []
+
+
+def test_gate_refuses_a_stale_library(tmp_path):
+    """The mint26 base on 2026-09-18: v1.4.0 copies against a v1.5.0 build."""
+    db = tmp_path / "Shortcuts.sqlite"
+    _fixture_db(
+        db,
+        [
+            ("Brightwheel Attendance", _questions_blob(3), _actions_blob(317)),
+            ("Brightwheel Check In", None, _actions_blob(17)),
+            ("Brightwheel Check Out", None, _actions_blob(17)),
+        ],
+    )
+
+    found = check_library.gate(db, _fixture_dist(tmp_path))
+
+    assert len(found) == 1
+    assert "317 actions" in found[0]
+
+
+def test_gate_refuses_a_missing_database_instead_of_raising(tmp_path):
+    """A rig that copied the database to the wrong place gets a refusal it can print."""
+    found = check_library.gate(tmp_path / "nowhere.sqlite", _fixture_dist(tmp_path))
+
+    assert len(found) == 1
+    assert "no Shortcuts database" in found[0]

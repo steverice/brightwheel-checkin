@@ -265,6 +265,24 @@ def problems(installed: list[Installed], expected: dict[str, Expected], wanted: 
     return found
 
 
+def gate(database: Path, dist: Path, prefix: str = PREFIX) -> list[str]:
+    """Every reason not to mint from the library at `database`, given the build in `dist`.
+
+    The whole check from two paths, for a minting rig that copies a guest's
+    database out and wants a verdict: `functools.partial(gate, dist=dist)` is
+    the `Callable[[Path], list[str]]` it takes. The copy has to carry its `-wal`
+    and `-shm` files, or it is the library as it stood before the latest imports.
+
+    A missing database is a refusal rather than an exception, and a missing
+    build is left to `problems` rather than short-circuited here: a guard that
+    lives only in `main` is what once let an empty expectation set read as a
+    clean library.
+    """
+    if not database.exists():
+        return [f"no Shortcuts database at {database}"]
+    return problems(read_library(database, prefix=prefix), expected_builds(dist, NAMES), NAMES)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0], formatter_class=argparse.RawDescriptionHelpFormatter
@@ -275,28 +293,19 @@ def main() -> int:
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
-    if not args.database.exists():
-        error(f"no Shortcuts database at {args.database}")
-        return 1
+    if args.database.exists():
+        installed = read_library(args.database, prefix=args.prefix)
+        info(f"library holds {len(installed)} shortcut(s) named {args.prefix}*; comparing against {args.dist}")
+        for shortcut in installed:
+            if shortcut.unreadable:
+                info(f"  {shortcut.name}: could not be read")
+                continue
+            info(
+                f"  {shortcut.name}: {shortcut.action_count} actions, "
+                f"{shortcut.question_count} question(s), {shortcut.answered_questions} answered"
+            )
 
-    # A missing build is reported by `problems` rather than short-circuited
-    # here, so that a caller using this module as a library gets the refusal
-    # too — the guard living only in `main` is what once let an empty
-    # expectation set read as a clean library.
-    expected = expected_builds(args.dist, NAMES)
-
-    installed = read_library(args.database, prefix=args.prefix)
-    info(f"library holds {len(installed)} shortcut(s) named {args.prefix}*; comparing against {args.dist}")
-    for shortcut in installed:
-        if shortcut.unreadable:
-            info(f"  {shortcut.name}: could not be read")
-            continue
-        info(
-            f"  {shortcut.name}: {shortcut.action_count} actions, "
-            f"{shortcut.question_count} question(s), {shortcut.answered_questions} answered"
-        )
-
-    found = problems(installed, expected, NAMES)
+    found = gate(args.database, args.dist, prefix=args.prefix)
     if found:
         for problem in found:
             error(problem)
