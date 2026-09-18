@@ -48,20 +48,23 @@ zero — zero actions and zero questions are what a *wrong* build looks like, so
 neither may be what "I could not read it" produces. The first version of this
 file got both wrong, and reported a clean library for a stale, configured,
 credential-bearing copy.
+
+The reading moved to `shortcut_forge_lib.library` on 2026-09-18, where a guest
+mint needs it too, and took those fail-closed rules with it. What counts as
+safe to publish — the names, the email heuristic, every refusal below — stays
+here.
 """
 
 from __future__ import annotations
 
 import argparse
-import plistlib
 import re
-import sqlite3
 import sys
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
 
 import argcomplete
+from shortcut_forge_lib.library import Expected, Installed, expected_builds, numbered_base, read_library
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -77,136 +80,6 @@ PREFIX = "Brightwheel"
 # just text, but no clean build carries an email anywhere, so finding one means
 # either an answered setup question or a debug build's baked-in values.
 EMAIL = re.compile(rb"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-
-# What an *unanswered* import question carries, measured against a clean import
-# on 2026-09-15. An answer arrives as an extra key, and Apple's name for it is
-# not documented — so treat any key outside this set as the answer rather than
-# guessing which one it is.
-QUESTION_KEYS = frozenset({"ActionIndex", "Category", "DefaultValue", "ParameterKey", "Text"})
-
-# `Brightwheel Attendance 1`, which is what a second import leaves behind.
-NUMBERED = re.compile(r"^(?P<base>.+?) (?P<n>\d+)$")
-
-
-@dataclass(frozen=True)
-class Installed:
-    """One shortcut as the library holds it."""
-
-    name: str
-    action_count: int = 0
-    question_count: int = 0
-    answered_questions: int = 0
-    credential_text: bool = False
-    # A blob that would not parse. It must never read as "zero of everything":
-    # zero actions and zero questions are what a *wrong* build looks like, so
-    # failing to read has to be its own refusal rather than a quiet count.
-    unreadable: bool = False
-
-
-@dataclass(frozen=True)
-class Expected:
-    """What the built plist in `dist/` says a clean copy should look like."""
-
-    actions: int
-    questions: int
-
-
-class UnreadableError(Exception):
-    """A blob that is not a plist this tool understands."""
-
-
-def _load(blob: bytes) -> object:
-    try:
-        return plistlib.loads(blob)
-    except (plistlib.InvalidFileException, ValueError, EOFError, TypeError) as exc:
-        raise UnreadableError(str(exc)) from exc
-
-
-def _count_actions(blob: bytes | None) -> int:
-    if not blob:
-        return 0
-    parsed = _load(blob)
-    if isinstance(parsed, dict):
-        return len(parsed.get("WFWorkflowActions", []))
-    return len(parsed) if isinstance(parsed, list) else 0
-
-
-def _count_questions(blob: bytes | None) -> int:
-    """How many setup questions the copy carries, answered or not.
-
-    A clean Attendance has three. A `--debug` build has none, because it bakes
-    the credentials in instead of asking — so this is what tells a dev build
-    from a release one. It is also the only thing that can see a copy that lost
-    its questions on import, since that leaves the action count untouched.
-    """
-    if not blob:
-        return 0
-    parsed = _load(blob)
-    return len(parsed) if isinstance(parsed, list) else 0
-
-
-def _count_answers(blob: bytes | None) -> int:
-    if not blob:
-        return 0
-    parsed = _load(blob)
-    if not isinstance(parsed, list):
-        return 0
-    return sum(1 for q in parsed if isinstance(q, dict) and any(v for k, v in q.items() if k not in QUESTION_KEYS))
-
-
-def read_library(database: Path | str, prefix: str = PREFIX) -> list[Installed]:
-    """Every shortcut whose name starts with `prefix`, as the database has it.
-
-    Opened read-only and through a URI, so a running Shortcuts.app is neither
-    disturbed nor able to disturb the read.
-    """
-    con = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    try:
-        rows = con.execute(
-            "SELECT ZSHORTCUT.ZNAME, ZSHORTCUT.ZIMPORTQUESTIONSDATA, ZSHORTCUTACTIONS.ZDATA "
-            "FROM ZSHORTCUT LEFT JOIN ZSHORTCUTACTIONS ON ZSHORTCUTACTIONS.Z_PK = ZSHORTCUT.ZACTIONS "
-            "WHERE ZSHORTCUT.ZNAME LIKE ? ORDER BY ZSHORTCUT.ZNAME",
-            (f"{prefix}%",),
-        ).fetchall()
-    finally:
-        con.close()
-
-    found = []
-    for name, questions, actions in rows:
-        blobs = [b for b in (questions, actions) if b]
-        credential = any(EMAIL.search(b) for b in blobs)
-        try:
-            found.append(
-                Installed(
-                    name=name,
-                    action_count=_count_actions(actions),
-                    question_count=_count_questions(questions),
-                    answered_questions=_count_answers(questions),
-                    credential_text=credential,
-                )
-            )
-        except UnreadableError:
-            found.append(Installed(name=name, credential_text=credential, unreadable=True))
-    return found
-
-
-def expected_builds(dist: Path, names: list[str]) -> dict[str, Expected]:
-    """What each built plist says a clean copy looks like, by name.
-
-    A name whose plist is absent is skipped rather than guessed at; `problems`
-    is what refuses the gap. Nothing here may invent an expectation, because an
-    invented one is indistinguishable from a met one.
-    """
-    built = {}
-    for name in names:
-        path = dist / f"{name}.xml"
-        if not path.exists():
-            continue
-        raw = path.read_bytes()
-        doc = _load(raw)
-        questions = doc.get("WFWorkflowImportQuestions", []) if isinstance(doc, dict) else []
-        built[name] = Expected(actions=_count_actions(raw), questions=len(questions))
-    return built
 
 
 def problems(installed: list[Installed], expected: dict[str, Expected], wanted: list[str]) -> list[str]:
@@ -229,8 +102,7 @@ def problems(installed: list[Installed], expected: dict[str, Expected], wanted: 
             found.append(f"{name} has {seen[name]} copies; the publisher cannot tell which is the new build")
 
     for shortcut in installed:
-        numbered = NUMBERED.match(shortcut.name)
-        if numbered and numbered.group("base") in wanted:
+        if numbered_base(shortcut.name) in wanted:
             found.append(
                 f"{shortcut.name} is a numbered copy left by a second import; delete it and the one it shadows"
             )
@@ -244,7 +116,7 @@ def problems(installed: list[Installed], expected: dict[str, Expected], wanted: 
                 f"{shortcut.name} has {shortcut.answered_questions} answered setup question(s), "
                 f"so it is a configured copy and may carry a password"
             )
-        if shortcut.credential_text:
+        if shortcut.contains(EMAIL):
             found.append(
                 f"{shortcut.name} carries an email address, so it is a configured or debug copy, not a clean build"
             )

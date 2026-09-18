@@ -84,7 +84,7 @@ def test_an_answered_setup_question_is_refused():
 
 
 def test_credential_shaped_text_is_refused():
-    baked = swap(clean(), "Brightwheel Attendance", credential_text=True)
+    baked = swap(clean(), "Brightwheel Attendance", blobs=(b"<string>parent@example.invalid</string>",))
     found = problems(baked, EXPECTED, WANTED)
     assert any("Brightwheel Attendance" in p for p in found), found
 
@@ -153,7 +153,9 @@ def test_every_problem_is_reported_not_just_the_first():
     assert len(problems(broken, EXPECTED, WANTED)) >= 2
 
 
-# -- reading the database --------------------------------------------------
+# -- a real database -------------------------------------------------------
+# The reader and its own tests live in `shortcut_forge_lib.library`. These
+# helpers build the subset of the schema it reads, for the gate tests below.
 
 
 def _fixture_db(path: Path, rows: list[tuple[str, bytes | None, bytes | None]]) -> None:
@@ -161,7 +163,8 @@ def _fixture_db(path: Path, rows: list[tuple[str, bytes | None, bytes | None]]) 
     con = sqlite3.connect(path)
     con.execute("CREATE TABLE ZSHORTCUTACTIONS (Z_PK INTEGER PRIMARY KEY, ZDATA BLOB)")
     con.execute(
-        "CREATE TABLE ZSHORTCUT (Z_PK INTEGER PRIMARY KEY, ZNAME TEXT, ZIMPORTQUESTIONSDATA BLOB, ZACTIONS INTEGER)"
+        "CREATE TABLE ZSHORTCUT (Z_PK INTEGER PRIMARY KEY, ZNAME TEXT, ZTOMBSTONED INTEGER DEFAULT 0, "
+        "ZIMPORTQUESTIONSDATA BLOB, ZACTIONS INTEGER)"
     )
     for index, (name, questions, actions) in enumerate(rows, start=1):
         con.execute("INSERT INTO ZSHORTCUTACTIONS (Z_PK, ZDATA) VALUES (?, ?)", (index, actions))
@@ -186,65 +189,6 @@ def _questions_blob(count: int, *, answered: bool = False) -> bytes:
     if answered:
         q["ActualValue"] = "someone@example.invalid"
     return plistlib.dumps([q] * count)
-
-
-def test_read_library_counts_actions_questions_and_answers(tmp_path):
-    db = tmp_path / "Shortcuts.sqlite"
-    _fixture_db(db, [("Brightwheel Attendance", _questions_blob(3), _actions_blob(339))])
-
-    found = check_library.read_library(db, prefix="Brightwheel")[0]
-
-    assert found.action_count == 339
-    assert found.question_count == 3
-    assert found.answered_questions == 0
-    assert found.credential_text is False
-    assert found.unreadable is False
-
-
-def test_read_library_spots_an_answered_question(tmp_path):
-    db = tmp_path / "Shortcuts.sqlite"
-    _fixture_db(db, [("Brightwheel Attendance", _questions_blob(3, answered=True), _actions_blob(339))])
-
-    found = check_library.read_library(db, prefix="Brightwheel")[0]
-
-    assert found.answered_questions == 3
-    assert found.credential_text is True
-
-
-def test_read_library_spots_a_credential_baked_into_the_actions(tmp_path):
-    """A debug build carries the address in the actions, with no question at all."""
-    db = tmp_path / "Shortcuts.sqlite"
-    _fixture_db(db, [("Brightwheel Attendance", None, _actions_blob(341, text="parent@example.invalid"))])
-
-    found = check_library.read_library(db, prefix="Brightwheel")[0]
-
-    assert found.question_count == 0
-    assert found.credential_text is True
-
-
-def test_read_library_marks_an_unparseable_blob_unreadable(tmp_path):
-    """Not zero actions. Unreadable, so `problems` refuses it."""
-    db = tmp_path / "Shortcuts.sqlite"
-    _fixture_db(db, [("Brightwheel Attendance", None, b"this is not a plist")])
-
-    found = check_library.read_library(db, prefix="Brightwheel")[0]
-
-    assert found.unreadable is True
-
-
-def test_expected_builds_reads_actions_and_questions(tmp_path):
-    doc = plistlib.loads(_actions_blob(17))
-    doc["WFWorkflowImportQuestions"] = [{"ParameterKey": "WFTextActionText"}] * 3
-    (tmp_path / "Brightwheel Check In.xml").write_bytes(plistlib.dumps(doc))
-
-    built = check_library.expected_builds(tmp_path, ["Brightwheel Check In"])
-
-    assert built == {"Brightwheel Check In": Expected(actions=17, questions=3)}
-
-
-def test_expected_builds_skips_a_name_with_no_plist(tmp_path):
-    """Skipping is fine here; `problems` is what refuses the gap."""
-    assert check_library.expected_builds(tmp_path, ["Brightwheel Check In"]) == {}
 
 
 # -- the gate a minting rig calls -------------------------------------------
@@ -296,3 +240,20 @@ def test_gate_refuses_a_missing_database_instead_of_raising(tmp_path):
 
     assert len(found) == 1
     assert "no Shortcuts database" in found[0]
+
+
+def test_gate_refuses_a_copy_carrying_an_email(tmp_path):
+    """The library reads the blobs; searching them for a credential is this gate's policy."""
+    db = tmp_path / "Shortcuts.sqlite"
+    _fixture_db(
+        db,
+        [
+            ("Brightwheel Attendance", None, _actions_blob(339, text="parent@example.invalid")),
+            ("Brightwheel Check In", None, _actions_blob(17)),
+            ("Brightwheel Check Out", None, _actions_blob(17)),
+        ],
+    )
+
+    found = check_library.gate(db, _fixture_dist(tmp_path))
+
+    assert any("carries an email address" in f for f in found)
