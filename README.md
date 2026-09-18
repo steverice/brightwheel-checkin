@@ -131,31 +131,44 @@ uv run python tools/build_publisher.py     # -> dist-tools/, validated and signe
 uv run pytest tests/test_publisher.py
 ```
 
-Import it once on iOS 27 or macOS 27. There is nothing to pick: it finds each of
-the three by name every time it runs, so after a release it simply finds the new
-copies. A picker couldn't do that. It stores a workflow identifier, which every
-re-import replaces, and it can't be pre-seeded by name (shortcut-forge's
-`docs/simulator-harness.md` has the measurements).
+Import it once, into the library the links are minted from (below). There is
+nothing to pick: it finds each of the three by name every time it runs, so after
+a release it simply finds the new copies. A picker couldn't do that. It stores a
+workflow identifier, which every re-import replaces, and it can't be pre-seeded
+by name (shortcut-forge's `docs/simulator-harness.md` has the measurements). Its
+first run after an import asks once each to copy to the clipboard, create iCloud
+links, and show a notification, and waits until each is answered; later runs
+ask nothing.
 
 > [!NOTE]
 > ### Mint links from a library that holds none of your own copies
 >
-> Use a Mac with **Shortcuts' iCloud sync turned off**, holding fresh imports of
-> `dist/` and nothing you have set up. Never the phone you check in with.
+> Mint in a throwaway clone of a **macOS 26** guest whose library holds
+> Brightwheel Share Links and nothing else, signed in to a dedicated publishing
+> Apple Account, with **Shortcuts' iCloud sync turned off**. Never the phone you
+> check in with, and never a library holding a copy you set up.
 >
 > The publisher links whatever it finds under each name, and it cannot tell a
 > clean build from the copy you use every day — the one carrying your Brightwheel
 > password, baked in if it is a debug build and stored as your answers if it is
-> not. In a synced library that is the copy it would find, and every check would
-> pass. The confirmation tap would be the only thing between your password and
-> the internet, and a link cannot be revoked afterward (shortcut-forge's
-> `docs/simulator-harness.md`).
+> not. Every one of its checks would pass on that copy, and a link cannot be
+> revoked afterward (shortcut-forge's `docs/simulator-harness.md`). Sync off
+> keeps one release's imports from syncing back into the guest the next clone
+> starts from, and out of any other library on the account.
 >
-> Sync off also keeps a release import from landing on your phone beside your own
-> copies, where the wrappers find Brightwheel Attendance by name. If sync is ever
-> turned back on, delete the Mac's Brightwheel shortcuts first.
+> The guest has to be macOS 26: a macOS 27 guest cannot register for Apple
+> Push, so it never gets a usable iCloud session and cannot mint at all. The
+> shortcuts are built for iOS 27 and still import into a 26 library with every
+> action and setup question intact. The v1.5.0 links were minted this way on
+> 2026-09-18, with nobody at the guest's screen. The procedure and the
+> measurements behind it are in shortcut-forge's `docs/macos-guest.md`, under
+> "iCloud in a guest" and "Minting from a clone, end to end" (on that repo's
+> `guest-icloud-findings` branch until it merges). Earlier releases were minted
+> from a Mac with sync off, which works for the same reasons. That Mac still
+> holds release copies, so if it ever turns sync back on, delete its Brightwheel
+> shortcuts first, or they land on your phone beside your own.
 
-**Delete the old copies before importing the new ones, and on a Mac don't choose
+**Delete the old copies before importing the new ones, and on macOS don't choose
 Replace.** A plain second import installs a numbered copy (`Brightwheel
 Attendance 1`). Replace hides the old copy from the app without removing it.
 Either way the publisher stops with a notification rather than guessing which
@@ -176,8 +189,16 @@ library was still holding v1.4.0 when v1.5.0 was cut, which would have put three
 fresh links to the old code on the page.
 
 ```bash
-uv run python tools/check_library.py     # non-zero means do not mint
+# in the guest, after importing dist/: a consistent copy, since the database is WAL
+sqlite3 ~/Library/Shortcuts/Shortcuts.sqlite ".backup /tmp/library.sqlite"
+
+# here, with that copy fetched back:
+uv run python tools/check_library.py --database library.sqlite   # non-zero means do not mint
 ```
+
+Without `--database` it reads this Mac's own library. A copy of the main
+database file alone, without its `-wal` and `-shm`, is the library from before
+the latest imports, and is refused as missing all three.
 
 It reads the Shortcuts database rather than the screen, and refuses on a missing
 shortcut, a duplicate or numbered copy, an answered setup question, an email
