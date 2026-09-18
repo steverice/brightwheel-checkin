@@ -156,6 +156,290 @@ def load_env(path: str | Path) -> dict[str, str]:
     return env
 
 
+# --- the schedule --------------------------------------------------------
+#
+# Two settings decide whether an automated run does anything at all: which
+# days of the week are school days, and a date until which every run is
+# snoozed. Neither is something a trigger can express — an Arrive trigger
+# carries a time range but no weekday, and nothing at all for a school break —
+# so they live in the shortcut. Only a run that was handed a direction is
+# subject to them: Attendance run by hand from its menu is a person deciding,
+# and a Saturday event is exactly when they would.
+SCHOOL_DAYS_DEFAULT = "Monday Tuesday Wednesday Thursday Friday"
+# A date as yyyy-MM-dd, with the whitespace a text field can add. Rebuilt as
+# yyyyMMdd from its three groups, because that reads as a number whose order
+# is the calendar's, so "is it still before then" is one subtraction — and
+# because it is never parsed back as a date, which is where locale and time
+# zone would get a say.
+SNOOZE_DATE = r"^\s*([0-9]{4})-([0-9]{2})-([0-9]{2})\s*$"
+DATE_NUMBER = r"^[0-9]{8}$"
+# Today's day of the week, as Format Date writes it: EEEE for the full name
+# in a notification, EEE for the three letters the list is matched with, so
+# "Mon" and "Monday" in the list both mean Monday. Both are the device's own
+# language, so a list typed in that language matches. Measured on an iOS 27
+# simulator: Friday / Fri / 20260918 for the three patterns.
+DAY_NAME, DAY_SHORT, DATE_AS_NUMBER = "EEEE", "EEE", "yyyyMMdd"
+
+
+def schedule_guard(
+    actions: ActionList,
+    *,
+    automated: dict[str, Any],
+    days: dict[str, Any],
+    snooze: dict[str, Any],
+    verb: dict[str, Any],
+    days_hint: str,
+    snooze_hint: str,
+) -> None:
+    """Stop an automated run on a day that is not a school day, or while snoozed.
+
+    `automated` is a Count: how many directions were handed in, so 0 for a run
+    from the menu. `days` and `snooze` are attachment values read as text —
+    a Text action, a stored value, whatever the build wired in — holding the
+    school days as a list of names and the snooze as yyyy-MM-dd. `verb` is the
+    direction's verb, for the notification title. The hints say where to
+    change each setting, and go at the end of the notification.
+
+    Every branch here is a count or a subtraction compared against a literal,
+    like the rest of the file. The day check matches a pattern built from
+    today's name against the list, which is the one Match Text in the file
+    whose pattern is not fixed — measured to count 1 against a list holding
+    the day and 0 against one that does not. An empty list means every day is
+    a school day; a snooze that is not a date means no snooze. Both fall
+    through rather than stopping the run, because a setting that was cleared
+    is not a reason to skip a check-in.
+
+    Exit is used here, not a flag: this sits at the top level, before the
+    session and the attempt Repeat.
+    """
+    i = actions.uuids
+    g_auto, g_days_set, g_not_day, g_snooze_set, g_snoozed = (next(i) for _ in range(5))
+
+    actions.append(
+        comment(
+            "--- SCHEDULE ---\n"
+            "Only the automations are subject to this. A run from the menu is a "
+            "person deciding, so it goes ahead whatever the day.\n"
+            "- Condition counts whether a direction was handed in"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_auto,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(automated),
+        )
+    )
+
+    u_now = next(i)
+    actions.append(act("is.workflow.actions.date", UUID=u_now))
+    today = {}
+    for key, pattern, name in (
+        ("name", DAY_NAME, "Today Name"),
+        ("short", DAY_SHORT, "Today Short"),
+        ("number", DATE_AS_NUMBER, "Today Number"),
+    ):
+        u = next(i)
+        actions.append(
+            act(
+                "is.workflow.actions.format.date",
+                UUID=u,
+                CustomOutputName=name,
+                WFDate=ts(out(u_now, "Current Date")),
+                WFDateFormatStyle="Custom",
+                WFDateFormat=pattern,
+            )
+        )
+        today[key] = out(u, name)
+
+    # ---- school days ----
+    u_days = next(i)
+    actions.append(
+        act("is.workflow.actions.gettext", UUID=u_days, CustomOutputName="School Days", WFTextActionText=ts(days))
+    )
+    c_days = actions.count_matches(out(u_days, "School Days"), coerce=False)
+    actions.append(
+        comment(
+            "Skip a day that is not a school day.\n"
+            "- Condition counts whether any school days are listed at all; none "
+            "listed means every day\n"
+            "- Today is matched by its first three letters, so Mon and Monday "
+            "both count"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_days_set,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_days, "Count")),
+        )
+    )
+    u_dm, u_dc = next(i), next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.text.match",
+            UUID=u_dm,
+            WFMatchTextPattern=ts("(?i)\\b", today["short"]),
+            text=ts(out(u_days, "School Days")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.count",
+            UUID=u_dc,
+            WFCountType="Items",
+            WFInput=attach(out(u_dm, "Matches")),
+            Input=attach(out(u_dm, "Matches")),
+        )
+    )
+    actions.append(
+        comment(
+            "Stop if today is not in the list.\n"
+            "- Condition counts today's three letters in the list\n"
+            "- The notification names the day and the list, and how to change it"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_not_day,
+            WFControlFlowMode=0,
+            WFCondition=LESS_THAN,
+            WFNumberValue="1",
+            WFInput=cond_input(out(u_dc, "Count")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("Nobody ", verb),
+            WFNotificationActionBody=ts(
+                "Today is ",
+                today["name"],
+                ", which is not one of the school days (",
+                out(u_days, "School Days"),
+                "), so nothing was sent. Run Brightwheel Attendance by hand to check in or out anyway. ",
+                days_hint,
+            ),
+        )
+    )
+    actions.append(act("is.workflow.actions.exit"))
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_not_day, WFControlFlowMode=2)
+    )
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_days_set, WFControlFlowMode=2)
+    )
+
+    # ---- snooze ----
+    u_sn, u_sm = next(i), next(i)
+    actions.append(
+        act("is.workflow.actions.gettext", UUID=u_sn, CustomOutputName="Snooze Until", WFTextActionText=ts(snooze))
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.text.match",
+            UUID=u_sm,
+            WFMatchTextPattern=SNOOZE_DATE,
+            text=ts(out(u_sn, "Snooze Until")),
+        )
+    )
+    groups = []
+    for index in ("1", "2", "3"):
+        u_g = next(i)
+        actions.append(
+            act(
+                "is.workflow.actions.text.match.getgroup",
+                UUID=u_g,
+                WFGroupIndex=index,
+                matches=attach(out(u_sm, "Matches")),
+            )
+        )
+        groups.append(out(u_g, "Matched Text Group"))
+    u_snum = next(i)
+    actions.append(
+        act("is.workflow.actions.gettext", UUID=u_snum, CustomOutputName="Snooze Number", WFTextActionText=ts(*groups))
+    )
+    c_snooze = actions.count_matches(out(u_snum, "Snooze Number"), DATE_NUMBER, coerce=False)
+    actions.append(
+        comment(
+            "Skip every day before the snooze date.\n"
+            "- Condition counts whether the snooze is a date at all; anything "
+            "else means no snooze\n"
+            "- Today is subtracted from that date as yyyymmdd numbers, so a "
+            "positive result is a date still to come"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_snooze_set,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_snooze, "Count")),
+        )
+    )
+    u_left = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.math",
+            UUID=u_left,
+            WFInput=attach(out(u_snum, "Snooze Number")),
+            WFMathOperation="-",
+            WFMathOperand=attach(today["number"]),
+        )
+    )
+    actions.append(
+        comment(
+            "Stop if the snooze date is still to come.\n"
+            "- Condition checks the subtraction above for a positive result\n"
+            "- Zero is the first day back, which runs"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_snoozed,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(u_left, "Calculation Result")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("Nobody ", verb),
+            WFNotificationActionBody=ts(
+                "Check-ins and check-outs are snoozed until ",
+                out(u_sn, "Snooze Until"),
+                ", so nothing was sent. Run Brightwheel Attendance by hand to check in or out anyway. ",
+                snooze_hint,
+            ),
+        )
+    )
+    actions.append(act("is.workflow.actions.exit"))
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_snoozed, WFControlFlowMode=2)
+    )
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_snooze_set, WFControlFlowMode=2)
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_auto, WFControlFlowMode=2))
+
+
 # --- shortcut assembly --------------------------------------------------
 # `checked_in` is the DESIRED state, not the child's current state.
 #   checked_in: true  -> checks the child IN
@@ -252,8 +536,10 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             "triggers. Run this on its own and it simply asks.\n\n"
             "Built to be run unattended by a location trigger, so it does not stop "
             "to ask anything on the normal path. Everything it needs is collected "
-            "once, when you import it. When it should run is decided by the "
-            "trigger's own time range, not by this shortcut.\n\n"
+            "once, when you import it. The time of day it runs at is the "
+            "trigger's own time range; which days of the week count as school "
+            "days, and a date to snooze until over a school break, are settings "
+            "of this shortcut, and only the automations obey them.\n\n"
             "Each run:\n"
             "1. Checks the saved sign-in is still valid, and signs in again by itself "
             "if it has expired.\n"

@@ -219,12 +219,31 @@ or was started by hand: the 2FA code (the token has already expired), the QR sca
 driving). An earlier blanket ban on interactive actions was too broad — the rule
 belongs on the happy path, not the recovery paths.
 
-**No time logic.** iOS 27 attaches triggers to the shortcut itself, and the
-trigger carries its own time range, so a weekday-and-hour guard inside the
-shortcut was redundant and was removed. The trade-off: that guard also covered
-Siri, which cannot be disabled and which a trigger's time range does not
-constrain. A stray *repeat* is still harmless thanks to idempotency, but a stray
-run of the *opposite* direction now writes real attendance.
+**The time of day is the trigger's; the day of the week and a school break
+are the shortcut's.** iOS 27 attaches triggers to the shortcut itself, and an
+Arrive trigger carries its own time range, so an hour guard inside the shortcut
+would be a second copy of a fact that lives on the device, and there is none.
+What a trigger cannot express is which days of the week count, or a date to
+sit out until: it has no weekday, and walking past the school on a Saturday
+fires it like any other arrival. So those two are settings of `Brightwheel
+Attendance`, checked by `schedule_guard()` before anything is sent, and only
+on a run that was handed a direction — a run from the menu is a person
+deciding, and a Saturday event is exactly when they would.
+
+Both checks are counts against a literal, like everything else here, and both
+stay out of date parsing. Today's name comes from Format Date (`EEEE` for the
+notification, `EEE` for the match), and the list is matched with a pattern
+built from those three letters, so `Mon` and `Monday` both count — the one
+Match Text in the build whose pattern is not fixed, measured to count 1 against
+a list holding the day and 0 against one that does not. The snooze date is a
+`yyyy-MM-dd` string rebuilt as `yyyymmdd` from its three groups and subtracted
+from today formatted the same way, so "still before then" is a positive
+Calculate result and never a Date compared to a Date. An empty list means every
+day, and a snooze that is not a date means none; a cleared setting is not a
+reason to skip a check-in. Each stop is a notification that names the day or
+the date and says how to change the setting. The Siri caveat stands: saying a
+wrapper's name still runs it, and the schedule applies to that run too, but a
+stray run of the *opposite* direction on a school day writes real attendance.
 
 **The token is scoped, the school code is shared.** `Brightwheel Attendance` is
 the only shortcut that signs in, so the token has nothing to be shared with:
