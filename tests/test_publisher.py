@@ -56,10 +56,13 @@ def test_clipboard_gets_the_markup_update_links_reads():
     assert sum(1 for a in acts if ident(a) == "is.workflow.actions.setclipboard") == 1
 
 
-def test_it_says_what_to_run_next():
-    last = actions()[-1]
-    assert ident(last) == "is.workflow.actions.showresult"
-    assert "verify_links.py --clipboard --erase" in params(last)["Text"]["Value"]["string"]
+def test_it_ends_on_a_notification_not_a_sheet():
+    # Show Result holds `shortcuts run` open behind a Cancel / Done sheet until
+    # someone clicks, which a headless mint cannot do.
+    acts = actions()
+    assert ident(acts[-1]) == "is.workflow.actions.notification"
+    assert "Copied three links" in params(acts[-1])["WFNotificationActionBody"]["Value"]["string"]
+    assert not [a for a in acts if ident(a) == "is.workflow.actions.showresult"]
 
 
 def test_it_asks_no_setup_questions():

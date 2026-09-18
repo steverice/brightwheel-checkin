@@ -19,10 +19,12 @@ Run it headless:
     shortcuts run "Brightwheel Share Links"
 
 It exits 0 with the three links already on the clipboard — no taps, no phone,
-no Shortcuts window. Then `verify_links.py --clipboard --erase` and
-`update_links.py --clipboard` finish the job; `release.sh` offers to run both
-right after cutting a release, and declining that offer is what leaves the
-published page handing out the previous build's links.
+no Shortcuts window — once a fresh import has been allowed, one time each, to
+copy to the clipboard, create iCloud links, and show a notification. Then
+`verify_links.py --clipboard --erase` and `update_links.py --clipboard` finish
+the job; `release.sh` offers to run both right after cutting a release, and
+declining that offer is what leaves the published page handing out the previous
+build's links.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ from typing import Any
 import argcomplete
 from shortcut_forge_lib.build import Shortcut, build_all
 from shortcut_forge_lib.checks import CheckError
+from shortcut_forge_lib.plist import ts
 from shortcut_forge_lib.publisher import share_links_shortcut
 from shortcut_forge_lib.toolchain import SigningError, ToolNotFoundError, ValidationError
 
@@ -47,6 +50,7 @@ from update_links import NAMES  # noqa: E402
 
 NAME = "Brightwheel Share Links"
 TARGETS = NAMES
+DONE = "Copied three links to the clipboard."
 
 # Validator complaints that are expected here. Anything else is real.
 #   The prompt-comment rule, waived in build_shortcuts.py for the same reason:
@@ -56,13 +60,34 @@ WAIVED = ["Second action must be the prompt Comment block"]
 
 
 def build() -> dict[str, Any]:
-    """The publisher, with this project's three targets and the page's markup."""
-    return share_links_shortcut(
+    """The publisher, with this project's three targets and the page's markup.
+
+    The library ends on Show Result, and on macOS that holds `shortcuts run`
+    open behind a Cancel / Done sheet until someone clicks: in a guest on
+    2026-09-18 the run printed its message, then returned only once Done was
+    clicked. Nobody is there to click in a headless mint, so the ending is a
+    notification instead, which is how every other outcome here is reported.
+
+    A notification asks once per shortcut for permission to display, and after
+    that it holds nothing open. Measured with two probes that differ only in
+    their last action, each run a second time with every permission granted: the
+    notification one returned in under a second, and the Show Result one was
+    still waiting on Done after 30 seconds.
+    """
+    plist = share_links_shortcut(
         NAME,
         TARGETS,
         line_format='<li><a href="{link}">{name}</a></li>\n',
-        done_message="Copied three links. Now run: uv run python tools/verify_links.py --clipboard --erase",
+        done_message=DONE,
     )
+    actions = plist["WFWorkflowActions"]
+    if actions[-1]["WFWorkflowActionIdentifier"] != "is.workflow.actions.showresult":
+        raise CheckError(f"{NAME} no longer ends on Show Result; look again before replacing its last action")
+    actions[-1] = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.notification",
+        "WFWorkflowActionParameters": {"WFNotificationActionBody": ts(DONE)},
+    }
+    return plist
 
 
 class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
