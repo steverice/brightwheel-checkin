@@ -18,7 +18,7 @@ TOOLS = Path(__file__).resolve().parent.parent / "tools"
 sys.path.insert(0, str(TOOLS))
 
 import build_publisher as publisher  # noqa: E402
-from update_links import NAMES, RELEASES, with_version  # noqa: E402
+from update_links import LINE_FORMAT, NAMES, RELEASES, from_file, with_version  # noqa: E402
 
 
 def actions():
@@ -82,3 +82,12 @@ def test_the_shipped_page_has_exactly_one_badge():
     matches = re.findall(r'<a class="version" href="' + re.escape(RELEASES) + r'([^"]*)">([^<]*)</a>', page)
     assert len(matches) == 1
     assert matches[0][0] == matches[0][1]
+
+
+def test_links_come_back_from_a_saved_file_by_name(tmp_path):
+    # What `pbpaste > links.html` in the minting guest saves, lines reordered.
+    links = {n: f"https://www.icloud.com/shortcuts/{i:032x}" for i, n in enumerate(NAMES, start=1)}
+    saved = tmp_path / "links.html"
+    saved.write_text("".join(LINE_FORMAT.format(name=n, link=links[n]) for n in reversed(NAMES)), encoding="utf-8")
+
+    assert from_file(saved) == links

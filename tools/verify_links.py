@@ -9,6 +9,7 @@ whose check-in never works. So every link is compared against the build it is
 supposed to carry before it goes anywhere near the page.
 
     uv run python tools/verify_links.py --clipboard                  # what Share Links copied
+    uv run python tools/verify_links.py --file links.html            # what it copied in a guest
     uv run python tools/verify_links.py --clipboard --simulator --erase
 
 By default each link is checked through the iCloud records API
@@ -38,7 +39,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from console import error, info  # noqa: E402
-from update_links import NAMES, PREFIX, from_clipboard  # noqa: E402
+from update_links import NAMES, PREFIX, from_clipboard, from_file  # noqa: E402
 
 
 class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
@@ -52,7 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=Formatter,
         allow_abbrev=False,
     )
-    ap.add_argument("--clipboard", action="store_true", help="read the links from the clipboard (the default)")
+    source = ap.add_mutually_exclusive_group()
+    source.add_argument("--clipboard", action="store_true", help="read the links from the clipboard (the default)")
+    source.add_argument("--file", type=Path, metavar="PATH", help="read the links from Share Links' saved output")
     ap.add_argument("--dist", default=REPO / "dist", type=Path, help="where the built .xml files are")
     ap.add_argument("--simulator", action="store_true", help="import each link on a simulator instead")
     ap.add_argument("--erase", action="store_true", help="with --simulator, wipe the simulator's library first")
@@ -93,10 +96,10 @@ def main() -> int:
         error("--erase wipes a simulator's library, so it needs --simulator")
         return 1
 
-    links = from_clipboard()
+    links = from_file(args.file) if args.file else from_clipboard()
     missing = [n for n in NAMES if n not in links]
     if missing:
-        error(f"No link on the clipboard for: {', '.join(missing)}")
+        error(f"No link {f'in {args.file}' if args.file else 'on the clipboard'} for: {', '.join(missing)}")
         return 1
     bad = [n for n in NAMES if not links[n].startswith(PREFIX)]
     if bad:

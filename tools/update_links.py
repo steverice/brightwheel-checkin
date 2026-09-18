@@ -9,7 +9,7 @@ the link-preview card, which shows the same badge.
 
     uv run python tools/update_links.py                 # asks for each of the three
     uv run python tools/update_links.py --clipboard     # takes what Share Links copied
-    uv run python tools/update_links.py --clipboard --version v1.4.0
+    uv run python tools/update_links.py --file links.html --version v1.5.0
 
 Without --version the badge takes the latest published release on GitHub,
 asked of `gh`, which is right when this runs where release.sh runs it: just
@@ -75,6 +75,16 @@ def from_clipboard() -> dict[str, str]:
     return links_from_markup(text, NAMES, LINE_FORMAT)
 
 
+def from_file(path: Path) -> dict[str, str]:
+    """The same markup, saved to a file — how the links come back from a guest.
+
+    Share Links runs inside the minting guest, so what it copies lands on the
+    guest's pasteboard, not this Mac's; `pbpaste > links.html` there carries it
+    over without touching the clipboard here.
+    """
+    return links_from_markup(path.read_text(encoding="utf-8"), NAMES, LINE_FORMAT)
+
+
 def ask() -> dict[str, str]:
     info("Paste each iCloud link. In Shortcuts, run Brightwheel Share Links,")
     info("or share each shortcut and choose Copy iCloud Link.\n")
@@ -84,6 +94,15 @@ def ask() -> dict[str, str]:
         if value:
             found[name] = value
     return found
+
+
+def read_links(args: argparse.Namespace) -> dict[str, str]:
+    """The three links from wherever the command line says they are."""
+    if args.file:
+        return from_file(args.file)
+    if args.clipboard:
+        return from_clipboard()
+    return ask()
 
 
 class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
@@ -97,7 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=Formatter,
         allow_abbrev=False,
     )
-    ap.add_argument("--clipboard", action="store_true", help="read the links from the clipboard instead of asking")
+    source = ap.add_mutually_exclusive_group()
+    source.add_argument("--clipboard", action="store_true", help="read the links from the clipboard instead of asking")
+    source.add_argument("--file", type=Path, metavar="PATH", help="read the links from Share Links' saved output")
     ap.add_argument(
         "--version", metavar="TAG", help="the release the links carry; default: the latest release on GitHub"
     )
@@ -109,11 +130,11 @@ def main() -> int:
     args = build_parser().parse_args()
 
     page = PAGE.read_text(encoding="utf-8")
-    links = from_clipboard() if args.clipboard else ask()
+    links = read_links(args)
 
     missing = [n for n in NAMES if n not in links]
     if missing:
-        where = "on the clipboard" if args.clipboard else "given"
+        where = f"in {args.file}" if args.file else "on the clipboard" if args.clipboard else "given"
         error(f"\nNo link {where} for: {', '.join(missing)}. Page unchanged.")
         return 1
 
