@@ -64,7 +64,14 @@ from collections import Counter
 from pathlib import Path
 
 import argcomplete
-from shortcut_forge_lib.library import Expected, Installed, expected_builds, numbered_base, read_library
+from shortcut_forge_lib.library import (
+    Expected,
+    Installed,
+    LibraryError,
+    expected_builds,
+    numbered_base,
+    read_library,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -152,7 +159,11 @@ def gate(database: Path, dist: Path, prefix: str = PREFIX) -> list[str]:
     """
     if not database.exists():
         return [f"no Shortcuts database at {database}"]
-    return problems(read_library(database, prefix=prefix), expected_builds(dist, NAMES), NAMES)
+    try:
+        installed = read_library(database, prefix=prefix)
+    except LibraryError as exc:
+        return [str(exc)]
+    return problems(installed, expected_builds(dist, NAMES), NAMES)
 
 
 def main() -> int:
@@ -165,8 +176,15 @@ def main() -> int:
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
+    # The listing is for the reader's benefit. A library that cannot be read is
+    # left to `gate` below, which reports it as a refusal.
+    installed = None
     if args.database.exists():
-        installed = read_library(args.database, prefix=args.prefix)
+        try:
+            installed = read_library(args.database, prefix=args.prefix)
+        except LibraryError:
+            installed = None
+    if installed is not None:
         info(f"library holds {len(installed)} shortcut(s) named {args.prefix}*; comparing against {args.dist}")
         for shortcut in installed:
             if shortcut.unreadable:

@@ -257,3 +257,13 @@ def test_gate_refuses_a_copy_carrying_an_email(tmp_path):
     found = check_library.gate(db, _fixture_dist(tmp_path))
 
     assert any("carries an email address" in f for f in found)
+
+
+def test_gate_refuses_a_database_that_is_not_a_shortcuts_library(tmp_path):
+    other = tmp_path / "Shortcuts.sqlite"
+    sqlite3.connect(other).execute("CREATE TABLE unrelated (x)").connection.close()
+
+    found = check_library.gate(other, _fixture_dist(tmp_path))
+
+    assert len(found) == 1
+    assert "Shortcuts library" in found[0]
