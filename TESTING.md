@@ -75,7 +75,7 @@ grep -c schools.mybrightwheel.com "dist-test/Brightwheel Attendance.xml"   # 0
 | `an_empty_code_answer_sends_another` | Empty is the only resend control now. Done on an empty field reaches `/sessions/start` again and never `/sessions` |
 | `a_code_sent_minutes_ago_is_not_sent_again` | Cancel the prompt, run again within ten minutes: the prompt comes back with no second send, and the send time is cleared once the code is accepted |
 | `a_code_on_the_clipboard_is_offered` | A six-digit clipboard prefills the prompt, and Done alone exchanges it. A pasted value carries provenance, so iOS asks before sending it ("send 1 text item to localhost?"), and the token it earns carries it on: four prompts in that run, one on the next, none on the one after, measured from an erased device. The test clears them and asserts the second follow-up run asks nothing. Every sign-in test sets the simulator's pasteboard first, by way of the Mac's own (`simctl pbcopy` copies nothing under Xcode 27; `pbsync` does), and the suite restores the Mac's clipboard when it finishes |
-| `test_setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. Currently a **known-broken canary** — see the support matrix |
+| `test_setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. A canary: broken from iOS 27.0 beta 5 through the 27.0 release, passing again on 27.2 beta 1 — see the support matrix |
 | `a_day_that_is_not_a_school_day_sends_nothing` | The school-days guard: with every day but today in the store, Check In makes no request at all |
 | `a_school_day_named_by_three_letters_runs` | The match is on the first three letters: a stored `Fri` on a Friday checks both children in |
 | `nothing_stored_means_monday_to_friday` | The default when "Set school days" has never run: a weekday runs, a weekend day does not. The one test whose expectation depends on the calendar |
@@ -178,6 +178,7 @@ inferred from release notes.
 | iOS 27.0 beta 6 `24A5423a` | yes | **No** | simulator |
 | iOS 27.0 beta 7 `24A5424a` | yes | **No** | **device** |
 | iOS 27.0 RC `24A434` | yes | **No** — but Skip Setup commits them | simulator |
+| iOS 27.2 beta 1 `24B5084k` | yes | **yes** — Add Shortcut commits them again | simulator |
 
 Beta 7 is a device result because Apple has published no simulator runtime for
 it — the downloadable index stops at beta 6. That makes it the better data
@@ -215,6 +216,28 @@ That is what `test_setup_questions_commit_their_answers` watches. It is marked
 `expected_broken`, so it reports **KNOWN** in yellow and does not fail the
 suite — and the day a release fixes it, it reports **FIXED** and tells you to
 drop the marker.
+
+**iOS 27.2 beta 1 (`24B5084k`) commits the answer again.** Measured 2026-09-18
+with shortcut-forge's two-action `setup_probe`, driven through idb on a
+simulator, with the `24A434` release run through the identical procedure as the
+control: on 27.0 the typed answer plus Add Shortcut installed nothing, and on
+27.2 beta 1 the installed shortcut held the typed answer, read out of
+`Shortcuts.sqlite`. Skip Setup left the placeholder on both. Two things sit
+between the typing and the tap and are worth knowing for anyone repeating it:
+the software keyboard covers Add Shortcut after typing, so a tap at the button's
+frame lands on the keys, and on a fresh device dismissing the keyboard raises a
+first-run typing tip whose Continue brings the keyboard back. The full suite has
+not run on 27.2 beta 1, so the `expected_broken` marker stays until it does. The
+matrix already holds a beta that got this right before a later beta broke it,
+so this is a beta-1 row, not a 27.2 row.
+
+**When 27.2 ships, update the text that steers around the bug.** Once the
+canary passes on the release build: the README's install step that says to
+finish with Skip Setup and the warning block below it; the note carried in the
+last setup question in `build_shortcuts.py`, which says the same; and the
+`expected_broken` marker on `test_setup_questions_commit_their_answers`. Users
+on 27.0 still need the workaround, so the wording becomes "on 27.2 or later, Add
+Shortcut works; on 27.0, use Skip Setup" rather than a plain removal.
 
 ### Three checks, three different questions
 
