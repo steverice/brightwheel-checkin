@@ -86,8 +86,8 @@ class Suite:
             fresh = self.sim.install(paths[name], expect_name=name)
             info(f"  {'installed' if fresh else 'already present'}: {name}")
 
-        # The sign-in tests set the device's pasteboard, which only takes by
-        # way of the Mac's own, so remember what was on it and put it back.
+        # The sign-in tests set the device's pasteboard with `set_pasteboard`, which
+        # goes by way of the Mac's own, so remember what was on it and put it back.
         self.host_clipboard = subprocess.run(["pbpaste"], capture_output=True, text=True, check=False).stdout
 
         self._prime()
@@ -101,27 +101,6 @@ class Suite:
     def teardown(self) -> None:
         self.mock.stop()
         subprocess.run(["pbcopy"], input=self.host_clipboard, text=True, check=False)
-
-    def set_device_clipboard(self, text: str) -> None:
-        """Put text on the simulator's pasteboard, and confirm it landed.
-
-        `simctl pbcopy` reports success and copies nothing under Xcode 27, so
-        the text goes onto the Mac's pasteboard and is synced across. Both
-        commands need an unsandboxed shell; a sandboxed one also reports
-        success and copies nothing, which is why the read-back is asserted.
-        """
-        # The sync sometimes lags a beat behind the copy and reads back the
-        # previous value, so it is repeated until the read-back agrees.
-        got = None
-        for _ in range(6):
-            subprocess.run(["pbcopy"], input=text, text=True, check=True)
-            subprocess.run(["xcrun", "simctl", "pbsync", "host", self.sim.udid], check=True)
-            time.sleep(0.5)
-            got = subprocess.run(["xcrun", "simctl", "pbpaste", self.sim.udid], capture_output=True, text=True).stdout
-            if got == text:
-                return
-            time.sleep(1.5)
-        raise AssertionError(f"the simulator pasteboard reads {got!r} after copying {text!r}; is the shell sandboxed?")
 
     # -- the run loop ----------------------------------------------------
     def run_and_settle(self, shortcut: str, timeout: float = 180, quiet: float = 10.0, min_wait: float = 18.0) -> None:
@@ -359,7 +338,7 @@ def test_rejected_credentials_stop_without_prompting(s):
         token_valid=False, credentials_valid=False, roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}
     )
     s.mock.load(scenario)
-    s.set_device_clipboard("nothing to paste")
+    s.sim.set_pasteboard("nothing to paste")
     s.run_and_settle(CHECK_IN, timeout=120)
 
     starts = s.mock.matching("POST", "/sessions/start")
@@ -492,7 +471,7 @@ def _start_sign_in(s, shortcut: str, clipboard: str = "nothing to paste") -> Non
     clipboard as the answer. A leftover code from an earlier test would turn a
     typed answer into twelve digits, so every sign-in starts from a known one.
     """
-    s.set_device_clipboard(clipboard)
+    s.sim.set_pasteboard(clipboard)
     s.sim.terminate_shortcuts()
     time.sleep(1.2)
     s.sim.run_shortcut(shortcut)
