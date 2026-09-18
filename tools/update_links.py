@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 import argcomplete
+from shortcut_forge_lib.publisher import links_from_markup
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -36,6 +37,9 @@ from console import error, info  # noqa: E402
 PAGE = REPO / "docs" / "index.html"
 NAMES = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 PREFIX = "https://www.icloud.com/shortcuts/"
+# What Share Links puts on the clipboard, one line per shortcut. `build_publisher.py`
+# renders through it and `from_clipboard` reads back through it.
+LINE_FORMAT = '<li><a href="{link}">{name}</a></li>\n'
 RELEASES = "https://github.com/steverice/brightwheel-checkin/releases/tag/"
 # The badge: one anchor whose href and text both carry the tag.
 VERSION = re.compile(r'(<a class="version" href=")' + re.escape(RELEASES) + r'([^"]*)(">)([^<]*)(</a>)')
@@ -68,12 +72,7 @@ def from_clipboard() -> dict[str, str]:
     partial paste fails loudly instead of silently swapping two shortcuts.
     """
     text = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout
-    found = {}
-    for name in NAMES:
-        m = anchor(name).search(text)
-        if m:
-            found[name] = m.group(2)
-    return found
+    return links_from_markup(text, NAMES, LINE_FORMAT)
 
 
 def ask() -> dict[str, str]:

@@ -21,10 +21,10 @@ Run it headless:
 It exits 0 with the three links already on the clipboard — no taps, no phone,
 no Shortcuts window — once a fresh import has been allowed, one time each, to
 copy to the clipboard, create iCloud links, and show a notification. Then
-`verify_links.py --clipboard --erase` and `update_links.py --clipboard` finish
-the job; `release.sh` offers to run both right after cutting a release, and
-declining that offer is what leaves the published page handing out the previous
-build's links.
+`verify_links.py --clipboard` and `update_links.py --clipboard` finish the job;
+`release.sh` offers to run both right after cutting a release, and declining
+that offer is what leaves the published page handing out the previous build's
+links.
 """
 
 from __future__ import annotations
@@ -37,7 +37,6 @@ from typing import Any
 import argcomplete
 from shortcut_forge_lib.build import Shortcut, build_all
 from shortcut_forge_lib.checks import CheckError
-from shortcut_forge_lib.plist import ts
 from shortcut_forge_lib.publisher import share_links_shortcut
 from shortcut_forge_lib.toolchain import SigningError, ToolNotFoundError, ValidationError
 
@@ -46,7 +45,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from console import error, success  # noqa: E402
-from update_links import NAMES  # noqa: E402
+from update_links import LINE_FORMAT, NAMES  # noqa: E402
 
 NAME = "Brightwheel Share Links"
 TARGETS = NAMES
@@ -62,32 +61,11 @@ WAIVED = ["Second action must be the prompt Comment block"]
 def build() -> dict[str, Any]:
     """The publisher, with this project's three targets and the page's markup.
 
-    The library ends on Show Result, and on macOS that holds `shortcuts run`
-    open behind a Cancel / Done sheet until someone clicks: in a guest on
-    2026-09-18 the run printed its message, then returned only once Done was
-    clicked. Nobody is there to click in a headless mint, so the ending is a
-    notification instead, which is how every other outcome here is reported.
-
-    A notification asks once per shortcut for permission to display, and after
-    that it holds nothing open. Measured with two probes that differ only in
-    their last action, each run a second time with every permission granted: the
-    notification one returned in under a second, and the Show Result one was
-    still waiting on Done after 30 seconds.
+    It ends on a notification, not Show Result, which on macOS holds `shortcuts
+    run` open behind a Done sheet on every run — `shortcut_forge_lib.publisher`
+    has the measurement.
     """
-    plist = share_links_shortcut(
-        NAME,
-        TARGETS,
-        line_format='<li><a href="{link}">{name}</a></li>\n',
-        done_message=DONE,
-    )
-    actions = plist["WFWorkflowActions"]
-    if actions[-1]["WFWorkflowActionIdentifier"] != "is.workflow.actions.showresult":
-        raise CheckError(f"{NAME} no longer ends on Show Result; look again before replacing its last action")
-    actions[-1] = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.notification",
-        "WFWorkflowActionParameters": {"WFNotificationActionBody": ts(DONE)},
-    }
-    return plist
+    return share_links_shortcut(NAME, TARGETS, line_format=LINE_FORMAT, done_message=DONE)
 
 
 class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
