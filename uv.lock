@@ -1095,11 +1095,13 @@ sim = [
 requires-dist = [
     { name = "argcomplete", specifier = ">=3.0" },
     { name = "numpy", marker = "extra == 'sim'", specifier = ">=1.26" },
+    { name = "pillow", marker = "extra == 'guest'", specifier = ">=10.0" },
     { name = "pillow", marker = "extra == 'sim'", specifier = ">=10.0" },
     { name = "pyobjc-framework-quartz", marker = "extra == 'sim'", specifier = ">=10.0" },
     { name = "rich", specifier = ">=13.0" },
+    { name = "vncdotool", marker = "extra == 'guest'", specifier = ">=1.2" },
 ]
-provides-extras = ["sim"]
+provides-extras = ["sim", "guest"]
 
 [package.metadata.requires-dev]
 dev = [
