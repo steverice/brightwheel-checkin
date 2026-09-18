@@ -30,6 +30,7 @@ each other by name.
 You need a Brightwheel account of your own; the download contains nothing about
 anybody's children and asks Brightwheel who yours are every time it runs.
 
+> [!IMPORTANT]
 > ### Requires iOS 27
 >
 > These do not work on iOS 26 or earlier. The shortcut stops at its first
@@ -70,6 +71,7 @@ below those:
 
 `ARCHITECTURE.md` covers why it is built this way.
 
+> [!CAUTION]
 > **On iOS 27, finish the setup questions with Skip Setup, not Add Shortcut.**
 > From `24A5408d` through the 27.0 release candidate `24A434`, answering an
 > import question and tapping **Add Shortcut** does nothing at all — no install,
@@ -135,6 +137,7 @@ copies. A picker couldn't do that. It stores a workflow identifier, which every
 re-import replaces, and it can't be pre-seeded by name (shortcut-forge's
 `docs/simulator-harness.md` has the measurements).
 
+> [!NOTE]
 > ### Mint links from a library that holds none of your own copies
 >
 > Use a Mac with **Shortcuts' iCloud sync turned off**, holding fresh imports of
