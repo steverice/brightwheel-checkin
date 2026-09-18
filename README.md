@@ -213,11 +213,13 @@ closed: a build missing from `dist/` and a copy that will not parse are both
 refusals, never skips.
 
 `release.sh` asks for them as its last step, and **verifies them before writing
-them**:
+them**. Share Links copies them in the guest, so they come back as a file —
+`pbpaste > links.html` there — rather than on this Mac's clipboard; `--clipboard`
+still reads the clipboard instead:
 
 ```bash
-uv run python tools/verify_links.py --clipboard   # checks each link's record against dist/, no device
-uv run python tools/update_links.py --clipboard   # then writes them into the page, with the version badge, and redraws the card
+uv run python tools/verify_links.py --file links.html                   # checks each link's record against dist/, no device
+uv run python tools/update_links.py --file links.html --version v1.5.0  # then writes them into the page, with the version badge, and redraws the card
 ```
 
 Verification exists because a link can carry the wrong build, or arrive without

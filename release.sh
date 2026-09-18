@@ -68,32 +68,48 @@ fi
 # the moment it was shared — a new release does not reach the old ones. Ask now,
 # while cutting the release is still fresh, rather than leaving the page quietly
 # serving the previous version.
+#
+# The links are minted in a throwaway clone of the macOS 26 guest, never on a
+# library holding a copy anyone set up; the README's "Mint links from a library
+# that holds none of your own copies" says why, and where the procedure lives.
 echo
-echo "The page's iCloud links still point at the previous build."
-echo "Import this release, then on the release Mac check the library before minting:"
-echo "  uv run python tools/check_library.py"
-echo "A non-zero exit means the library would publish a configured or stale copy."
-echo "Then run Brightwheel Share Links, and:"
+echo "The page's iCloud links still point at the previous build. To mint $TAG's:"
+echo "  1. In a fresh clone of the macOS 26 guest, import dist/*.shortcut."
+echo "  2. Copy its library there, and check the copy here before minting:"
+echo "       sqlite3 ~/Library/Shortcuts/Shortcuts.sqlite \".backup /tmp/library.sqlite\""
+echo "       uv run python tools/check_library.py --database <that copy>"
+echo "     A non-zero exit means the library would publish a configured or stale copy."
+echo "  3. Run Brightwheel Share Links there, save what it copied (pbpaste > links.html),"
+echo "     and bring that file back."
 echo
-read -r -p "Paste the three links now? [y/N] " answer
-case "$answer" in
-    [yY]*)
+# `|| true`: a closed stdin (a pipe, CI) reads as "skip" instead of ending the
+# script under `set -e` before it can say what to run later.
+read -r -p "Path to the saved links, 'clipboard' for this Mac's, or Enter to skip: " links || true
+case "${links:-}" in
+    "")
+        echo "Skipped. Run these whenever you have them:"
+        echo "  uv run python tools/verify_links.py --file links.html"
+        echo "  uv run python tools/update_links.py --file links.html --version $TAG"
+        ;;
+    *)
+        if [ "$links" = "clipboard" ]; then
+            source=(--clipboard)
+        else
+            source=(--file "$links")
+        fi
         # Check before writing. A link can carry the wrong build or arrive
         # without its setup questions, and both failures are silent — the
         # shortcut installs in one tap, looks right, and never asks for
         # credentials. Comparing each link's record against dist/ is how to
-        # see it before a parent does.
-        if uv run python tools/verify_links.py --clipboard; then
-            uv run python tools/update_links.py --clipboard || true
+        # see it before a parent does. The badge names this release, not
+        # whatever GitHub calls latest, which a draft is not.
+        if uv run python tools/verify_links.py "${source[@]}"; then
+            uv run python tools/update_links.py "${source[@]}" --version "$TAG" || true
         else
             echo
             echo "Links not written. Re-mint them and run:"
-            echo "  uv run python tools/verify_links.py --clipboard"
-            echo "  uv run python tools/update_links.py --clipboard"
+            echo "  uv run python tools/verify_links.py ${source[*]}"
+            echo "  uv run python tools/update_links.py ${source[*]} --version $TAG"
         fi
-        ;;
-    *)
-        echo "Skipped. Run this whenever you have them:"
-        echo "  uv run python tools/update_links.py --clipboard"
         ;;
 esac
