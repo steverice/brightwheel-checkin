@@ -11,6 +11,7 @@ Run with ./test.sh. See TESTING.md for what the harness had to work around.
 
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 import subprocess
@@ -31,6 +32,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
 import testbuild  # noqa: E402
+from build_shortcuts import DAY_NAMES, SCHOOL_DAYS_KEY, SNOOZE_KEY  # noqa: E402
 from console import error, info, success, warning  # noqa: E402
 from mock_brightwheel import MockBrightwheel, Scenario  # noqa: E402
 
@@ -54,6 +56,9 @@ ROSTER_ROWS = [(c["id"], c["name"], ROOM_ID) for c in ROSTER["children"]]
 # roster URL must carry.
 GUARDIAN_ID = Scenario().guardian_id
 ARTIFACTS = Path(__file__).parent / "artifacts"
+# What the suite keeps in the shared store between schedule tests: every day
+# a school day and no snooze, so nothing else here depends on the calendar.
+EVERY_DAY = {SCHOOL_DAYS_KEY: " ".join(DAY_NAMES), SNOOZE_KEY: None}
 
 
 class Suite:
@@ -90,7 +95,25 @@ class Suite:
         # goes by way of the Mac's own, so remember what was on it and put it back.
         self.host_clipboard = subprocess.run(["pbpaste"], capture_output=True, text=True, check=False).stdout
 
+        # The schedule lives in the shared store, and nothing stored means
+        # Monday to Friday, which would make the suite fail on a weekend.
+        self.set_store(EVERY_DAY)
         self._prime()
+
+    def set_store(self, values: dict[str, str | None], timeout: float = 45) -> None:
+        """Write (or delete, for None) shared stored values through a probe shortcut, and wait until they read back."""
+        name, path = testbuild.build_store_probe(values)
+        self.sim.install(path, expect_name=name)
+        self.sim.terminate_shortcuts()
+        time.sleep(1.2)
+        self.sim.run_shortcut(name)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            stored = self.sim.stored_content()
+            if all(stored.get(k) == v for k, v in values.items()):
+                return
+            time.sleep(1.0)
+        raise AssertionError(f"the store never showed {values}; it holds {self.sim.stored_content()}")
 
     def _prime(self) -> None:
         """One throwaway run so the consent prompts are answered up front."""
@@ -686,6 +709,74 @@ def test_a_rotated_secret_on_the_roster_call_recovers(s):
     assert len(_roster_requests(s)) > 1, "a rotated secret should make the run ask for the roster again"
 
 
+# ---------------------------------------------------------------------------
+# The schedule. The settings live in the shared store, where the menu's
+# "Set school days" and "Snooze until a date" put them, so a test writes the
+# store through a probe shortcut and runs the real Check In. Each puts the
+# suite's every-day setting back, whatever happened.
+# ---------------------------------------------------------------------------
+
+
+def _today() -> str:
+    return datetime.date.today().strftime("%A")
+
+
+def _run_with_store(s: Suite, values: dict[str, str | None]) -> None:
+    try:
+        s.set_store(values)
+        s.run_and_settle(CHECK_IN)
+    finally:
+        s.set_store(EVERY_DAY)
+
+
+def test_a_day_that_is_not_a_school_day_sends_nothing(s):
+    """Every day but today is stored as a school day, so today's automation must stop before any request."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    others = " ".join(d for d in DAY_NAMES if d != _today())
+    _run_with_store(s, {SCHOOL_DAYS_KEY: others})
+    assert not s.mock.checkins, f"a day off must not check anybody in, saw {s.targets_of(s.mock.checkins)}"
+    assert not _roster_requests(s), "a day off should stop before the roster is even asked for"
+    assert not s.mock.requests, f"a day off should make no request at all, saw {len(s.mock.requests)}"
+
+
+def test_a_school_day_named_by_three_letters_runs(s):
+    """Only today is stored, and only by its first three letters: the run goes ahead."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    _run_with_store(s, {SCHOOL_DAYS_KEY: _today()[:3]})
+    assert sorted(s.targets_of(s.mock.checkins)) == sorted([CHILD_A, CHILD_B]), (
+        f"a school day stored as {_today()[:3]!r} should check both children in, got {s.targets_of(s.mock.checkins)}"
+    )
+
+
+def test_nothing_stored_means_monday_to_friday(s):
+    """With no school days ever set, a weekday runs and a weekend day does not."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    _run_with_store(s, {SCHOOL_DAYS_KEY: None})
+    weekday = datetime.date.today().weekday() < 5
+    if weekday:
+        assert s.mock.checkins, f"a {_today()} with nothing stored should run as a school day, and sent nothing"
+    else:
+        assert not s.mock.checkins, f"a {_today()} with nothing stored should be a day off, saw a check-in"
+
+
+def test_a_snooze_until_tomorrow_sends_nothing(s):
+    """Snoozed until tomorrow: today stops before any request."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+    _run_with_store(s, {SNOOZE_KEY: tomorrow})
+    assert not s.mock.checkins, f"a snoozed run must not check anybody in, saw {s.targets_of(s.mock.checkins)}"
+    assert not s.mock.requests, f"a snoozed run should make no request at all, saw {len(s.mock.requests)}"
+
+
+def test_a_snooze_until_today_has_ended(s):
+    """The snooze date is the first day back, so a snooze until today runs today."""
+    s.mock.load(Scenario(roster=ROSTER_ROWS, states={CHILD_A: "out", CHILD_B: "out"}))
+    _run_with_store(s, {SNOOZE_KEY: datetime.date.today().isoformat()})
+    assert sorted(s.targets_of(s.mock.checkins)) == sorted([CHILD_A, CHILD_B]), (
+        f"a snooze that ends today should check both children in, got {s.targets_of(s.mock.checkins)}"
+    )
+
+
 TESTS = [
     test_skips_children_already_in_the_wanted_state,
     test_checks_both_children_in,
@@ -707,6 +798,11 @@ TESTS = [
     test_a_room_with_no_state_stops,
     test_two_children_canceling_out_stops,
     test_a_rotated_secret_on_the_roster_call_recovers,
+    test_a_day_that_is_not_a_school_day_sends_nothing,
+    test_a_school_day_named_by_three_letters_runs,
+    test_nothing_stored_means_monday_to_friday,
+    test_a_snooze_until_tomorrow_sends_nothing,
+    test_a_snooze_until_today_has_ended,
 ]
 
 

@@ -20,6 +20,9 @@ The short version:
 4. **Run Brightwheel Check In by hand once, at the school**, so it can sign in
    and scan the school's code. Then add an Arrive trigger to Check In and to
    Check Out.
+5. **Weekends are already skipped.** The automations run Monday to Friday
+   unless you tell them otherwise: run Brightwheel Attendance and choose **Set
+   school days**, or **Snooze until a date** when school is out.
 
 Prefer files? The [latest
 release](https://github.com/steverice/brightwheel-checkin/releases/latest) has
@@ -52,8 +55,8 @@ Nothing works it out from the time of day, so editing a trigger's hours on the
 device cannot make it send the wrong direction.
 
 Run Attendance on its own — from the app, the Home Screen, or Siri — and it asks
-whether to check in or out. Canceling the menu sends nothing. Two more items sit
-below those:
+whether to check in or out. Canceling the menu sends nothing. Four more items
+sit below those:
 
 - **Show the school's code** draws the stored school code back as the QR it was
   scanned from. What is stored is the scanned payload verbatim, so the image is
@@ -66,8 +69,15 @@ below those:
   which is the answer anywhere the code is not on the wall in front of you.
   Verified by decoding the rendered image and comparing it to the stored
   string — see `TESTING.md`.
-- **Forget saved sign-in and school code** clears what the shortcut has stored,
-  and is the only way to do so.
+- **Snooze until a date** opens a date picker. Pick the first day back and the
+  automations do nothing before it; pick today, or any earlier day, to end a
+  snooze. See "School days and snoozing".
+- **Set school days** offers the seven days of the week to tick. The
+  automations run only on the ticked ones. Monday to Friday until it is
+  changed.
+- **Forget saved sign-in and school code** clears what the shortcut has stored
+  about signing in and the school, and is the only way to do so. It leaves the
+  school days and the snooze alone.
 
 `ARCHITECTURE.md` covers why it is built this way.
 
@@ -364,6 +374,30 @@ shows it again.
   run unattended — so there is nothing to change. iOS 27 has no "Run
   Immediately" button; it is a toggle on the trigger, and turning it on means a
   prompt you have to answer before anything is sent.
+
+## School days and snoozing
+
+An Arrive trigger has a time range but no idea what day it is, so walking past
+the school on a Saturday would fire it. Two settings, both reached from the
+menu Brightwheel Attendance shows when it is run by hand, decide whether an
+automated run does anything:
+
+- **Set school days** ticks the days of the week the automations run on.
+  Nothing has to be set: until it is, they run Monday to Friday. The chosen
+  names are stored as one line and matched by their first three letters, so a
+  list carried over from somewhere else that says `Mon Wed Fri` works too.
+- **Snooze until a date** takes the first day back after a break; before it,
+  the automations do nothing. The same item ends a snooze early — pick today —
+  and a snooze whose date has passed is simply over, with nothing to clear.
+
+Both live in the shared store, like the school code, so a re-import keeps them;
+"Forget saved sign-in and school code" does not touch them. Both apply only to
+the automations, and to a wrapper run by hand, because a wrapper hands in a
+direction. **Brightwheel Attendance's own Check In and Check Out ignore them**
+— choosing one on a Saturday is a person deciding, and a weekend event is
+exactly when they would. A run that stops for either reason posts a
+notification naming the day or the date and the menu item that changes it, so
+a trigger that fired on a day off does not look like one that never fired.
 
 ## Signing in
 

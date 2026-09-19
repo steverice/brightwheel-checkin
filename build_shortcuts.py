@@ -179,6 +179,15 @@ DATE_NUMBER = r"^[0-9]{8}$"
 # language, so a list typed in that language matches. Measured on an iOS 27
 # simulator: Friday / Fri / 20260918 for the three patterns.
 DAY_NAME, DAY_SHORT, DATE_AS_NUMBER = "EEEE", "EEE", "yyyyMMdd"
+# Both settings live in the shared store, set from the menu, so they survive
+# a re-import the way the school code does: a schedule is not something to
+# type again because a build changed. Nothing stored means Monday to Friday
+# and no snooze.
+SCHOOL_DAYS_KEY = "BrightwheelSchoolDays"
+SNOOZE_KEY = "BrightwheelSnoozeUntil"
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+MENU_SNOOZE = "Snooze until a date"
+MENU_SCHOOL_DAYS = "Set school days"
 
 
 def schedule_guard(
@@ -558,9 +567,11 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             "neither your password nor your check-in code is stored in the shortcut "
             "file itself. Your session token is never in the file either: it is kept "
             "under this shortcut, so deleting the shortcut takes the token with it.\n\n"
-            "The school's code is the one thing kept outside this shortcut, so that "
-            're-importing does not send you back for the QR code. "Forget saved '
-            'sign-in and school code" in the menu clears both.\n\n'
+            "The school's code is kept outside this shortcut, so that re-importing "
+            'does not send you back for the QR code. "Forget saved sign-in and '
+            'school code" in the menu clears both. The school days and a snooze '
+            "date are kept outside it too, and set from this shortcut's menu, so a "
+            "re-import keeps them as well.\n\n"
             "If you ever share or export this shortcut, clear the three Text actions "
             "below first. The check-in code authenticates as you."
         )
@@ -624,7 +635,14 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             GroupingIdentifier=g_menu,
             WFControlFlowMode=0,
             WFMenuPrompt="Check the children in or out?",
-            WFMenuItems=["Check In", "Check Out", "Show the school's code", "Forget saved sign-in and school code"],
+            WFMenuItems=[
+                "Check In",
+                "Check Out",
+                "Show the school's code",
+                MENU_SNOOZE,
+                MENU_SCHOOL_DAYS,
+                "Forget saved sign-in and school code",
+            ],
         )
     )
     actions.append(
@@ -797,6 +815,223 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_qr, WFControlFlowMode=2))
     actions.append(act("is.workflow.actions.exit"))
 
+    # Snooze the automations until a date, or end a snooze. One date picker:
+    # the date chosen is the first day back, and a date that is not still to
+    # come — today, or earlier — is the way to stop snoozing, so there is no
+    # second menu item to find. The picked date goes through a Text action
+    # before Format Date, because Format Date fed the picker's output directly
+    # returns nothing (measured on an iOS 27 simulator: empty through a token
+    # string and through an attachment, and the date through a Text action).
+    # Stored as yyyy-MM-dd, which is what the guard reads and the notification
+    # shows; the yyyymmdd numbers are only compared here and never kept.
+    actions.append(
+        act(
+            "is.workflow.actions.choosefrommenu",
+            UUID=next(i),
+            GroupingIdentifier=g_menu,
+            WFControlFlowMode=1,
+            WFMenuItemTitle=MENU_SNOOZE,
+        )
+    )
+    u_ask_date, u_ask_text, u_picked, u_picked_n, u_snow, u_today_n, u_until = (next(i) for _ in range(7))
+    g_snz = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.ask",
+            UUID=u_ask_date,
+            WFAskActionPrompt=(
+                "Skip check-ins and check-outs until which date? Pick the first day back. Pick today to stop snoozing."
+            ),
+            WFInputType="Date",
+        )
+    )
+    actions.append(
+        act("is.workflow.actions.gettext", UUID=u_ask_text, WFTextActionText=ts(out(u_ask_date, "Provided Input")))
+    )
+    for u_f, pattern, outname in (
+        (u_picked, "yyyy-MM-dd", "Picked Date"),
+        (u_picked_n, DATE_AS_NUMBER, "Picked Number"),
+    ):
+        actions.append(
+            act(
+                "is.workflow.actions.format.date",
+                UUID=u_f,
+                CustomOutputName=outname,
+                WFDate=ts(out(u_ask_text, "Text")),
+                WFDateFormatStyle="Custom",
+                WFDateFormat=pattern,
+            )
+        )
+    actions.append(act("is.workflow.actions.date", UUID=u_snow))
+    actions.append(
+        act(
+            "is.workflow.actions.format.date",
+            UUID=u_today_n,
+            CustomOutputName="Today Number",
+            WFDate=ts(out(u_snow, "Current Date")),
+            WFDateFormatStyle="Custom",
+            WFDateFormat=DATE_AS_NUMBER,
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.math",
+            UUID=u_until,
+            WFInput=attach(out(u_picked_n, "Picked Number")),
+            WFMathOperation="-",
+            WFMathOperand=attach(out(u_today_n, "Today Number")),
+        )
+    )
+    actions.append(
+        comment(
+            "Keep the date if it is still to come, otherwise stop snoozing.\n"
+            "- Condition subtracts today from the picked date as yyyymmdd numbers\n"
+            "- A positive result is a date in the future, which is stored\n"
+            "- Today or earlier clears any snooze, so one picker does both"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_snz,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(u_until, "Calculation Result")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setstoredcontent",
+            WFStoredContentKey=SNOOZE_KEY,
+            WFStoredContentGlobalValue=True,
+            WFInput=ts(out(u_picked, "Picked Date")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("Snoozed until ", out(u_picked, "Picked Date")),
+            WFNotificationActionBody=ts(
+                "Brightwheel Check In and Check Out do nothing before then. Running "
+                "Brightwheel Attendance by hand still checks in or out."
+            ),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_snz, WFControlFlowMode=1))
+    actions.append(
+        act(
+            "is.workflow.actions.deletestoredcontent",
+            WFStoredContentKey=SNOOZE_KEY,
+            WFStoredContentGlobalValue=True,
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("Snooze ended"),
+            WFNotificationActionBody=ts("Brightwheel Check In and Check Out run on school days again."),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_snz, WFControlFlowMode=2))
+    actions.append(act("is.workflow.actions.exit"))
+
+    # Which days of the week are school days, picked off a list of the seven.
+    # The chosen names are joined with spaces and stored as one string, which
+    # is the same shape a typed list would have and what the guard matches
+    # against. Choosing none leaves the setting alone rather than storing an
+    # empty list, which would mean every day. Measured on an iOS 27 simulator:
+    # a multi-select Choose from List over a List of the seven names, joined
+    # by Combine Text, stored "Monday Wednesday Friday" for those three rows.
+    actions.append(
+        act(
+            "is.workflow.actions.choosefrommenu",
+            UUID=next(i),
+            GroupingIdentifier=g_menu,
+            WFControlFlowMode=1,
+            WFMenuItemTitle=MENU_SCHOOL_DAYS,
+        )
+    )
+    u_dlist, u_dchoose, u_dcomb, u_dtext = (next(i) for _ in range(4))
+    g_dset = next(i)
+    actions.append(act("is.workflow.actions.list", UUID=u_dlist, WFItems=DAY_NAMES))
+    actions.append(
+        act(
+            "is.workflow.actions.choosefromlist",
+            UUID=u_dchoose,
+            WFChooseFromListActionPrompt=(
+                "Which days of the week does school run? Brightwheel Check In and Check Out do nothing on the others."
+            ),
+            WFChooseFromListActionSelectMultiple=True,
+            WFChooseFromListActionSelectAll=False,
+            WFInput=attach(out(u_dlist, "List")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.text.combine",
+            UUID=u_dcomb,
+            WFTextSeparator="Custom",
+            WFTextCustomSeparator=" ",
+            text=attach(out(u_dchoose, "Chosen Item")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.gettext",
+            UUID=u_dtext,
+            CustomOutputName="Chosen Days",
+            WFTextActionText=ts(out(u_dcomb, "Combined Text")),
+        )
+    )
+    c_chosen = actions.count_matches(out(u_dtext, "Chosen Days"), coerce=False)
+    actions.append(
+        comment(
+            "Store the days, if any were chosen.\n"
+            "- Condition counts whether anything was picked\n"
+            "- Nothing picked leaves the school days as they were"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_dset,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_chosen, "Count")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setstoredcontent",
+            WFStoredContentKey=SCHOOL_DAYS_KEY,
+            WFStoredContentGlobalValue=True,
+            WFInput=ts(out(u_dtext, "Chosen Days")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("School days set"),
+            WFNotificationActionBody=ts(
+                out(u_dtext, "Chosen Days"), ". Brightwheel Check In and Check Out run only on these days."
+            ),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dset, WFControlFlowMode=1))
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("No days chosen"),
+            WFNotificationActionBody=ts("The school days are unchanged."),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dset, WFControlFlowMode=2))
+    actions.append(act("is.workflow.actions.exit"))
+
     # The only way to clear the school code from the device. Deleting the
     # shortcut takes the token with it, but the code lives in the shared store,
     # which outlives it — so the reinstall everyone reaches for first still
@@ -936,6 +1171,71 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         # SETUP, so reordering the questions cannot leave the note stranded on
         # a page whose button still works.
         questions[-1]["Text"] += LAST_QUESTION_NOTE
+
+    # The schedule, read out of the shared store where the menu put it.
+    # Before the session: a day that is not a school day costs no request.
+    # Nothing stored means Monday to Friday, decided here by a count rather
+    # than by the guard's "empty means every day", which is the wrong default
+    # for a phone that has never been told otherwise.
+    u_gd, u_gs, u_dd = next(i), next(i), next(i)
+    g_ddef = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.getstoredcontent",
+            UUID=u_gd,
+            WFStoredContentKey=SCHOOL_DAYS_KEY,
+            WFStoredContentGlobalValue=True,
+        )
+    )
+    c_gd = actions.count_matches(out(u_gd, "Stored Content"))
+    actions.append(
+        comment(
+            "Use the stored school days, or Monday to Friday when none are stored.\n"
+            '- Condition counts whether "Set school days" has ever stored a list\n'
+            "- Otherwise the default is the working week"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_ddef,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_gd, "Count")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="School Days",
+            WFInput=attach(out(u_gd, "Stored Content")),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_ddef, WFControlFlowMode=1))
+    actions.append(act("is.workflow.actions.gettext", UUID=u_dd, WFTextActionText=SCHOOL_DAYS_DEFAULT))
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="School Days", WFInput=attach(out(u_dd, "Text")))
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_ddef, WFControlFlowMode=2))
+    actions.append(
+        act(
+            "is.workflow.actions.getstoredcontent",
+            UUID=u_gs,
+            WFStoredContentKey=SNOOZE_KEY,
+            WFStoredContentGlobalValue=True,
+        )
+    )
+    schedule_guard(
+        actions,
+        automated=out(c_valid, "Count"),
+        days=var("School Days"),
+        snooze=out(u_gs, "Stored Content"),
+        verb=out(u_verb, "Verb"),
+        days_hint=f'To change the school days, run Brightwheel Attendance and choose "{MENU_SCHOOL_DAYS}".',
+        snooze_hint=f'To end the snooze early, run Brightwheel Attendance, choose "{MENU_SNOOZE}" and pick today.',
+    )
 
     # ---- session token, with interactive sign-in on failure ----
     #

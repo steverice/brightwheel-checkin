@@ -74,6 +74,16 @@ grep -c schools.mybrightwheel.com "dist-test/Brightwheel Attendance.xml"   # 0
 | `a_code_sent_minutes_ago_is_not_sent_again` | Cancel the prompt, run again within ten minutes: the prompt comes back with no second send, and the send time is cleared once the code is accepted |
 | `a_code_on_the_clipboard_is_offered` | A six-digit clipboard prefills the prompt, and Done alone exchanges it. A pasted value carries provenance, so iOS asks before sending it ("send 1 text item to localhost?"), and the token it earns carries it on: four prompts in that run, one on the next, none on the one after, measured from an erased device. The test clears them and asserts the second follow-up run asks nothing. Every sign-in test sets the simulator's pasteboard first, by way of the Mac's own (`simctl pbcopy` copies nothing under Xcode 27; `pbsync` does), and the suite restores the Mac's clipboard when it finishes |
 | `test_setup_questions_commit_their_answers` | The import-question mechanism `dist/` depends on. Currently a **known-broken canary** — see the support matrix |
+| `a_day_that_is_not_a_school_day_sends_nothing` | The school-days guard: with every day but today in the store, Check In makes no request at all |
+| `a_school_day_named_by_three_letters_runs` | The match is on the first three letters: a stored `Fri` on a Friday checks both children in |
+| `nothing_stored_means_monday_to_friday` | The default when "Set school days" has never run: a weekday runs, a weekend day does not. The one test whose expectation depends on the calendar |
+| `a_snooze_until_tomorrow_sends_nothing` | The snooze guard: a stored date of tomorrow makes no request |
+| `a_snooze_until_today_has_ended` | The snooze date is the first day back: a stored date of today runs today |
+
+The schedule tests write the shared store through a probe shortcut
+(`build_store_probe()`), the way "Set school days" and "Snooze until a date"
+do, and run the real Check In. The suite stores every day as a school day at
+setup, and each test puts that back, so nothing else depends on the calendar.
 
 Assertions are on **recorded traffic**, not on notifications. "Nobody was
 checked in" is exactly "no POST reached `/checkins/`", which is a fact the mock
@@ -277,6 +287,17 @@ consent prompts — so a regression that stopped the guide appearing, or made it
 appear on *every* run, would pass. Both behaviors were checked by hand on a
 simulator instead. The harness can automate it (`blue_buttons()` is how the
 sheet was detected); nobody has written the test.
+
+**The two menu items themselves, and a run from the menu ignoring the
+schedule.** The guard applies only to a run that was handed a direction, so
+Attendance's own Check In on a day off still checks in; choosing it means
+tapping a row of an action sheet, which the harness has no way to find. The
+date picker and the tick list behind "Snooze until a date" and "Set school
+days" are sheets too. All three were checked by hand on a simulator: the
+picker's date reached the store as `yyyy-MM-dd` once it went through a Text
+action (fed to Format Date directly it came back empty), three ticked rows
+were stored as `Monday Wednesday Friday`, and Check In chosen from the menu
+with every day but today stored posted both check-ins.
 
 **Icons.** Nothing asserts a glyph or color. That is deliberate — an icon
 regression is visible the moment the app opens, and pinning glyph numbers in a
