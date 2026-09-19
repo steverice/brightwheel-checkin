@@ -196,6 +196,9 @@ MENU_SCHOOL_DAYS = "Set school days"
 # part of the mark so an unmarked row does not start with one.
 DAY_ON = "\U0001f3eb "
 SCHOOL_DAYS_PROMPT = "Select the days to change and press Done to invert them. Tap Cancel if you're satisfied."
+# How many times the sheet can come back in one run. A Repeat needs a count,
+# and nobody changes the week ten times in a row.
+SCHOOL_DAYS_ROUNDS = 10
 
 
 def schedule_guard(
@@ -998,17 +1001,19 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
 
     # Which days of the week are school days, as a toggle sheet. Choose from
     # List cannot start with some rows ticked, so each school day carries a
-    # mark and ticking a row flips it: the sheet shows the setting
-    # on its face, and the usual edit is one tap and Done. Nothing ticked
-    # leaves the days alone, and so does a set of flips that would leave no
-    # school day at all, since there is no use for that. The marks come from
-    # a Dictionary keyed by each day's count, read as text and never branched
-    # on; the new state is a Dictionary keyed by day and the pasted pair of
-    # "was on" and "was ticked", which names the day for 01 and 10 and nothing
-    # otherwise, the same pasted-pair trick the idempotency check uses.
-    # Measured on an iOS 27 simulator: a multi-select Choose from List over a
-    # List, joined by Combine Text, stored "Monday Wednesday Friday" for
-    # three rows.
+    # mark and ticking a row flips it: the sheet shows the setting on its
+    # face, and the usual edit is one tap and Done. Done with changes stores
+    # them and shows the sheet again with the new marks, which is the
+    # confirmation; Done with nothing ticked ends it, and so does Cancel,
+    # which stops the shortcut. A set of flips that would leave no school day
+    # at all is refused with an alert and the sheet comes back, since there
+    # is no use for that. The marks come from a Dictionary keyed by each
+    # day's count, read as text and never branched on; the new state is a
+    # Dictionary keyed by day and the pasted pair of "was on" and "was
+    # ticked", which names the day for 01 and 10 and nothing otherwise, the
+    # same pasted-pair trick the idempotency check uses. Measured on an iOS
+    # 27 simulator: a multi-select Choose from List over a List, joined by
+    # Combine Text, stored "Monday Wednesday Friday" for three rows.
     actions.append(
         act(
             "is.workflow.actions.choosefrommenu",
@@ -1016,6 +1021,48 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             GroupingIdentifier=g_menu,
             WFControlFlowMode=1,
             WFMenuItemTitle=MENU_SCHOOL_DAYS,
+        )
+    )
+    # A flag rather than Exit inside the loop, like the attempt Repeat.
+    u_going, u_stop = next(i), next(i)
+    g_sheet, g_again = next(i), next(i)
+    actions.append(act("is.workflow.actions.number", UUID=u_going, WFNumberActionNumber="1"))
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="Keep Going", WFInput=attach(out(u_going, "Number")))
+    )
+    actions.append(act("is.workflow.actions.number", UUID=u_stop, WFNumberActionNumber="0"))
+    actions.append(
+        comment(
+            "Show the sheet until Done is pressed with nothing ticked.\n"
+            "- Each pass reads the days as they are now, so the marks show the "
+            "last change\n"
+            "- Cancel stops the shortcut, which is the other way out"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.repeat.count",
+            UUID=next(i),
+            GroupingIdentifier=g_sheet,
+            WFControlFlowMode=0,
+            WFRepeatCount=SCHOOL_DAYS_ROUNDS,
+        )
+    )
+    actions.append(
+        comment(
+            "Do nothing on a pass after the sheet was dismissed.\n"
+            "- Condition checks the flag Done-with-nothing-ticked clears"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_again,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(var("Keep Going")),
         )
     )
     u_cur, u_marks = next(i), next(i)
@@ -1097,7 +1144,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         comment(
             "Work out the new days, if any rows were ticked.\n"
             "- Condition counts whether anything was picked\n"
-            "- Nothing picked leaves the school days as they were"
+            "- Nothing picked is Done with the sheet, so the flag is cleared"
         )
     )
     actions.append(
@@ -1174,7 +1221,8 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         comment(
             "Store the new days, unless they would be none at all.\n"
             "- Condition counts whether any day is left on\n"
-            "- No school days is no use, so that leaves the setting as it was"
+            "- The sheet comes back either way: with the new marks, or after "
+            "an alert that nothing changed"
         )
     )
     actions.append(
@@ -1198,11 +1246,9 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     )
     actions.append(
         act(
-            "is.workflow.actions.notification",
-            WFNotificationActionTitle=ts("School days set"),
-            WFNotificationActionBody=ts(
-                out(u_newdays, "New Days"), ". Brightwheel Check In and Check Out run only on these days."
-            ),
+            "is.workflow.actions.setvariable",
+            WFVariableName="School Days",
+            WFInput=attach(out(u_newdays, "New Days")),
         )
     )
     actions.append(
@@ -1210,11 +1256,10 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     )
     actions.append(
         act(
-            "is.workflow.actions.notification",
-            WFNotificationActionTitle=ts("That would leave no school days"),
-            WFNotificationActionBody=ts(
-                "Nothing was changed. The school days are still ", out(u_cur, "Current Days"), "."
-            ),
+            "is.workflow.actions.alert",
+            WFAlertActionTitle=ts("That would leave no school days"),
+            WFAlertActionMessage=ts("Nothing was changed."),
+            WFAlertActionCancelButtonShown=False,
         )
     )
     actions.append(
@@ -1222,13 +1267,15 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dset, WFControlFlowMode=1))
     actions.append(
-        act(
-            "is.workflow.actions.notification",
-            WFNotificationActionTitle=ts("No days changed"),
-            WFNotificationActionBody=ts("The school days are still ", out(u_cur, "Current Days"), "."),
-        )
+        act("is.workflow.actions.setvariable", WFVariableName="Keep Going", WFInput=attach(out(u_stop, "Number")))
     )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dset, WFControlFlowMode=2))
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_again, WFControlFlowMode=2)
+    )
+    actions.append(
+        act("is.workflow.actions.repeat.count", UUID=next(i), GroupingIdentifier=g_sheet, WFControlFlowMode=2)
+    )
     actions.append(act("is.workflow.actions.exit"))
 
     # The only way to clear the school code from the device. Deleting the

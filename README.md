@@ -73,10 +73,10 @@ sit below those:
   automations do nothing before it; pick today, or any earlier day, to end a
   snooze. See "School days and snoozing".
 - **Set school days** shows the seven days, with 🏫 on each school day.
-  Ticking a day flips it, so the usual change is one tap and Done, and Cancel
-  leaves everything as it is. Ticking nothing changes nothing, and so does a
-  set of flips that would leave no school day at all. Monday to Friday until it
-  is changed.
+  Tick the days to change and press Done: they flip, and the sheet comes back
+  showing the result. Done with nothing ticked, or Cancel, closes it. A set of
+  flips that would leave no school day at all is refused. Monday to Friday
+  until it is changed.
 - **Forget saved sign-in and school code** clears what the shortcut has stored
   about signing in and the school, and is the only way to do so. It leaves the
   school days and the snooze alone.
@@ -387,10 +387,12 @@ automated run does anything:
 - **Set school days** shows each day with its current state and flips the
   ones you tick. A sheet cannot open with some rows already ticked, only none
   or all, which is why it is a toggle rather than a picker: it shows the
-  setting on its face, and adding or dropping one day is one tap. Nothing has
-  to be set: until it is, the automations run Monday to Friday. The days are
-  stored as one line of names and matched by their first three letters, so a
-  list carried over from somewhere else that says `Mon Wed Fri` works too.
+  setting on its face, and adding or dropping one day is one tap. After a
+  change the sheet comes back with the new marks, which is the confirmation;
+  Done with nothing ticked, or Cancel, closes it. Nothing has to be set: until
+  it is, the automations run Monday to Friday. The days are stored as one line
+  of names and matched by their first three letters, so a list carried over
+  from somewhere else that says `Mon Wed Fri` works too.
 - **Snooze until a date** takes the first day back after a break; before it,
   the automations do nothing. The same item ends a snooze early — pick today —
   and a snooze whose date has passed is simply over, with nothing to clear.

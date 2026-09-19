@@ -297,8 +297,10 @@ days" are sheets too. All three were checked by hand on a simulator: the
 picker's date reached the store as `yyyy-MM-dd` once it went through a Text
 action (fed to Format Date directly it came back empty); the toggle sheet
 opened with 🏫 on every stored day and nothing on the rest, ticking Saturday
-and Sunday from all seven stored Monday to Friday, ticking nothing left it
-unchanged, and ticking all five school days was refused as leaving none; and
+from Monday to Friday stored Monday to Saturday and brought the sheet back
+with Saturday marked, Done with nothing ticked closed it, and ticking all five
+school days raised the "no school days" alert, brought the sheet back, and
+changed nothing; and
 Check In chosen from the menu with every day but today stored posted both
 check-ins.
 
