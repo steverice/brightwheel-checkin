@@ -72,10 +72,11 @@ sit below those:
 - **Snooze until a date** opens a date picker. Pick the first day back and the
   automations do nothing before it; pick today, or any earlier day, to end a
   snooze. See "School days and snoozing".
-- **Set school days** shows the seven days with their current state, ✅ for a
-  school day and 🔲 for not. Ticking a day flips it, so the usual change is one
-  tap and Done. Ticking nothing changes nothing, and so does a set of flips
-  that would leave no school day at all. Monday to Friday until it is changed.
+- **Set school days** shows the seven days, with 🏫 on each school day.
+  Ticking a day flips it, so the usual change is one tap and Done, and Cancel
+  leaves everything as it is. Ticking nothing changes nothing, and so does a
+  set of flips that would leave no school day at all. Monday to Friday until it
+  is changed.
 - **Forget saved sign-in and school code** clears what the shortcut has stored
   about signing in and the school, and is the only way to do so. It leaves the
   school days and the snooze alone.

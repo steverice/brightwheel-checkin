@@ -188,13 +188,14 @@ SNOOZE_KEY = "BrightwheelSnoozeUntil"
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 MENU_SNOOZE = "Snooze until a date"
 MENU_SCHOOL_DAYS = "Set school days"
-# The marks on the "Set school days" sheet. Choose from List can start with
+# The mark on the "Set school days" sheet. Choose from List can start with
 # nothing ticked or everything ticked and nothing in between, so the sheet is
 # a toggle instead: each row wears its current state, and ticking a row flips
-# it. The usual edit, one day on or off, is one tap and Done.
-# A green check and a dark empty square: the white square (U+2B1C) vanishes
-# on the sheet's white background, measured.
-DAY_ON, DAY_OFF = "\u2705", "\U0001f532"
+# it. The usual edit, one day on or off, is one tap and Done. A school on a
+# school day and nothing on the others needs no legend; the trailing space is
+# part of the mark so an unmarked row does not start with one.
+DAY_ON = "\U0001f3eb "
+SCHOOL_DAYS_PROMPT = "Select the days to change and press Done to invert them. Tap Cancel if you're satisfied."
 
 
 def schedule_guard(
@@ -996,8 +997,8 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     actions.append(act("is.workflow.actions.exit"))
 
     # Which days of the week are school days, as a toggle sheet. Choose from
-    # List cannot start with some rows ticked, so each row carries its current
-    # state as a mark and ticking a row flips it: the sheet shows the setting
+    # List cannot start with some rows ticked, so each school day carries a
+    # mark and ticking a row flips it: the sheet shows the setting
     # on its face, and the usual edit is one tap and Done. Nothing ticked
     # leaves the days alone, and so does a set of flips that would leave no
     # school day at all, since there is no use for that. The marks come from
@@ -1030,7 +1031,9 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         act(
             "is.workflow.actions.dictionary",
             UUID=u_marks,
-            WFItems=dict_field([kv("0", ts(DAY_OFF)), kv("1", ts(DAY_ON))]),
+            # Only the "on" key: a day whose count is 0 reads an absent key,
+            # which is empty, and that is the mark it gets.
+            WFItems=dict_field([kv("1", ts(DAY_ON))]),
         )
     )
     rows, was_on = [], []
@@ -1053,7 +1056,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
                 "is.workflow.actions.gettext",
                 UUID=u_row,
                 CustomOutputName=f"{day} Row",
-                WFTextActionText=ts(out(u_mark, f"{day} Mark"), " ", day),
+                WFTextActionText=ts(out(u_mark, f"{day} Mark"), day),
             )
         )
         rows.append(out(u_row, f"{day} Row"))
@@ -1066,10 +1069,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         act(
             "is.workflow.actions.choosefromlist",
             UUID=u_dchoose,
-            WFChooseFromListActionPrompt=(
-                f"Tick the days to change. {DAY_ON} is a school day, {DAY_OFF} is not; Brightwheel Check In "
-                "and Check Out run only on school days."
-            ),
+            WFChooseFromListActionPrompt=SCHOOL_DAYS_PROMPT,
             WFChooseFromListActionSelectMultiple=True,
             WFChooseFromListActionSelectAll=False,
             WFInput=attach(out(u_dlist, "List")),
