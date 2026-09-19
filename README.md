@@ -72,9 +72,10 @@ sit below those:
 - **Snooze until a date** opens a date picker. Pick the first day back and the
   automations do nothing before it; pick today, or any earlier day, to end a
   snooze. See "School days and snoozing".
-- **Set school days** offers the seven days of the week to tick. The
-  automations run only on the ticked ones. Monday to Friday until it is
-  changed.
+- **Set school days** shows the seven days with their current state, ✅ for a
+  school day and 🔲 for not. Ticking a day flips it, so the usual change is one
+  tap and Done. Ticking nothing changes nothing, and so does a set of flips
+  that would leave no school day at all. Monday to Friday until it is changed.
 - **Forget saved sign-in and school code** clears what the shortcut has stored
   about signing in and the school, and is the only way to do so. It leaves the
   school days and the snooze alone.
@@ -382,9 +383,12 @@ the school on a Saturday would fire it. Two settings, both reached from the
 menu Brightwheel Attendance shows when it is run by hand, decide whether an
 automated run does anything:
 
-- **Set school days** ticks the days of the week the automations run on.
-  Nothing has to be set: until it is, they run Monday to Friday. The chosen
-  names are stored as one line and matched by their first three letters, so a
+- **Set school days** shows each day with its current state and flips the
+  ones you tick. A sheet cannot open with some rows already ticked, only none
+  or all, which is why it is a toggle rather than a picker: it shows the
+  setting on its face, and adding or dropping one day is one tap. Nothing has
+  to be set: until it is, the automations run Monday to Friday. The days are
+  stored as one line of names and matched by their first three letters, so a
   list carried over from somewhere else that says `Mon Wed Fri` works too.
 - **Snooze until a date** takes the first day back after a break; before it,
   the automations do nothing. The same item ends a snooze early — pick today —

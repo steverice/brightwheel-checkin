@@ -295,9 +295,12 @@ tapping a row of an action sheet, which the harness has no way to find. The
 date picker and the tick list behind "Snooze until a date" and "Set school
 days" are sheets too. All three were checked by hand on a simulator: the
 picker's date reached the store as `yyyy-MM-dd` once it went through a Text
-action (fed to Format Date directly it came back empty), three ticked rows
-were stored as `Monday Wednesday Friday`, and Check In chosen from the menu
-with every day but today stored posted both check-ins.
+action (fed to Format Date directly it came back empty); the toggle sheet
+opened with every stored day marked ✅ and the rest 🔲, ticking Saturday and
+Sunday from all seven stored Monday to Friday, ticking nothing left it
+unchanged, and ticking all five school days was refused as leaving none; and
+Check In chosen from the menu with every day but today stored posted both
+check-ins.
 
 **Icons.** Nothing asserts a glyph or color. That is deliberate — an icon
 regression is visible the moment the app opens, and pinning glyph numbers in a

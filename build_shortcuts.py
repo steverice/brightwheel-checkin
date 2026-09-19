@@ -188,6 +188,13 @@ SNOOZE_KEY = "BrightwheelSnoozeUntil"
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 MENU_SNOOZE = "Snooze until a date"
 MENU_SCHOOL_DAYS = "Set school days"
+# The marks on the "Set school days" sheet. Choose from List can start with
+# nothing ticked or everything ticked and nothing in between, so the sheet is
+# a toggle instead: each row wears its current state, and ticking a row flips
+# it. The usual edit, one day on or off, is one tap and Done.
+# A green check and a dark empty square: the white square (U+2B1C) vanishes
+# on the sheet's white background, measured.
+DAY_ON, DAY_OFF = "\u2705", "\U0001f532"
 
 
 def schedule_guard(
@@ -577,6 +584,57 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         )
     )
 
+    # ---- the school days ----
+    #
+    # Read out of the shared store where "Set school days" put them, before
+    # the menu so that item can show them, and before the session so a day
+    # that is not a school day costs no request. Nothing stored means Monday
+    # to Friday, decided here by a count rather than by the guard's "empty
+    # means every day", which is the wrong default for a phone that has never
+    # been told otherwise.
+    u_gd, u_dd = next(i), next(i)
+    g_ddef = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.getstoredcontent",
+            UUID=u_gd,
+            WFStoredContentKey=SCHOOL_DAYS_KEY,
+            WFStoredContentGlobalValue=True,
+        )
+    )
+    c_gd = actions.count_matches(out(u_gd, "Stored Content"))
+    actions.append(
+        comment(
+            "Use the stored school days, or Monday to Friday when none are stored.\n"
+            '- Condition counts whether "Set school days" has ever stored a list\n'
+            "- Otherwise the default is the working week"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_ddef,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_gd, "Count")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.setvariable",
+            WFVariableName="School Days",
+            WFInput=attach(out(u_gd, "Stored Content")),
+        )
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_ddef, WFControlFlowMode=1))
+    actions.append(act("is.workflow.actions.gettext", UUID=u_dd, WFTextActionText=SCHOOL_DAYS_DEFAULT))
+    actions.append(
+        act("is.workflow.actions.setvariable", WFVariableName="School Days", WFInput=attach(out(u_dd, "Text")))
+    )
+    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_ddef, WFControlFlowMode=2))
+
     # ---- which direction ----
     #
     # Direction comes from Shortcut Input, set by whichever wrapper started this.
@@ -937,13 +995,19 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_snz, WFControlFlowMode=2))
     actions.append(act("is.workflow.actions.exit"))
 
-    # Which days of the week are school days, picked off a list of the seven.
-    # The chosen names are joined with spaces and stored as one string, which
-    # is the same shape a typed list would have and what the guard matches
-    # against. Choosing none leaves the setting alone rather than storing an
-    # empty list, which would mean every day. Measured on an iOS 27 simulator:
-    # a multi-select Choose from List over a List of the seven names, joined
-    # by Combine Text, stored "Monday Wednesday Friday" for those three rows.
+    # Which days of the week are school days, as a toggle sheet. Choose from
+    # List cannot start with some rows ticked, so each row carries its current
+    # state as a mark and ticking a row flips it: the sheet shows the setting
+    # on its face, and the usual edit is one tap and Done. Nothing ticked
+    # leaves the days alone, and so does a set of flips that would leave no
+    # school day at all, since there is no use for that. The marks come from
+    # a Dictionary keyed by each day's count, read as text and never branched
+    # on; the new state is a Dictionary keyed by day and the pasted pair of
+    # "was on" and "was ticked", which names the day for 01 and 10 and nothing
+    # otherwise, the same pasted-pair trick the idempotency check uses.
+    # Measured on an iOS 27 simulator: a multi-select Choose from List over a
+    # List, joined by Combine Text, stored "Monday Wednesday Friday" for
+    # three rows.
     actions.append(
         act(
             "is.workflow.actions.choosefrommenu",
@@ -953,15 +1017,58 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             WFMenuItemTitle=MENU_SCHOOL_DAYS,
         )
     )
+    u_cur, u_marks = next(i), next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.gettext",
+            UUID=u_cur,
+            CustomOutputName="Current Days",
+            WFTextActionText=ts(var("School Days")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.dictionary",
+            UUID=u_marks,
+            WFItems=dict_field([kv("0", ts(DAY_OFF)), kv("1", ts(DAY_ON))]),
+        )
+    )
+    rows, was_on = [], []
+    for day in DAY_NAMES:
+        c_on = actions.count_matches(out(u_cur, "Current Days"), rf"(?i)\b{day[:3]}", coerce=False)
+        was_on.append(c_on)
+        u_mark, u_row = next(i), next(i)
+        actions.append(
+            act(
+                "is.workflow.actions.getvalueforkey",
+                UUID=u_mark,
+                CustomOutputName=f"{day} Mark",
+                WFGetDictionaryValueType="Value",
+                WFDictionaryKey=ts(out(c_on, "Count")),
+                WFInput=attach(out(u_marks, "Dictionary")),
+            )
+        )
+        actions.append(
+            act(
+                "is.workflow.actions.gettext",
+                UUID=u_row,
+                CustomOutputName=f"{day} Row",
+                WFTextActionText=ts(out(u_mark, f"{day} Mark"), " ", day),
+            )
+        )
+        rows.append(out(u_row, f"{day} Row"))
     u_dlist, u_dchoose, u_dcomb, u_dtext = (next(i) for _ in range(4))
-    g_dset = next(i)
-    actions.append(act("is.workflow.actions.list", UUID=u_dlist, WFItems=DAY_NAMES))
+    g_dset, g_dsome = next(i), next(i)
+    actions.append(
+        act("is.workflow.actions.list", UUID=u_dlist, WFItems=[{"WFItemType": 0, "WFValue": ts(row)} for row in rows])
+    )
     actions.append(
         act(
             "is.workflow.actions.choosefromlist",
             UUID=u_dchoose,
             WFChooseFromListActionPrompt=(
-                "Which days of the week does school run? Brightwheel Check In and Check Out do nothing on the others."
+                f"Tick the days to change. {DAY_ON} is a school day, {DAY_OFF} is not; Brightwheel Check In "
+                "and Check Out run only on school days."
             ),
             WFChooseFromListActionSelectMultiple=True,
             WFChooseFromListActionSelectAll=False,
@@ -981,14 +1088,14 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         act(
             "is.workflow.actions.gettext",
             UUID=u_dtext,
-            CustomOutputName="Chosen Days",
+            CustomOutputName="Toggled Days",
             WFTextActionText=ts(out(u_dcomb, "Combined Text")),
         )
     )
-    c_chosen = actions.count_matches(out(u_dtext, "Chosen Days"), coerce=False)
+    c_toggled = actions.count_matches(out(u_dtext, "Toggled Days"), coerce=False)
     actions.append(
         comment(
-            "Store the days, if any were chosen.\n"
+            "Work out the new days, if any rows were ticked.\n"
             "- Condition counts whether anything was picked\n"
             "- Nothing picked leaves the school days as they were"
         )
@@ -1001,7 +1108,84 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             WFControlFlowMode=0,
             WFCondition=GREATER_THAN,
             WFNumberValue="0",
-            WFInput=cond_input(out(c_chosen, "Count")),
+            WFInput=cond_input(out(c_toggled, "Count")),
+        )
+    )
+    u_flip = next(i)
+    actions.append(
+        act(
+            "is.workflow.actions.dictionary",
+            UUID=u_flip,
+            WFItems=dict_field([kv(f"{day}{pair}", ts(day)) for day in DAY_NAMES for pair in ("01", "10")]),
+        )
+    )
+    news = []
+    for day, c_on in zip(DAY_NAMES, was_on, strict=True):
+        c_tick = actions.count_matches(out(u_dtext, "Toggled Days"), rf"(?i)\b{day[:3]}", coerce=False)
+        u_pair, u_new = next(i), next(i)
+        actions.append(
+            act(
+                "is.workflow.actions.gettext",
+                UUID=u_pair,
+                CustomOutputName=f"{day} Pair",
+                WFTextActionText=ts(out(c_on, "Count"), out(c_tick, "Count")),
+            )
+        )
+        actions.append(
+            act(
+                "is.workflow.actions.getvalueforkey",
+                UUID=u_new,
+                CustomOutputName=f"{day} New",
+                WFGetDictionaryValueType="Value",
+                WFDictionaryKey=ts(day, out(u_pair, f"{day} Pair")),
+                WFInput=attach(out(u_flip, "Dictionary")),
+            )
+        )
+        news.append(out(u_new, f"{day} New"))
+    # Pasted with spaces, then the words matched back out and joined, so the
+    # days that dropped out leave no double spaces behind in what is stored.
+    u_raw, u_words, u_join, u_newdays = (next(i) for _ in range(4))
+    parts: list[str | dict[str, Any]] = []
+    for value in news:
+        parts += [value, " "]
+    actions.append(act("is.workflow.actions.gettext", UUID=u_raw, WFTextActionText=ts(*parts)))
+    actions.append(
+        act("is.workflow.actions.text.match", UUID=u_words, WFMatchTextPattern="[A-Za-z]+", text=ts(out(u_raw, "Text")))
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.text.combine",
+            UUID=u_join,
+            WFTextSeparator="Custom",
+            WFTextCustomSeparator=" ",
+            text=attach(out(u_words, "Matches")),
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.gettext",
+            UUID=u_newdays,
+            CustomOutputName="New Days",
+            WFTextActionText=ts(out(u_join, "Combined Text")),
+        )
+    )
+    c_some = actions.count_matches(out(u_newdays, "New Days"), "[A-Za-z]", coerce=False)
+    actions.append(
+        comment(
+            "Store the new days, unless they would be none at all.\n"
+            "- Condition counts whether any day is left on\n"
+            "- No school days is no use, so that leaves the setting as it was"
+        )
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.conditional",
+            UUID=next(i),
+            GroupingIdentifier=g_dsome,
+            WFControlFlowMode=0,
+            WFCondition=GREATER_THAN,
+            WFNumberValue="0",
+            WFInput=cond_input(out(c_some, "Count")),
         )
     )
     actions.append(
@@ -1009,7 +1193,7 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             "is.workflow.actions.setstoredcontent",
             WFStoredContentKey=SCHOOL_DAYS_KEY,
             WFStoredContentGlobalValue=True,
-            WFInput=ts(out(u_dtext, "Chosen Days")),
+            WFInput=ts(out(u_newdays, "New Days")),
         )
     )
     actions.append(
@@ -1017,16 +1201,31 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
             "is.workflow.actions.notification",
             WFNotificationActionTitle=ts("School days set"),
             WFNotificationActionBody=ts(
-                out(u_dtext, "Chosen Days"), ". Brightwheel Check In and Check Out run only on these days."
+                out(u_newdays, "New Days"), ". Brightwheel Check In and Check Out run only on these days."
             ),
         )
+    )
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dsome, WFControlFlowMode=1)
+    )
+    actions.append(
+        act(
+            "is.workflow.actions.notification",
+            WFNotificationActionTitle=ts("That would leave no school days"),
+            WFNotificationActionBody=ts(
+                "Nothing was changed. The school days are still ", out(u_cur, "Current Days"), "."
+            ),
+        )
+    )
+    actions.append(
+        act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dsome, WFControlFlowMode=2)
     )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dset, WFControlFlowMode=1))
     actions.append(
         act(
             "is.workflow.actions.notification",
-            WFNotificationActionTitle=ts("No days chosen"),
-            WFNotificationActionBody=ts("The school days are unchanged."),
+            WFNotificationActionTitle=ts("No days changed"),
+            WFNotificationActionBody=ts("The school days are still ", out(u_cur, "Current Days"), "."),
         )
     )
     actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_dset, WFControlFlowMode=2))
@@ -1172,53 +1371,9 @@ def build(env: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
         # a page whose button still works.
         questions[-1]["Text"] += LAST_QUESTION_NOTE
 
-    # The schedule, read out of the shared store where the menu put it.
-    # Before the session: a day that is not a school day costs no request.
-    # Nothing stored means Monday to Friday, decided here by a count rather
-    # than by the guard's "empty means every day", which is the wrong default
-    # for a phone that has never been told otherwise.
-    u_gd, u_gs, u_dd = next(i), next(i), next(i)
-    g_ddef = next(i)
-    actions.append(
-        act(
-            "is.workflow.actions.getstoredcontent",
-            UUID=u_gd,
-            WFStoredContentKey=SCHOOL_DAYS_KEY,
-            WFStoredContentGlobalValue=True,
-        )
-    )
-    c_gd = actions.count_matches(out(u_gd, "Stored Content"))
-    actions.append(
-        comment(
-            "Use the stored school days, or Monday to Friday when none are stored.\n"
-            '- Condition counts whether "Set school days" has ever stored a list\n'
-            "- Otherwise the default is the working week"
-        )
-    )
-    actions.append(
-        act(
-            "is.workflow.actions.conditional",
-            UUID=next(i),
-            GroupingIdentifier=g_ddef,
-            WFControlFlowMode=0,
-            WFCondition=GREATER_THAN,
-            WFNumberValue="0",
-            WFInput=cond_input(out(c_gd, "Count")),
-        )
-    )
-    actions.append(
-        act(
-            "is.workflow.actions.setvariable",
-            WFVariableName="School Days",
-            WFInput=attach(out(u_gd, "Stored Content")),
-        )
-    )
-    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_ddef, WFControlFlowMode=1))
-    actions.append(act("is.workflow.actions.gettext", UUID=u_dd, WFTextActionText=SCHOOL_DAYS_DEFAULT))
-    actions.append(
-        act("is.workflow.actions.setvariable", WFVariableName="School Days", WFInput=attach(out(u_dd, "Text")))
-    )
-    actions.append(act("is.workflow.actions.conditional", UUID=next(i), GroupingIdentifier=g_ddef, WFControlFlowMode=2))
+    # The snooze, read out of the shared store where the menu put it, and
+    # the guard itself: before the session, so a snoozed run costs no request.
+    u_gs = next(i)
     actions.append(
         act(
             "is.workflow.actions.getstoredcontent",
