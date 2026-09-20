@@ -79,7 +79,7 @@ Do not add more without raising it.
 
 ```
 make test          # tests/test_publisher.py; no simulator, no network
-make test-integ    # ./test.sh — needs an iOS 27 simulator and Accessibility permission
+make test-integ    # ./test.sh — needs an iOS 27 simulator and idb
 ./test.sh --erase  # after changing the generator: an installed shortcut is never replaced
 ```
 
@@ -102,6 +102,6 @@ public and hard to take back.
 | Tool | Purpose | Required |
 |---|---|---|
 | `validate-shortcut`, `sign-shortcut` | from the shortcuts-playground plugin, via shortcut-forge | for any build |
-| `xcrun simctl`, Device Hub | the integration suite | for `test.sh` and `verify_links.py --simulator` |
+| `xcrun simctl`, `idb` | the integration suite, driving the simulator headless | for `test.sh` |
 | `gh` | creating the release | for `release.sh` |
 | `shortcuts` (macOS) | running Brightwheel Share Links headless | for refreshing the page's links |

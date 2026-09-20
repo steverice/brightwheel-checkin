@@ -10,19 +10,14 @@ supposed to carry before it goes anywhere near the page.
 
     uv run python tools/verify_links.py --clipboard                  # what Share Links copied
     uv run python tools/verify_links.py --file links.html            # what it copied in a guest
-    uv run python tools/verify_links.py --clipboard --simulator --erase
 
-By default each link is checked through the iCloud records API
+Each link is checked through the iCloud records API
 (`shortcut_forge_lib.records.check_record`), which serves the unsigned plist
 that was shared, with no device: the record's name, the action identifiers in
 order, and every import question's `ActionIndex`, `ParameterKey` and
 `Category` against `dist/<name>.xml`, and a refusal if any question carries an
-answer. That is what verified the v1.5.0 links on 2026-09-18.
-
-`--simulator` instead imports each link on an iOS 27 simulator
-(`shortcut_forge_lib.sim.links.check_link`), which also sees what an import
-does to the copy. It cannot run under Xcode 27, whose Device Hub exposes
-nothing to drive, until the harness moves to idb.
+answer. That is what verified the v1.5.0 links on 2026-09-18. A link cannot be
+wrong in a way a tap would catch and this would not.
 """
 
 from __future__ import annotations
@@ -57,8 +52,6 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--clipboard", action="store_true", help="read the links from the clipboard (the default)")
     source.add_argument("--file", type=Path, metavar="PATH", help="read the links from Share Links' saved output")
     ap.add_argument("--dist", default=REPO / "dist", type=Path, help="where the built .xml files are")
-    ap.add_argument("--simulator", action="store_true", help="import each link on a simulator instead")
-    ap.add_argument("--erase", action="store_true", help="with --simulator, wipe the simulator's library first")
     argcomplete.autocomplete(ap)
     return ap
 
@@ -75,26 +68,8 @@ def by_records(links: dict[str, str], dist: Path) -> dict[str, list[str]]:
     return {name: by_record(links[name], name, dist / f"{name}.xml") for name in NAMES}
 
 
-def by_simulator(links: dict[str, str], dist: Path, *, erase: bool) -> dict[str, list[str]]:
-    # Imported here: the harness needs Quartz and a simulator, and the default
-    # path needs neither.
-    from shortcut_forge_lib.sim.harness import Simulator
-    from shortcut_forge_lib.sim.links import check_link
-
-    sim = Simulator.find(runtime="iOS 27")
-    if erase:
-        info("erasing the simulator's library")
-        sim.erase()
-    sim.prepare_window()
-    info(f"verifying on {sim.udid}\n")
-    return {name: check_link(sim, name, links[name], dist / f"{name}.xml") for name in NAMES}
-
-
 def main() -> int:
     args = build_parser().parse_args()
-    if args.erase and not args.simulator:
-        error("--erase wipes a simulator's library, so it needs --simulator")
-        return 1
 
     links = from_file(args.file) if args.file else from_clipboard()
     missing = [n for n in NAMES if n not in links]
@@ -106,11 +81,8 @@ def main() -> int:
         error(f"Not iCloud links: {', '.join(bad)}")
         return 1
 
-    if args.simulator:
-        results = by_simulator(links, args.dist, erase=args.erase)
-    else:
-        info("checking each link's record against the build\n")
-        results = by_records(links, args.dist)
+    info("checking each link's record against the build\n")
+    results = by_records(links, args.dist)
 
     failed = False
     for name in NAMES:

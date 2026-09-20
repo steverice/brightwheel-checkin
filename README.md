@@ -243,9 +243,8 @@ whose check-in never works. `verify_links.py` fetches each link's record from
 iCloud, which serves the plist that was shared, and compares it against
 `dist/<name>.xml` — the same name, the same action identifiers in the same order,
 the same import questions, none of them answered — and refuses the lot if any of
-them disagrees. `--simulator` imports each link on an iOS 27 simulator instead,
-which cannot run under Xcode 27 until shortcut-forge's harness moves off Device
-Hub.
+them disagrees. No device is involved: a link cannot be wrong in a way a tap
+would catch and this would not.
 
 It writes nothing unless all three are present and start with
 `https://www.icloud.com/shortcuts/`, so a half-finished paste cannot leave the

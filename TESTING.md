@@ -25,19 +25,21 @@ not replaced** — the harness skips installing over it.
 
 - **An iOS 27 iPhone simulator.** Xcode → Settings → Components. The harness
   picks a booted one, or boots the first it finds.
-- **Accessibility permission** for the terminal running the tests: System
-  Settings → Privacy & Security → Accessibility. Taps are synthesized as real
-  mouse events, so without this the cursor moves and nothing is pressed.
+- **`idb`**, on `PATH`: `brew trust facebook/fb && brew install
+  facebook/fb/idb`. No Accessibility permission, and no window: the device is
+  driven headless, and do not quit Device Hub while a run is going — quitting
+  it shuts down every booted simulator.
 - Nothing else. The certificate, the mock, and the test build are all generated.
 
-### Simulator.app, or Device Hub
+### Driven through idb, not a window
 
-The harness detects which one is installed and drives either; what differs,
-what is harder under Device Hub, and how the screen is measured inside the
-bezel are in shortcut-forge's
+`idb` injects touches and reads the accessibility tree over its own connection
+to the simulator, so there is no window to find, no screen to map, and no
+Accessibility permission to grant. What that took to measure, and why the
+harness never opens Device Hub, is in shortcut-forge's
 [`docs/simulator-harness.md`](../shortcut-forge/docs/simulator-harness.md).
-Other devices can stay booted; leave this device's window alone while the
-suite runs.
+Other devices can stay booted; a person running Device Hub alongside does no
+harm, since idb's touches do not care whether a window is showing the device.
 
 **The simulator cannot open files from `~/Desktop`.** `xcrun simctl openurl
 <udid> file:///Users/…/Desktop/X.shortcut` fails with "Operation not permitted":
@@ -272,10 +274,11 @@ A failing test saves a screenshot into `tests/artifacts/`.
 
 ## What had to be worked out
 
-Installing by host file URL, tapping, finding the blue button, typing by
-keycode, HTTPS through a throwaway CA, reading Store Content off disk, consent
-prompts, which window, focus before typing, autocapitalization, and dropped
-run URLs: all in shortcut-forge's `docs/simulator-harness.md`.
+Installing by host file URL, finding a button by label and confirming it with
+a hit test before tapping, typing with a single `idb ui text` call, HTTPS
+through a throwaway CA, reading Store Content off disk, consent prompts, focus
+before typing, autocapitalization, and dropped run URLs: all in
+shortcut-forge's `docs/simulator-harness.md`.
 
 ## What the suite does not cover
 
@@ -285,8 +288,8 @@ Worth stating so nobody reads a green run as broader than it is.
 reached the mock, and the priming run absorbs the diagram sheet along with the
 consent prompts — so a regression that stopped the guide appearing, or made it
 appear on *every* run, would pass. Both behaviors were checked by hand on a
-simulator instead. The harness can automate it (`blue_buttons()` is how the
-sheet was detected); nobody has written the test.
+simulator instead. The harness can automate it (`prompt_up()` is how the sheet
+would be detected); nobody has written the test.
 
 **The two menu items themselves, and a run from the menu ignoring the
 schedule.** The guard applies only to a run that was handed a direction, so

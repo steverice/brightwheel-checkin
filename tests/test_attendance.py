@@ -76,7 +76,7 @@ class Suite:
         if self.erase:
             info("  erasing device for a clean library")
             self.sim.erase()
-        self.sim.prepare_window()
+        self.sim.prepare()
         self.sim.add_root_cert(ca)
 
         self.mock = MockBrightwheel(PORT, server).start()
@@ -145,7 +145,7 @@ class Suite:
             time.sleep(0.8)
             # A run URL delivered while Shortcuts is still shutting down is
             # silently dropped; nothing happens and no error is raised.
-            if not relaunched and seen == 0 and time.time() - started > 20 and not self.sim.blue_buttons():
+            if not relaunched and seen == 0 and time.time() - started > 20 and not self.sim.prompt_up():
                 self.sim.run_shortcut(shortcut)
                 relaunched = True
                 stable = time.time()
@@ -154,30 +154,29 @@ class Suite:
             if now != seen:
                 seen, stable = now, time.time()
                 continue
-            if self.tap_when_settled():
+            cleared = self.sim.clear_prompts()
+            if cleared:
+                self.taps += len(cleared)
+                stable = time.time()
+                continue
+            # The runner's "One-time automation setup" sheet — shown once ever
+            # per device, the first time any shortcut is run by URL — carries
+            # its own Done at a seed of its own (SEEDS in the forge worktree),
+            # well below the Ask for Input dialog's. clear_prompts() never
+            # presses Done by default — that guard exists so a live code
+            # prompt is never submitted empty — so this sheet needs its own
+            # explicit, narrowly-scoped press. Safe here because run_and_settle
+            # is never used while a code prompt is up (those tests drive the
+            # Ask dialog by hand), so the only Done a hit test can find here is
+            # this sheet's own.
+            if self.sim.find_button("Done") is not None:
+                self.sim.press("Done")
                 self.taps += 1
                 stable = time.time()
                 continue
             if time.time() - started >= min_wait and time.time() - stable >= quiet:
                 return
         raise AssertionError(f"{shortcut} did not settle within {timeout}s")
-
-    def tap_when_settled(self) -> bool:
-        """Tap the affirmative button, but only once the sheet has stopped moving.
-
-        A consent sheet slides up, and a tap that lands mid-slide hits whatever
-        is at that spot in that frame — Allow Once instead of Always Allow, or
-        nothing. Two identical readings of the blue buttons, a beat apart, mean
-        the frame is stable.
-        """
-        first = self.sim.blue_buttons()
-        if not first:
-            return False
-        time.sleep(0.6)
-        img = self.sim.image()
-        if self.sim.blue_buttons(img) != first:
-            return False
-        return self.sim.tap_affirmative(img)
 
     # -- assertion helpers ----------------------------------------------
     def targets_of(self, posts: list[dict[str, Any]]) -> list[str | None]:
@@ -289,9 +288,10 @@ def test_expired_token_signs_in_again(s):
 
     time.sleep(4)
     s.sim.screenshot("sent-code-prompt.png")
-    assert s.sim.answer_prompt(scenario.two_fa_code), "no code prompt appeared to answer"
+    assert s.sim.answer_prompt(scenario.two_fa_code, expect="12345"), "no code prompt appeared to answer"
 
     s.mock.quiet_for(6, timeout=120)
+    s.sim.clear_prompts()  # a pending output sheet makes the next test's first run do nothing
 
     exchanges = _exchanges(s)
     assert exchanges, "the code was never exchanged for a token"
@@ -333,6 +333,7 @@ def test_an_empty_code_answer_sends_another(s):
     time.sleep(4)
     assert s.sim.answer_prompt(scenario.two_fa_code), "no second code prompt appeared"
     s.mock.quiet_for(6, timeout=120)
+    s.sim.clear_prompts()  # a pending output sheet makes the next test's first run do nothing
     exchanges = _exchanges(s)
     assert len(exchanges) == 1, f"expected one exchange after the real answer, saw {len(exchanges)}"
     assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code
@@ -403,15 +404,16 @@ def test_a_code_sent_minutes_ago_is_not_sent_again(s):
     time.sleep(1.2)
     s.sim.run_shortcut(CHECK_IN)
     deadline = time.time() + 75
-    while time.time() < deadline and not s.sim.blue_buttons():
+    while time.time() < deadline and s.sim.find_button("Done") is None:
         time.sleep(1.0)
-    assert s.sim.blue_buttons(), "the second run never raised the code prompt"
+    assert s.sim.find_button("Done") is not None, "the second run never raised the code prompt"
     s.sim.screenshot("remembered-send-prompt.png")
     assert not s.mock.matching("POST", "/sessions/start"), "a code sent minutes ago was sent again"
 
     time.sleep(1.5)
     assert s.sim.answer_prompt(scenario.two_fa_code), "could not answer the remembered prompt"
     s.mock.quiet_for(6, timeout=120)
+    s.sim.clear_prompts()  # a pending output sheet makes the next test's first run do nothing
     exchanges = _exchanges(s)
     assert len(exchanges) == 1, f"expected one exchange, saw {len(exchanges)}"
     assert exchanges[0]["body"]["2fa_code"] == scenario.two_fa_code
@@ -437,11 +439,11 @@ def test_a_code_on_the_clipboard_is_offered(s):
     _start_sign_in(s, CHECK_IN, clipboard=scenario.two_fa_code)
 
     deadline = time.time() + 40
-    while time.time() < deadline and not s.sim.blue_buttons():
+    while time.time() < deadline and s.sim.find_button("Done") is None:
         time.sleep(1.0)
     time.sleep(1.5)
     s.sim.screenshot("clipboard-prefilled-prompt.png")
-    assert s.sim.tap_affirmative(), "no code prompt appeared to accept"
+    s.sim.press("Done")  # the answer is already in the field, from the clipboard
 
     # A value that came off the clipboard gets its own consent the first time
     # it is sent anywhere: "Allow ... to send 1 text item to localhost?", with
@@ -454,8 +456,9 @@ def test_a_code_on_the_clipboard_is_offered(s):
         if now != seen:
             seen, stable = now, time.time()
             continue
-        if s.tap_when_settled():
-            taps += 1
+        cleared = s.sim.clear_prompts()
+        if cleared:
+            taps += len(cleared)
             s.sim.screenshot(f"clipboard-consent-{taps}.png")
             stable = time.time()
             continue
@@ -468,6 +471,7 @@ def test_a_code_on_the_clipboard_is_offered(s):
         f"the pasted code was not what got sent: {exchanges[0]['body'].get('2fa_code')!r}"
     )
     assert s.mock.checkins, "sign-in recovered but nobody was checked in"
+    s.sim.clear_prompts()  # a pending output sheet makes the next test's first run do nothing
 
     # The token a pasted code earned is stored, and it carries the clipboard's
     # provenance with it: on a fresh device the run after this one asked once
@@ -503,7 +507,7 @@ def _start_sign_in(s, shortcut: str, clipboard: str = "nothing to paste") -> Non
         if s.mock.matching("POST", "/sessions/start"):
             return
         if not s.mock.requests:
-            s.sim.tap_affirmative()
+            s.sim.clear_prompts()
         time.sleep(1.0)
     raise AssertionError("shortcut never asked Brightwheel to send a code")
 
@@ -544,16 +548,10 @@ def test_setup_questions_commit_their_answers(s):
     subprocess.run(["xcrun", "simctl", "openurl", s.sim.udid, "file://" + urllib.parse.quote(str(path))], check=True)
     time.sleep(4)
 
-    assert s.sim.tap_affirmative(), "no Set Up Shortcut button on the import sheet"
+    s.sim.press("Set Up Shortcut")
     time.sleep(3)
-
-    img = s.sim.image()
-    w, h = img.size
-    s.sim.tap(int(w * 0.33), int(h * 0.335), device_size=img.size)  # the answer field
-    time.sleep(0.8)
-    s.sim.type_text(marker)
-    time.sleep(0.5)
-    assert s.sim.tap_affirmative(), "no Add Shortcut button after answering"
+    assert s.sim.fill(marker) == marker
+    s.sim.confirm("Add Shortcut", "Next")
     time.sleep(4)
 
     assert name in s.sim.library(), "answering the setup question left the shortcut uninstalled"
