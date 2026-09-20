@@ -216,6 +216,40 @@ That is what `test_setup_questions_commit_their_answers` watches. It is marked
 suite — and the day a release fixes it, it reports **FIXED** and tells you to
 drop the marker.
 
+### Three checks, three different questions
+
+This regression is the clearest case of why the three checks are not
+interchangeable, since it passes one of them while breaking the thing that one
+appears to be about.
+
+| check | what it proves | what it cannot see |
+|---|---|---|
+| `tools/verify_links.py` | The **link** carries the plist the build produced: same name, same action identifiers in order, same import questions, none answered. It fetches the record iCloud shares, so it is sound against a stale or mis-minted link | Anything that happens after an import. The device is never involved |
+| shortcut-forge's setup canary | The **import path**: whether answering a setup question configures the shortcut at all. A two-action shortcut whose only value comes from a question, read back off the device | Anything about these shortcuts — that is the point. It carries none of this project's machinery |
+| `./test.sh` | What the built shortcuts **do once installed**, in requests to the mock | Whether they would have installed that way from a link, and anything nobody wrote a test for — see "What the suite does not cover" |
+
+The iOS 27.0 behavior above sits exactly in the link check's blind spot: the
+plist is right, the link is right, `verify_links.py` passes, and the device
+still installs a shortcut whose answer was never committed. Reading a green
+link check as covering the import path is the mistake this table exists to
+prevent.
+
+The canary lives in shortcut-forge, because it is about iOS rather than about
+Brightwheel. Run it against a booted device from that repo:
+
+```bash
+xcrun simctl boot <udid>
+SHORTCUT_FORGE_SIM_UDID=<udid> make test-integ    # in ~/code/shortcut-forge
+```
+
+`tests/test_sim_canary.py` there branches on the measured difference, and its
+docstring says to update the note above when 27.2 ships.
+
+One thing to get right when you run the link check: it compares each link
+against `dist/`, so build at the release those links were minted from. A
+`dist/` built from a `main` that has moved on reports differences that belong
+to the build, not to the link.
+
 **Skip Setup commits the answers, so `dist/` is installable after all.** Found
 on the `24A434` release candidate, and it is the reason the last setup question
 now carries a note saying so. Three probes, each read back off the device rather
@@ -282,7 +316,9 @@ shortcut-forge's `docs/simulator-harness.md`.
 
 ## What the suite does not cover
 
-Worth stating so nobody reads a green run as broader than it is.
+Worth stating so nobody reads a green run as broader than it is. What the suite
+covers against what the link check and the setup canary cover is "Three checks,
+three different questions" above.
 
 **The first-run setup guide.** Every test's first assertion is that a run
 reached the mock, and the priming run absorbs the diagram sheet along with the
