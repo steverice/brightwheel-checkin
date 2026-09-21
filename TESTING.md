@@ -21,6 +21,11 @@ First run takes a few minutes; later runs skip the install. Use `--erase` when
 you have changed the generator, because **a shortcut already in the library is
 not replaced** — the harness skips installing over it.
 
+`--erase` is green on the idb harness, measured 2026-09-20: 24 of 24 from a
+wiped device, with the clipboard tests raising four consent prompts in the
+pasted-code run, one on the next and none after — the counts the table below
+gives for a fresh device.
+
 ### What you need
 
 - **An iOS 27 iPhone simulator.** Xcode → Settings → Components. The harness
