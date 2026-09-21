@@ -48,6 +48,37 @@ process has no grant for it. The harness opens files from the repo and from temp
 paths for that reason. `~/Documents` and `~/Downloads` are protected the same
 way and are likely to fail too, though neither has been tried.
 
+### When a run goes wrong
+
+Three failures that read as flakiness and are not. shortcut-forge's
+`docs/simulator-harness.md` has a Troubleshooting table with the rest.
+
+**The five clipboard tests fail as a block, everything else passes.** A device
+that has been up a long time stops accepting pasteboard syncs: `simctl pbsync`
+prints the byte count it resolved and "Sync complete" while the device's
+pasteboard stays empty, the same report-success-copy-nothing behavior
+`simctl pbcopy` has. Restarting `com.apple.coredevice.dtpasteboardd` does not
+fix it; shutting the device down and booting it does. This is the first thing
+to try when those five fail together, and only then — a device has gone four
+full suites since a reboot with the pasteboard still landing, so rebooting
+before every run buys nothing. `set_pasteboard()` says which half failed, so
+read its message before guessing.
+
+**A test says the shortcut never asked for something, and the request list is
+empty.** A runner dialog whose position the harness has not measured is a
+silent timeout, not an error: the settle loop polls for the *absence* of a
+dialog, so an unrecognized consent looks exactly like a run that never
+started. Open the screenshot the run left in `tests/artifacts/` before calling
+it flaky. The fix is a row in `SEEDS` in shortcut-forge's `harness.py`, and
+since these dialogs are neither centered nor anchored to an edge, a consent
+with different wording is a new row rather than an offset on an existing one.
+
+**`idb` commands fail with `Failed to connect to companion`.** A stale
+registration for that device: `idb disconnect <udid>` clears it and the next
+command spawns a fresh companion. **Never `idb kill`** — it SIGKILLs every
+companion on the machine, including ones for other devices and other people's
+sessions.
+
 ## It cannot reach the real Brightwheel
 
 Test builds are generated with `--api-base` pointing at the local mock, plus
