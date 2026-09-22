@@ -16,6 +16,13 @@
 # Drafts are the default because publishing a release is public and hard to take
 # back. Nothing here signs anything itself — build_shortcuts.py does, pinned to
 # --mode anyone so the artifacts import for people who have never met you.
+#
+# A draft has no tag yet: gh creates it when the draft is published, at whatever
+# main's HEAD is then. So publish before pushing anything else — a commit pushed
+# in between takes the tag, and the release then points at a commit that did not
+# build the zip attached to it. Publishing first is what puts the tag on the
+# build. The page update is the usual thing waiting behind this, and it has to
+# wait anyway: its version badge links to the tag, which 404s until then.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -62,6 +69,8 @@ echo
 if [ -n "$DRAFT" ]; then
     echo "Draft created. Review it, then publish from the Releases page"
     echo "or with: gh release edit $TAG --draft=false"
+    echo "Publish before pushing anything else to main: the tag is made at"
+    echo "publish time from main's HEAD, so a commit pushed first takes it."
 fi
 
 # The site links each shortcut by iCloud link, and an iCloud link is frozen at
